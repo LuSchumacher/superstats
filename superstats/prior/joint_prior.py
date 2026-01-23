@@ -1,10 +1,10 @@
 from typing import Dict, Union, Any
 import numpy as np
-from superstats.transition.transition import Transition
-from superstats.prior.prior import Prior
+from typing import Union, Dict, Any
+
 
 class JointPrior:
-    def __init__(self, **kwargs: Union[Transition, Prior]):
+    def __init__(self, **kwargs: "Union['Transition', 'Prior']"):
         self.params = kwargs
 
     def sample(self, steps: int) -> Dict[str, Dict[str, Any]]:
@@ -16,6 +16,8 @@ class JointPrior:
         - 'global_params': dict param_name -> transition hyperparameters (e.g. sigma)
         - 'shared_params': dict param_name -> samples from fixed Priors (size=1)
         """
+        from superstats.transition.transition import Transition
+        from superstats.prior.prior import Prior
         local_params = {}
         global_params = {}
         shared_params = {}
