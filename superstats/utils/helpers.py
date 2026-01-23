@@ -2,7 +2,7 @@ import numpy as np
 from numba import njit
 
 @njit
-def bounded_sigmoid(
+def scaled_sigmoid(
     x: float | np.ndarray,
     lower_bound: float | np.ndarray,
     upper_bound: float | np.ndarray
