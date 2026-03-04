@@ -1,7 +1,7 @@
-from .rw import RW
+from .rw import RandomWalk
 from .transition import Transition
 
 __all__ = [
-    "RW", 
+    "RandomWalk", 
     "Transition"
 ]
