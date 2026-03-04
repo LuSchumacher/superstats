@@ -1,7 +1,9 @@
 from abc import ABC, abstractmethod
-from typing import Callable, Tuple
-from prior.prior import Prior
+from typing import Tuple
 import numpy as np
+
+from superstats.prior import Prior
+
 
 class Transition(ABC):
     def __init__(

@@ -1,9 +1,11 @@
 from typing import Tuple
 import numpy as np
 from numba import njit
-from superstats.utils.helpers import scaled_sigmoid
+
 from .transition import Transition
-from prior.prior import Prior
+
+from superstats.utils.helpers import scaled_sigmoid
+from superstats.prior import Prior
 
 @njit
 def sample_rw(
