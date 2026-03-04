@@ -1,6 +1,5 @@
 from typing import Dict, Union, Any
 import numpy as np
-from typing import Union, Dict, Any
 
 from superstats.transition.transition import Transition
 from superstats.prior.prior import Prior
