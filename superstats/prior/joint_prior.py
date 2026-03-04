@@ -2,6 +2,9 @@ from typing import Dict, Union, Any
 import numpy as np
 from typing import Union, Dict, Any
 
+from superstats.transition.transition import Transition
+from superstats.prior.prior import Prior
+
 
 class JointPrior:
     def __init__(self, **kwargs: "Union['Transition', 'Prior']"):
@@ -16,8 +19,7 @@ class JointPrior:
         - 'global_params': dict param_name -> transition hyperparameters (e.g. sigma)
         - 'shared_params': dict param_name -> samples from fixed Priors (size=1)
         """
-        from superstats.transition.transition import Transition
-        from superstats.prior.prior import Prior
+
         local_params = {}
         global_params = {}
         shared_params = {}
