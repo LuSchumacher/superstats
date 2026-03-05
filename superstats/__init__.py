@@ -10,5 +10,5 @@ from . import (
     prior,
     simulation,
     study,
-    transition
+    transition,
 )
