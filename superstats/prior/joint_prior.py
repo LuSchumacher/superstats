@@ -7,36 +7,45 @@ from superstats.prior.prior import Prior
 
 class JointPrior:
     def __init__(self, **kwargs: "Union['Transition', 'Prior']"):
+        """
+        kwargs: dict of parameter_name -> Transition or Prior
+        """
         self.params = kwargs
 
-    def sample(self, steps: int) -> Dict[str, Dict[str, Any]]:
+    def sample(self, batch_size: int, steps: int) -> Dict[str, Dict[str, Any]]:
         """
-        Sample all parameters.
+        Fully batched sampling of all parameters.
 
-        Returns a dict with keys:
-        - 'local_params': dict param_name -> sampled trajectories from Transition.sample(steps)
-        - 'global_params': dict param_name -> transition hyperparameters (e.g. sigma)
-        - 'shared_params': dict param_name -> samples from fixed Priors (size=1)
+        Returns:
+        - local_params: dict param_name -> array (batch_size, steps)
+        - global_params: dict param_name -> array (batch_size,) for transition hyperparameters
+        - shared_params: dict param_name -> array (batch_size,) for time-invariant parameters
         """
-
-        local_params = {}
-        global_params = {}
-        shared_params = {}
+        local_params: Dict[str, np.ndarray] = {}
+        global_params: Dict[str, np.ndarray] = {}
+        shared_params: Dict[str, np.ndarray] = {}
 
         for name, param in self.params.items():
             if isinstance(param, Transition):
-                samples = param.sample(steps)
-                local_params[name] = samples["local_param"]
+                # Sampling of trajectories
+                samples = param.sample(batch_size=batch_size, steps=steps)
+                local_params[name] = samples["local_params"]
+                # Store hyperparameters in global_params
                 for k, v in samples.items():
-                    if k != "local_param":
+                    if k != "local_params":
                         global_params[f"{name}_{k}"] = v
             elif isinstance(param, Prior):
-                shared_params[name] = param.sample(size=1).item()
+                # Sampling of fixed parameters
+                shared_params[name] = param.sample(batch_size=batch_size)
             else:
                 raise TypeError(f"Unknown parameter type for {name}: {type(param)}")
 
-        return {
+        result = {
             "local_params": local_params,
             "global_params": global_params,
-            "shared_params": shared_params,
         }
+
+        if shared_params:
+            result["shared_params"] = shared_params
+
+        return result
