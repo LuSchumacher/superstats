@@ -11,42 +11,39 @@ from superstats.prior import Prior
 def sample_random_walk(
     local_params: np.ndarray,
     sigma: np.ndarray,
-    bounds: np.ndarray,
+    bounds: Tuple[float, float] | np.ndarray,
 ) -> np.ndarray:
-    """Internal helper: batch Gaussian random walk update.
+    """Generate bounded Gaussian random-walk trajectories.
 
-    This low-level function is ``@njit`` compiled for performance and is
-    used by :class:`RandomWalk` to advance a set of trajectories one step at a
-    time.  The computation is performed in parallel over the batch dimension.
+    Each trajectory starts from ``local_params[:, 0]`` and evolves via
+    Gaussian increments with scale ``sigma``. Increments are cumulatively
+    summed across steps, and each trajectory is mapped to ``bounds`` using
+    ``scaled_sigmoid``.
 
     Parameters
     ----------
     local_params : np.ndarray
-        Array of shape ``(batch_size, steps)`` containing existing values.
+        Array of shape (batch_size, steps) with initial values in column 0.
     sigma : np.ndarray
-        One-dimensional array of length ``batch_size`` providing the scale of
-        the Gaussian increment for each trajectory.
-    bounds : np.ndarray
-        Two-element array specifying lower and upper limits; values are
-        squashed to this interval after each update.
+        Per-trajectory standard deviation of increments (batch_size,).
+    bounds : tuple or array-like
+        Two-elements specifying output limits.
 
     Returns
     -------
     np.ndarray
-        The input ``local_params`` array with trajectories updated in place.
+        ``local_params`` containing the bounded random-walk trajectories.
     """
     batch_size, steps = local_params.shape
-    z = np.random.randn(batch_size, steps-1)
+    lower = bounds[0]
+    upper = bounds[1]
+
     for b in prange(batch_size):
-        for t in range(1, steps):
-            local_params[b, t] = local_params[b, t-1] + sigma[b] * z[b, t-1]
-        local_params[b, :] = scaled_sigmoid(
-            local_params[b, :], bounds[0], bounds[1]
-        )
+        z = np.random.randn(steps - 1)
+        local_params[b, 1:] = local_params[b, 0] + np.cumsum(sigma[b] * z)
+        local_params[b, :] = scaled_sigmoid(local_params[b, :], lower, upper)
+        
     return local_params
-
-# implement as cumsum
-
 
 
 class RandomWalk(Transition):

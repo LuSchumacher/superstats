@@ -6,7 +6,7 @@ def scaled_sigmoid(
     x: float | np.ndarray,
     lower_bound: float | np.ndarray,
     upper_bound: float | np.ndarray
-) -> float:
+) -> float | np.ndarray:
     """
     Apply a sigmoid transformation and rescale to a bounded interval.
     """

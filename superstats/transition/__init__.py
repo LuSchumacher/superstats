@@ -1,4 +1,4 @@
-from .rw import RandomWalk
+from .random_walk import RandomWalk
 from .transition import Transition
 
 __all__ = [
