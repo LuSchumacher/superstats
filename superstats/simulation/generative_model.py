@@ -5,16 +5,16 @@ from numba import njit, prange
 
 from superstats.prior.joint_prior import JointPrior
 
-@njit(parallel=True)
-def sample_data_batch(model, stacked_params, sim_data):
-    batch_size, steps, num_params = stacked_params.shape
+# @njit(parallel=True)
+# def sample_data_batch(model, stacked_params, sim_data):
+#     batch_size, steps, num_params = stacked_params.shape
 
-    for b in prange(batch_size):
-        for t in range(steps):
-            params = stacked_params[b, t]
-            sim_data[b, t] = model(*params)
+#     for b in prange(batch_size):
+#         for t in range(steps):
+#             params = stacked_params[b, t]
+#             sim_data[b, t] = model(*params)
 
-    return sim_data
+#     return sim_data
 
 class GenerativeModel:
     def __init__(
@@ -57,7 +57,7 @@ class GenerativeModel:
         stacked_params = np.stack(arrays, axis=-1)
 
         # Infer output shape
-        first = np.asarray(self.model(*stacked_params[0,0]))
+        first = np.asarray(self.model(*stacked_params[0, 0]))
         sim_data = np.zeros((batch_size, steps) + first.shape, dtype=first.dtype)
 
         # simulate data

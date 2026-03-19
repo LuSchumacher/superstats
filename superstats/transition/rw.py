@@ -45,6 +45,9 @@ def sample_random_walk(
         )
     return local_params
 
+# implement as cumsum
+
+
 
 class RandomWalk(Transition):
     """Gaussian random walk transition.
