@@ -6,11 +6,39 @@ from numba import njit, prange
 from superstats.prior.joint_prior import JointPrior
 
 class GenerativeModel:
+    """
+    A generative model that combines a joint prior with a simulation function.
+
+    This class facilitates sampling parameters from a joint prior distribution
+    and generating simulated data using a user-provided model function. It handles
+    parameter broadcasting, flattening, and reshaping to support batched simulations
+    with time-varying parameters.
+
+    Parameters
+    ----------
+    prior : JointPrior
+        The joint prior distribution over model parameters, which may include
+        both time-varying transitions and time-invariant priors.
+    model : Callable
+        The simulation function that takes parameter values and returns simulated data.
+        The function signature determines the expected parameter names and order.
+    """
+
     def __init__(
         self,
         prior: JointPrior,
         model: Callable
     ):
+        """
+        Initialize the generative model.
+
+        Parameters
+        ----------
+        prior : JointPrior
+            The joint prior distribution for model parameters.
+        model : Callable
+            The simulation function to generate data from parameters.
+        """
         self.prior = prior
         self.model = model
         # Inspect simulator signature
@@ -19,7 +47,33 @@ class GenerativeModel:
 
     def _prepare_flat_params(self, combined_params, batch_size, steps):
         """
-        Broadcast parameters to (batch, steps) and flatten to (batch*steps,)
+        Prepare parameters for simulation by broadcasting and flattening.
+
+        This method takes combined parameter dictionaries and prepares them for
+        the simulation function by:
+        1. Broadcasting shared parameters from (batch,) to (batch, steps)
+        2. Flattening all parameters to (batch*steps,) for vectorized simulation
+        3. Ordering parameters according to the model function signature
+
+        Parameters
+        ----------
+        combined_params : dict
+            Dictionary mapping parameter names to arrays of shape (batch,) or (batch, steps).
+        batch_size : int
+            Number of independent simulation batches.
+        steps : int
+            Number of time steps per trajectory.
+
+        Returns
+        -------
+        dict
+            Dictionary mapping parameter names to flattened arrays of shape (batch*steps,).
+
+        Raises
+        ------
+        ValueError
+            If a required parameter is missing from combined_params and has no default value,
+            or if parameter shapes are unexpected.
         """
         flat_params = {}
         for name in self.param_order:
@@ -48,7 +102,39 @@ class GenerativeModel:
 
     def sample(self, batch_size: int, steps: int):
         """
-        Sample parameters from the prior and simulate data.
+        Sample parameters from the prior and generate simulated data.
+
+        This method performs a complete generative process:
+        1. Samples parameters from the joint prior distribution
+        2. Prepares parameters for vectorized simulation
+        3. Runs the simulation model
+        4. Reshapes outputs back to trajectory format
+
+        Parameters
+        ----------
+        batch_size : int
+            Number of independent simulation batches to generate.
+        steps : int
+            Number of time steps per trajectory.
+
+        Returns
+        -------
+        dict
+            Dictionary containing:
+            - 'data': np.ndarray
+                Simulated data of shape (batch_size, steps, ...) where additional
+                dimensions depend on the model output.
+            - 'local_params': dict
+                Time-varying parameters for each trajectory.
+            - 'global_params': dict
+                Hyperparameters from transition processes.
+            - 'shared_params': dict, optional
+                Time-invariant parameters shared across trajectories.
+
+        Raises
+        ------
+        ValueError
+            If required parameters are missing from the prior or have invalid shapes.
         """
 
         # Sample parameters

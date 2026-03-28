@@ -11,6 +11,37 @@ def sample_ddm(
     dt: float = 0.001,
     max_steps: int = 10000,
 ) -> np.ndarray:
+    """
+    Sample from the Drift Diffusion Model (DDM) for decision making.
+
+    This function simulates decision processes using the DDM, where evidence
+    accumulates over time with drift rate v, boundary separation a, and noise.
+    The simulation stops when a boundary is reached or max_steps is exceeded.
+
+    Parameters
+    ----------
+    v : np.ndarray
+        Drift rates for each trial, shape (num_steps,).
+    a : np.ndarray
+        Boundary separations for each trial, shape (num_steps,).
+    tau : np.ndarray
+        Non-decision times for each trial, shape (num_steps,).
+    bias : np.ndarray
+        Initial biases (as fraction of boundary) for each trial, shape (num_steps,).
+    sigma : float, optional
+        Diffusion noise standard deviation, default 1.0.
+    dt : float, optional
+        Time step size, default 0.001.
+    max_steps : int, optional
+        Maximum number of steps before timeout, default 10000.
+
+    Returns
+    -------
+    np.ndarray
+        Decision data of shape (num_steps, 2), where columns are:
+        - Column 0: response time (or -1.0 for timeout)
+        - Column 1: choice (1.0 for upper boundary, 0.0 for lower, -1.0 for timeout)
+    """
     
     num_steps = v.shape[0]
     data = np.empty((num_steps, 2), dtype=np.float32)
