@@ -7,7 +7,7 @@ from superstats.utils.helpers import scaled_sigmoid
 from superstats.prior import Prior
 
 
-@njit(parallel=True)
+@njit(parallel=True, fastmath=True)
 def sample_random_walk(
     local_params: np.ndarray,
     sigma: np.ndarray,
