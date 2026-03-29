@@ -12,7 +12,7 @@ def sample_ddm(
     max_steps: int = 10000,
 ) -> np.ndarray:
     """
-    Sample from the Drift Diffusion Model (DDM) for decision making.
+    Sample from the Diffusion Decision Model (DDM) for decision making.
 
     This function simulates decision processes using the DDM, where evidence
     accumulates over time with drift rate v, boundary separation a, and noise.
