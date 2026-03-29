@@ -8,17 +8,17 @@ class Prior:
 
     The class wraps a small set of common distributions and allows
     drawing a batch of independent samples for use as shared model
-    parameters.  Supported distributions are
-    ``normal``, ``uniform`` and ``beta``.
+    parameters. Supported distributions are
+    ``normal``, ``uniform``, ``beta`` and ``halfnormal``.
 
     Parameters
     ----------
-    dist : {'normal', 'uniform', 'beta'}
+    dist : {'normal', 'uniform', 'beta', 'halfnormal'}
         Name of the distribution to sample from.
     loc : float, optional
-        Mean of the normal distribution (used when ``dist=='normal'``).
+        Mean of the normal distribution.
     scale : float, optional
-        Standard deviation for the normal distribution.
+        Standard deviation for the normal and halfnormal distributions.
     low : float, optional
         Lower bound for the uniform distribution.
     high : float, optional
@@ -31,7 +31,7 @@ class Prior:
 
     def __init__(
         self,
-        dist: Literal["normal", "uniform", "beta"],
+        dist: Literal["normal", "uniform", "beta", "halfnormal"],
         loc: float = 0.0,
         scale: float = 1.0,
         low: float = 0.0,
@@ -63,10 +63,16 @@ class Prior:
         """
         if self.dist == "normal":
             samples = np.random.normal(self.loc, self.scale, size=batch_size)
+
+        elif self.dist == "halfnormal":
+            samples = np.abs(np.random.normal(0.0, self.scale, size=batch_size))
+
         elif self.dist == "uniform":
             samples = np.random.uniform(self.low, self.high, size=batch_size)
+
         elif self.dist == "beta":
             samples = np.random.beta(self.a, self.b, size=batch_size)
+
         else:
             raise ValueError(f"Unsupported prior distribution: {self.dist}")
 
