@@ -106,6 +106,8 @@ class OrnsteinUhlenbeck(Transition):
             "theta": theta,
         }
 
+        self.transition_type = "ou"
+
     def sample(self, batch_size: int, steps: int) -> Dict[str, Any]:
         """
         Generate Ornstein-Uhlenbeck parameter trajectories.
@@ -122,23 +124,21 @@ class OrnsteinUhlenbeck(Transition):
         dict
             Dictionary containing 'local_params', 'global_params', and 'infer_mask'.
         """
-
         local_params = np.empty((batch_size, steps), dtype=self.dtype)
         local_params[:, 0] = self.initial_prior.sample(batch_size)
-
-        params, infer = self.sample_global_params(batch_size)
+        global_params, infer_mask = self.sample_global_params(batch_size)
 
         local_params = _sample_ou(
             local_params,
-            params["sigma"],
-            params["mu"],
-            params["theta"],
+            global_params["sigma"],
+            global_params["mu"],
+            global_params["theta"],
             self.dt,
             self.bounds,
         )
 
         return {
             "local_params": local_params,
-            "global_params": params,
-            "infer_mask": infer,
+            "global_params": global_params,
+            "infer_mask": infer_mask,
         }

@@ -140,7 +140,7 @@ class JointPrior:
     def plot_prior(
         self,
         steps: int = 100,
-        n_trajectories: int = 10,
+        num_trajectories: int = 10,
         num_draws: int = 1000,
         color: str = "#822621",
         n_cols: int = 2,
@@ -192,10 +192,11 @@ class JointPrior:
 
             for name, values in params.items():
                 ax = axes[i]
-
+                
                 # ----- trajectories -----
                 if kind == "line":
-                    n_plot = min(n_trajectories, values.shape[0])
+                    n_plot = min(num_trajectories, values.shape[0])
+                    values_plot = np.asarray(values[:n_plot])
 
                     sub = ax.get_subplotspec().subgridspec(
                         1, 2,
@@ -211,23 +212,23 @@ class JointPrior:
                         ax_traj.set_ylim(param_obj.bounds)
 
                     for j in range(n_plot):
-                        ax_traj.plot(values[j], alpha=0.6, color=color)
+                        ax_traj.plot(values_plot[j], alpha=0.6, color=color)
 
                     ax_traj.set_xlabel("step", fontsize=label_fontsize)
                     ax_traj.set_ylabel(name, fontsize=label_fontsize)
                     ax_traj.grid(alpha=0.3)
                     ax_traj.tick_params(labelsize=tick_fontsize)
 
-                    final_vals = values[:, -1]
+                    kde_values = values_plot.reshape(-1)
 
                     sns.kdeplot(
-                        y=final_vals,
+                        y=kde_values,
                         ax=ax_kde,
                         color=color,
                         fill=True,
                         alpha=0.4,
                     )
-
+                    ax_kde.set_ylim(ax_traj.get_ylim())
                     ax_kde.set_axis_off()
                     ax.axis("off")
 

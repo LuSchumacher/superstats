@@ -82,6 +82,8 @@ class RandomWalk(Transition):
             "delta": delta,
         }
 
+        self.transition_type = "rw"
+
     def sample(self, batch_size: int, steps: int) -> Dict[str, Any]:
         """
         Generate random walk parameter trajectories.
@@ -101,18 +103,17 @@ class RandomWalk(Transition):
         """
         local_params = np.empty((batch_size, steps), dtype=self.dtype)
         local_params[:, 0] = self.initial_prior.sample(batch_size)
-
-        params, infer = self.sample_global_params(batch_size)
+        global_params, infer_mask = self.sample_global_params(batch_size)
 
         local_params = _sample_random_walk(
             local_params,
-            params["sigma"],
-            params["delta"],
+            global_params["sigma"],
+            global_params["delta"],
             self.bounds,
         )
 
         return {
             "local_params": local_params,
-            "global_params": params,
-            "infer_mask": infer,
+            "global_params": global_params,
+            "infer_mask": infer_mask,
         }

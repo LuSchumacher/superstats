@@ -3,6 +3,7 @@ import numpy as np
 from numba import njit, prange
 
 from .transition import Transition
+from superstats.prior import Prior
 from superstats.utils.transformations import scaled_sigmoid
 
 
@@ -64,9 +65,9 @@ class AutoRegression(Transition):
         self,
         bounds: Tuple[float, float],
         initial_prior=None,
-        sigma: float | None = None,
-        phi: float | None = None,
-        delta: float | None = 0.0,
+        sigma: Prior | float | None = None,
+        phi: Prior | float | None = None,
+        delta: Prior | float | None = 0.0,
     ):
         """
         Initialize an AR(1) transition process.
@@ -92,6 +93,8 @@ class AutoRegression(Transition):
             "delta": delta,
         }
 
+        self.transition_type = "ar1"
+
     def sample(self, batch_size: int, steps: int) -> Dict[str, Any]:
         """
         Generate AR(1) parameter trajectories.
@@ -111,19 +114,18 @@ class AutoRegression(Transition):
         """
         local_params = np.empty((batch_size, steps), dtype=self.dtype)
         local_params[:, 0] = self.initial_prior.sample(batch_size)
-
-        params, infer = self.sample_global_params(batch_size)
+        global_params, infer_mask = self.sample_global_params(batch_size)
 
         local_params = _sample_ar1(
             local_params,
-            params["sigma"],
-            params["phi"],
-            params["delta"],
+            global_params["sigma"],
+            global_params["phi"],
+            global_params["delta"],
             self.bounds,
         )
 
         return {
             "local_params": local_params,
-            "global_params": params,
-            "infer_mask": infer,
+            "global_params": global_params,
+            "infer_mask": infer_mask,
         }
