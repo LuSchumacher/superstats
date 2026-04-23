@@ -11,22 +11,22 @@ class Prior:
     parameters. Supported distributions are
     ``normal``, ``uniform``, ``beta`` and ``halfnormal``.
 
-    Parameters
+    Attributes
     ----------
-    dist : {'normal', 'uniform', 'beta', 'halfnormal'}
-        Name of the distribution to sample from.
-    loc : float, optional
+    dist : str
+        Name of the distribution ('normal', 'uniform', 'beta', 'halfnormal').
+    loc : float
         Mean of the normal distribution.
-    scale : float, optional
-        Standard deviation for the normal and halfnormal distributions.
-    low : float, optional
+    scale : float
+        Standard deviation for normal and halfnormal distributions.
+    low : float
         Lower bound for the uniform distribution.
-    high : float, optional
+    high : float
         Upper bound for the uniform distribution.
-    a : float, optional
-        ``alpha`` parameter for the beta distribution.
-    b : float, optional
-        ``beta`` parameter for the beta distribution.
+    a : float
+        Alpha parameter for the beta distribution.
+    b : float
+        Beta parameter for the beta distribution.
     """
 
     def __init__(
@@ -39,6 +39,26 @@ class Prior:
         a: float = 1.0,
         b: float = 1.0
     ):
+        """
+        Initialize a prior distribution.
+
+        Parameters
+        ----------
+        dist : {'normal', 'uniform', 'beta', 'halfnormal'}
+            Name of the distribution to sample from.
+        loc : float, optional
+            Mean of the normal distribution (default: 0.0).
+        scale : float, optional
+            Standard deviation for normal and halfnormal (default: 1.0).
+        low : float, optional
+            Lower bound for uniform distribution (default: 0.0).
+        high : float, optional
+            Upper bound for uniform distribution (default: 1.0).
+        a : float, optional
+            Alpha parameter for beta distribution (default: 1.0).
+        b : float, optional
+            Beta parameter for beta distribution (default: 1.0).
+        """
         self.dist = dist
         self.loc = loc
         self.scale = scale
