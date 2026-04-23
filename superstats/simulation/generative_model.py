@@ -188,4 +188,7 @@ class GenerativeModel:
         if shared_params is not None:
             result["shared_params"] = shared_params
 
+        if "infer_mask" in prior_draws:
+            result["infer_mask"] = prior_draws["infer_mask"]
+
         return result

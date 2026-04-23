@@ -5,8 +5,7 @@ from numba import njit, prange
 from .transition import Transition
 from superstats.utils.transformations import scaled_sigmoid
 from superstats.prior import Prior
-
-from .transition import Transition
+from superstats.defaults import DEFAULT_GLOBAL_PRIORS
 
 @njit(parallel=True, fastmath=True)
 def sample_auto_regression_drift(
@@ -43,35 +42,26 @@ class AutoRegressionDrift(Transition):
 
     def __init__(
         self,
-        bounds: Tuple[float, float],
-        initial_prior: Prior = None,
+        bounds: tuple[float, float],
+        initial_prior: Prior | None = None,
         phi_prior: Prior | float = None,
         delta_prior: Prior | float = None,
         sigma_prior: Prior | float = None,
     ):
         super().__init__(bounds, initial_prior)
 
-        if phi_prior is None:
-            self.phi_prior = Prior("beta", a=5.0, b=1.0)
-        else:
-            self.phi_prior = phi_prior
-
-        if delta_prior is None:
-            self.delta_prior = Prior("normal", loc=0.0, scale=0.05)
-        else:
-            self.delta_prior = delta_prior
-
-        if sigma_prior is None:
-            self.sigma_prior = Prior("halfnormal", scale=0.1)
-        else:
-            self.sigma_prior = sigma_prior
+        self.global_params = {
+            "phi": phi_prior if phi_prior is not None else DEFAULT_GLOBAL_PRIORS["phi_prior"],
+            "delta": delta_prior if delta_prior is not None else DEFAULT_GLOBAL_PRIORS["delta_prior"],
+            "sigma": sigma_prior if sigma_prior is not None else DEFAULT_GLOBAL_PRIORS["sigma_prior"],
+        }
 
     def _draw_param(self, prior_or_value, batch_size):
-        """Utility: draw samples or broadcast constant."""
+        """Draw samples from prior or broadcast constant."""
         if isinstance(prior_or_value, Prior):
             return prior_or_value.sample(batch_size)
-        else:
-            return np.full(batch_size, prior_or_value, dtype=np.float32)
+
+        return np.full(batch_size, prior_or_value, dtype=np.float32)
 
     def sample(self, batch_size: int, steps: int) -> dict:
         """Sample trajectories."""
@@ -79,21 +69,26 @@ class AutoRegressionDrift(Transition):
         local_params = np.empty((batch_size, steps), dtype=np.float32)
         local_params[:, 0] = self.initial_prior.sample(batch_size)
 
-        phi = self._draw_param(self.phi_prior, batch_size)
-        delta = self._draw_param(self.delta_prior, batch_size)
-        sigma = self._draw_param(self.sigma_prior, batch_size)
+        drawn_params = {}
+        sampled_global_params = {}
+
+        # draw parameters
+        for name, prior_or_value in self.global_params.items():
+            value = self._draw_param(prior_or_value, batch_size)
+            drawn_params[name] = value
+
+            if isinstance(prior_or_value, Prior):
+                sampled_global_params[name] = value
 
         local_params = sample_auto_regression_drift(
             local_params,
-            phi,
-            delta,
-            sigma,
+            drawn_params["phi"],
+            drawn_params["delta"],
+            drawn_params["sigma"],
             self.bounds
         )
 
         return {
             "local_params": local_params,
-            "phi": phi,
-            "delta": delta,
-            "sigma": sigma
+            "global_params": sampled_global_params
         }
