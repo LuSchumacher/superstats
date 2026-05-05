@@ -1,4 +1,4 @@
-from typing import Dict, Union, Any
+from typing import Dict, Any
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -9,134 +9,74 @@ from superstats.prior.prior import Prior
 
 class JointPrior:
     """
-    Joint prior over multiple parameters (time-varying + shared).
+    Joint prior over multiple parameters.
 
     Supports:
-    - Transition -> time-varying parameters
+    - Transition -> time-varying parameters (with hyperparameters)
     - Prior -> inferred shared parameters
-    - float/int -> fixed shared parameters (not inferred)
+    - float/int -> fixed parameters
 
-    Attributes
-    ----------
-    params : dict
-        Dictionary mapping parameter names to Transition, Prior, or constant values.
+    Returns structured output:
+    - local_params  : time-varying (batch, steps)
+    - hyper_params  : inferred hyperparameters
+    - shared_params : inferred stationary parameters (batch,)
+    - fixed_params  : all fixed values (including fixed hyperparameters)
     """
 
-    def __init__(self, **kwargs: Union[Transition, Prior, float, int]):
-        """
-        Initialize a joint prior over mixed parameter types.
-
-        Parameters
-        ----------
-        **kwargs
-            Named parameters, each either a Transition, Prior, or constant value.
-        """
+    def __init__(self, **kwargs: Transition | Prior | float | int):
         self.params = kwargs
 
-    def _split_inferred(
-        self,
-        samples: Dict[str, Any]
-    ) -> tuple[Dict[str, np.ndarray], Dict[str, np.ndarray], Dict[str, np.ndarray]]:
-
-        local_params = samples.get("local_params", {})
-        global_params = samples.get("global_params", {})
-        shared_params = samples.get("shared_params", {})
-        infer_mask = samples.get("infer_mask", {})
-
-        # local params are always inferred
-        inferred_local = local_params
-
-        # shared parameters
-        inferred_shared = {
-            name: values
-            for name, values in shared_params.items()
-            if infer_mask.get(name, False)
-        }
-
-        # global parameters
-        inferred_global = {
-            name: values
-            for name, values in global_params.items()
-            if infer_mask.get(name, False)
-        }
-
-        return inferred_local, inferred_shared, inferred_global
-
     def sample(self, batch_size: int, steps: int) -> Dict[str, Any]:
-        """
-        Sample from all priors and transitions.
 
-        Parameters
-        ----------
-        batch_size : int
-            Number of independent samples.
-        steps : int
-            Time steps for Transition parameters.
-
-        Returns
-        -------
-        dict
-            Contains 'local_params' (trajectories), 'global_params' (hyperparameters),
-            'shared_params' (static parameters, if any), and 'infer_mask' (which
-            hyperparameters are stochastic, if any).
-
-        Raises
-        ------
-        TypeError
-            If a parameter is neither Transition, Prior, nor scalar.
-        """
         local_params: Dict[str, np.ndarray] = {}
-        global_params: Dict[str, np.ndarray] = {}
+        hyper_params: Dict[str, np.ndarray] = {}
         shared_params: Dict[str, np.ndarray] = {}
-        infer_mask: Dict[str, bool] = {}
+        fixed_params: Dict[str, np.ndarray] = {}
 
         for name, param in self.params.items():
             # Transition (time-varying)
             if isinstance(param, Transition):
                 samples = param.sample(batch_size=batch_size, steps=steps)
-
-                # trajectories
                 local_params[name] = samples["local_params"]
 
-                # global hyperparameters
-                for k, v in samples["global_params"].items():
-                    global_params[f"{k}_{name}"] = v
+                # hyperparameters
+                for k, v in samples["hyper_params"].items():
+                    full_name = f"{k}_{name}"
+                    hyper_params[full_name] = v
 
-                # inference mask for globals
-                if "infer_mask" in samples:
-                    for k, v in samples["infer_mask"].items():
-                        infer_mask[f"{k}_{name}"] = v
+                # fixed hyperparameters
+                for k, v in samples["fixed_params"].items():
+                    full_name = f"{k}_{name}"
+                    fixed_params[full_name] = v
 
+            # ------------------------
             # Prior (shared, inferred)
+            # ------------------------
             elif isinstance(param, Prior):
                 values = param.sample(batch_size=batch_size)
                 shared_params[name] = values
-                infer_mask[name] = True
 
-            # Fixed scalar (shared, not inferred)
+            # ------------------------
+            # Fixed scalar
+            # ------------------------
             elif np.isscalar(param):
-                values = np.full(batch_size, param, dtype=np.float32)
-                shared_params[name] = values
-                infer_mask[name] = False
+                fixed_params[name] = float(param) if not isinstance(param, int) else int(param)
 
             else:
                 raise TypeError(
                     f"Unknown parameter type for '{name}': {type(param)}"
                 )
 
-        result = {
+        return {
             "local_params": local_params,
-            "global_params": global_params,
+            "hyper_params": hyper_params,
+            "shared_params": shared_params,
+            "fixed_params": fixed_params,
         }
 
-        if shared_params:
-            result["shared_params"] = shared_params
-
-        if infer_mask:
-            result["infer_mask"] = infer_mask
-
-        return result
-
+    # --------------------------------------------------
+    # Plotting (updated to new structure)
+    # --------------------------------------------------
     def plot_prior(
         self,
         steps: int = 100,
@@ -150,19 +90,22 @@ class JointPrior:
     ):
 
         samples = self.sample(batch_size=num_draws, steps=steps)
-        inferred_local, inferred_shared, inferred_global = self._split_inferred(samples)
+
+        local = samples["local_params"]
+        shared = samples["shared_params"]
+        hyper = samples["hyper_params"]
 
         sections = []
 
-        if inferred_local:
-            sections.append(("Local parameters", inferred_local, "line"))
-        if inferred_shared:
-            sections.append(("Shared parameters", inferred_shared, "hist"))
-        if inferred_global:
-            sections.append(("Global parameters", inferred_global, "hist"))
+        if local:
+            sections.append(("Local parameters", local, "line"))
+        if shared:
+            sections.append(("Shared parameters", shared, "hist"))
+        if hyper:
+            sections.append(("Hyper parameters", hyper, "hist"))
 
         if not sections:
-            raise ValueError("No inferred parameters to plot.")
+            raise ValueError("No parameters to plot.")
 
         COL_WIDTH = 5.0
         ROW_HEIGHT = 3.0
@@ -170,12 +113,6 @@ class JointPrior:
         for section_title, params, kind in sections:
 
             n = len(params)
-
-            if kind == "line":
-                n_cols = 2
-            else:
-                n_cols = 2
-
             n_rows = int(np.ceil(n / n_cols))
 
             fig, axes = plt.subplots(
@@ -185,15 +122,16 @@ class JointPrior:
             )
 
             axes = np.atleast_1d(axes).ravel()
-
             fig.suptitle(section_title, fontsize=title_fontsize)
 
             i = 0
 
             for name, values in params.items():
                 ax = axes[i]
-                
-                # ----- trajectories -----
+
+                # ------------------------
+                # trajectories
+                # ------------------------
                 if kind == "line":
                     n_plot = min(num_trajectories, values.shape[0])
                     values_plot = np.asarray(values[:n_plot])
@@ -228,11 +166,14 @@ class JointPrior:
                         fill=True,
                         alpha=0.4,
                     )
+
                     ax_kde.set_ylim(ax_traj.get_ylim())
                     ax_kde.set_axis_off()
                     ax.axis("off")
 
-                # ----- distributions -----
+                # ------------------------
+                # distributions
+                # ------------------------
                 else:
                     sns.histplot(
                         values,
@@ -244,9 +185,9 @@ class JointPrior:
                     )
 
                     ax.set_xlabel(name, fontsize=label_fontsize)
+                    ax.grid(alpha=0.3)
+                    ax.tick_params(labelsize=tick_fontsize)
 
-                ax.tick_params(labelsize=tick_fontsize)
-                ax.grid(alpha=0.3)
                 i += 1
 
             for j in range(i, len(axes)):
