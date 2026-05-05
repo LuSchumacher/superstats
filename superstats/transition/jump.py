@@ -39,9 +39,9 @@ class Jump(Transition):
 
     def __init__(
         self,
-        bounds: Tuple[float, float],
-        initial_prior=None,
-        p_jump: float | Prior = 0.1,
+        bounds: Tuple[float, float] | None = None,
+        initial_prior: Prior | None = None,
+        p_jump: float | Prior = 1.0,
         proposal_prior: Prior | None = None,
     ):
         super().__init__(bounds, initial_prior)

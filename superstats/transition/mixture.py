@@ -1,10 +1,9 @@
-from typing import Tuple, Dict, Any
-from collections.abc import Sequence
+from __future__ import annotations
+
+from typing import Sequence, Tuple, Dict, Any
 import numpy as np
-from numba import njit, prange
 
 from .transition import Transition, Prior
-from superstats.utils.transformations import scaled_sigmoid
 
 
 class Mixture(Transition):
@@ -12,156 +11,108 @@ class Mixture(Transition):
     def __init__(
         self,
         transitions: Sequence[Transition],
-        mixture_prob: Prior | Tuple | None = None,
+        mixture_prob: Prior | Tuple[float, ...] | None = None,
         bounds: Tuple[float, float] | None = None,
-        initial_prior: Prior | None = None,
-        dtype: np.dtype = np.float32,
+        names: Sequence[str] | None = None,
     ):
+        super().__init__(bounds=bounds)
 
-        self.transitions = transitions
+        self.transitions = list(transitions)
 
         if len(self.transitions) < 2:
-            raise ValueError("Mixture requires at least 2 transitions")
+            raise ValueError("Mixture must contain at least two transitions.")
 
-        super().__init__(bounds, initial_prior, dtype)
+        self.K = len(self.transitions)
 
-        if mixture_prob is None:
-            self.mixture_prob = mixture_prob
-            self.n_transitions = len(self.transitions)
-            self.hyper_specs = {"mixture_prob": mixture_prob}
+        self.names = names or [t.transition_type + f"_{i}" for i, t in enumerate(self.transitions)]
+
+        if len(self.names) != self.K:
+            raise ValueError("names must match number of transitions")
+
+        self.mixture_prob = mixture_prob
+        self.transition_type = "mixture"
+
+    # -------------------------
+    # mixture weights
+    # -------------------------
+
+    def _sample_mixture_weights(self, batch_size: int) -> np.ndarray:
+
+        if isinstance(self.mixture_prob, Prior):
+            w = self.mixture_prob.sample(batch_size).astype(self.dtype)
+            return w / w.sum(axis=1, keepdims=True)
+
+        if isinstance(self.mixture_prob, tuple):
+            w = np.asarray(self.mixture_prob, dtype=self.dtype)
+            w = w / w.sum()
+            return np.tile(w, (batch_size, 1))
+
+        w = np.ones(self.K, dtype=self.dtype) / self.K
+        return np.tile(w, (batch_size, 1))
+
+    def _sample_regimes(self, weights: np.ndarray, steps: int) -> np.ndarray:
+
+        batch_size = weights.shape[0]
+        regimes = np.zeros((batch_size, steps), dtype=np.int32)
+
+        for b in range(batch_size):
+            regimes[b] = np.random.choice(self.K, size=steps, p=weights[b])
+
+        return regimes
+
+    # -------------------------
+    # parameter flattening
+    # -------------------------
+
+    def _collect_model_params(self, batch_size: int) -> tuple[Dict[str, np.ndarray], Dict[str, float]]:
+
+        hyper: Dict[str, np.ndarray] = {}
+        fixed: Dict[str, float] = {}
+
+        for name, model in zip(self.names, self.transitions):
+
+            h, f = model._resolve_hyperparams(batch_size)
+
+            # hyper params
+            for k, v in h.items():
+                hyper[f"{name}.{k}"] = v
+
+            # fixed params
+            for k, v in f.items():
+                fixed[f"{name}.{k}"] = v
+
+        return hyper, fixed
+
+    # -------------------------
+    # sampling
+    # -------------------------
 
     def sample(self, batch_size: int, steps: int) -> Dict[str, Any]:
-        """
-        Generate mixture transition trajectories.
 
-        At each time step, randomly selects one transition based on mixture
-        probabilities and uses its output.
+        x = np.empty((batch_size, steps), dtype=self.dtype)
 
-        Parameters
-        ----------
-        batch_size : int
-            Number of independent trajectories.
-        steps : int
-            Number of time steps per trajectory.
+        x[:, 0] = self.transitions[0].initial_prior.sample(batch_size).astype(self.dtype)
 
-        Returns
-        -------
-        dict
-            Dictionary containing:
-            - 'local_params': np.ndarray of shape (batch_size, steps)
-            - 'hyper_params': dict with sampled mixture probabilities and all transition params
-            - 'fixed_params': dict with fixed parameters from transitions
-        """
-        local_params = np.empty((batch_size, steps), dtype=self.dtype)
-        local_params[:, 0] = self.initial_prior.sample(batch_size)
+        weights = self._sample_mixture_weights(batch_size)
+        regimes = self._sample_regimes(weights, steps)
 
-        # Sample mixture probabilities
-        mixture_probs = self.mixture_prob.sample(batch_size)
-        
-        # Handle case where mixture_prob returns 1D array (single value per batch)
-        if mixture_probs.ndim == 1:
-            # For Beta: shape is (batch_size,), expand to (batch_size, 2)
-            probs = np.column_stack([mixture_probs, 1.0 - mixture_probs])
-        else:
-            # For Dirichlet or multi-dimensional: shape is (batch_size, n_transitions)
-            probs = mixture_probs
-
-        # Sample trajectories and parameters for all transitions
-        all_trajectories = []
-        all_hyper_params = {}
-        fixed_params_all = {}
-        
-        for i, transition in enumerate(self.transitions):
-            result = transition.sample(batch_size, steps)
-            all_trajectories.append(result["local_params"])
-            # Store hyperparams with transition index prefix
-            for key, val in result["hyper_params"].items():
-                all_hyper_params[f"{self.transition_names[i]}_{key}"] = val
-            # Merge fixed params from all transitions
-            fixed_params_all.update(result["fixed_params"])
-
-        # Build trajectory by selecting from transitions at each step
         for t in range(1, steps):
-            # Sample which transition to use for each batch
-            transitions_idx = np.array([
-                np.random.choice(self.n_transitions, p=probs[b])
-                for b in range(batch_size)
-            ])
-
-            # Select values from chosen transitions
             for b in range(batch_size):
-                local_params[b, t] = all_trajectories[transitions_idx[b]][b, t]
+                k = regimes[b, t]
 
-        hyper_params = {
-            "mixture_prob": mixture_probs,
-            **all_hyper_params
-        }
+                x[b, t] = self.transitions[k].sample_one_step(
+                    np.array([x[b, t - 1]]),
+                    {},
+                )[0]
+
+        hyper_params, fixed_params = self._collect_model_params(batch_size)
+
+        # mixture weights are hyperparams
+        hyper_params["mixture_weights"] = weights
 
         return {
-            "local_params": local_params,
+            "local_params": x,
+            "regimes": regimes,
             "hyper_params": hyper_params,
-            "fixed_params": fixed_params_all,
+            "fixed_params": fixed_params,
         }
-
-    def one_step(self, x: np.ndarray, params: Dict[str, Any]) -> np.ndarray:
-        """
-        Sample one step from the mixture transition.
-
-        Randomly selects one transition and applies its one_step method.
-
-        Parameters
-        ----------
-        x : np.ndarray
-            Current state, shape (batch,)
-        params : dict
-            Resolved parameters containing 'mixture_prob' and transition hyperparameters
-
-        Returns
-        -------
-        np.ndarray
-            Next state, shape (batch,)
-        """
-        batch_size = x.shape[0]
-        mixture_probs = params["mixture_prob"]
-
-        # Handle 1D mixture probs (from Beta)
-        if mixture_probs.ndim == 1:
-            probs = np.column_stack([mixture_probs, 1.0 - mixture_probs])
-        else:
-            probs = mixture_probs
-
-        x_next = np.empty(batch_size, dtype=self.dtype)
-
-        # For each batch element, select a transition and apply it
-        for b in range(batch_size):
-            transition_idx = np.random.choice(self.n_transitions, p=probs[b])
-            selected_transition = self.transitions[transition_idx]
-            transition_name = self.transition_names[transition_idx]
-
-            # Extract hyperparameters for this transition from params
-            transition_params = {}
-            prefix = f"{transition_name}_"
-            
-            for key, val in params.items():
-                if key.startswith(prefix):
-                    # Remove prefix from key
-                    param_name = key[len(prefix):]
-                    # Extract batch element
-                    if isinstance(val, np.ndarray) and val.shape[0] == batch_size:
-                        transition_params[param_name] = val[b:b+1]
-                    else:
-                        transition_params[param_name] = val
-            
-            # Also include any fixed params that might be needed
-            for key, val in params.items():
-                if not key.startswith(f"{self.transition_names[0]}_") and \
-                   not any(key.startswith(f"{tn}_") for tn in self.transition_names) and \
-                   key != "mixture_prob":
-                    transition_params[key] = val
-
-            # Call selected transition's one_step
-            x_step = selected_transition.one_step(x[b:b+1], transition_params)
-            x_next[b] = x_step[0]
-
-        return x_next
-
