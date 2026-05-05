@@ -50,25 +50,18 @@ class SuperstatsApproximator(Approximator):
         super().__init__(**kwargs)
 
         self.adapter = adapter
-        
-        self.local_approximator = ContinuousApproximator(
-            inference_network=local_inference_network,
-            summary_network=local_summary_network,
-            adapter=None
-        )
-
-        self.shared_global_approximator = ContinuousApproximator(
-            inference_network=global_inference_network,
-            summary_network=global_summary_network,
-            global_adapter=None
-        )
-
+        self.local_inference_network = local_inference_network
+        self.global_inference_network = global_inference_network
+        self.local_summary_network = local_summary_network
+        self.global_summary_network = global_summary_network
         self.has_distribution = True
 
     def compute_metrics(
         self,
-        inference_variables: Tensor,
-        inference_conditions: Tensor = None,
+        local_inference_variables: Tensor,
+        global_inference_variables: Tensor,
+        local_inference_conditions: Tensor = None,
+        global_inference_conditions: Tensor = None,
         summary_variables: Tensor = None,
         sample_weight: Tensor = None,
         stage: str = "training",
@@ -114,63 +107,31 @@ class SuperstatsApproximator(Approximator):
             "inference_" or "summary_" to indicate its source.
         """
 
-        local_metrics = self.local_approximator.compute_metrics(
-            inference_variables=inference_variables,
-            inference_conditions=inference_conditions,
-            summary_variables=summary_variables,
+
+        resolved_conditions
+
+
+        inference_metrics = self.inference_network.compute_metrics(
+            inference_variables,
+            conditions=resolved_conditions,
             sample_weight=sample_weight,
             stage=stage,
+            **inference_kwargs,
         )
 
-        global_metrics = self.shared_global_approximator.compute_metrics(
-            inference_variables=inference_variables,
-            inference_conditions=inference_conditions,
-            summary_variables=summary_variables,
-            sample_weight=sample_weight,
-            stage=stage,
-        )
 
-        metrics = {}
+        loss = inference_metrics.pop("loss")
 
-        metrics = {f"local/{metric_key}": value for metric_key, value in local_metrics.items()}
-        metrics.update({f"global/{metric_key}": value for metric_key, value in global_metrics.items()})
+        inference_metrics = {f"{key}/inference_{key}": value for key, value in inference_metrics.items()}
+
+        metrics = {"loss": loss} | inference_metrics
+        return metrics
+
 
         losses = [v for k, v in metrics.items() if "loss" in k]
         metrics["loss"] = keras.ops.sum(losses)
 
         return metrics
-
-    def fit(self, *args, **kwargs):
-        """
-        Trains the approximator on the provided dataset or on-demand data generated from the given simulator.
-        If `dataset` is not provided, a dataset is built from the `simulator`.
-        If the model has not been built, it will be built using a batch from the dataset.
-
-        Parameters
-        ----------
-        dataset : keras.utils.PyDataset, optional
-            A dataset containing simulations for training. If provided, `simulator` must be None.
-        simulator : Simulator, optional
-            A simulator used to generate a dataset. If provided, `dataset` must be None.
-        **kwargs
-            Additional keyword arguments passed to `keras.Model.fit()`, as described in:
-
-        https://github.com/keras-team/keras/blob/v3.13.2/keras/src/backend/tensorflow/trainer.py#L314
-
-        Returns
-        -------
-        keras.callbacks.History
-            A history object containing the training loss and metrics values.
-
-        Raises
-        ------
-        ValueError
-            If both `dataset` and `simulator` are provided or neither is provided.
-        """
-        return super().fit(*args, **kwargs, adapter=self.adapter)
-
-    def get_config(self):
-        return super().get_config()
 
     def sample(
         self,
