@@ -1,7 +1,6 @@
 from typing import Callable, Dict
 import inspect
 import numpy as np
-from numba import njit, prange
 
 from superstats.prior.joint_prior import JointPrior
 
@@ -41,9 +40,17 @@ class GenerativeModel:
         """
         self.prior = prior
         self.model = model
+
         # Inspect simulator signature
         self.signature = inspect.signature(model)
         self.param_order = list(self.signature.parameters.keys())
+
+        # Run a pilot draw to determine key groups once
+        pilot = self.prior.sample(batch_size=1, steps=1)
+        self.local_keys = list(pilot["local_params"].keys()) if pilot.get("local_params") else []
+        self.hyper_keys = list(pilot["hyper_params"].keys()) if pilot.get("hyper_params") else []
+        self.shared_keys = list(pilot["shared_params"].keys()) if pilot.get("shared_params") else []
+        self.fixed_keys = list(pilot["fixed_params"].keys()) if pilot.get("fixed_params") else []
 
     def _prepare_flat_params(self, combined_params, batch_size, steps):
         # Broadcast and flatten parameters for vectorized simulation.
@@ -138,24 +145,15 @@ class GenerativeModel:
         Returns
         -------
         dict
-            Dictionary containing:
-            - 'data': np.ndarray
-                Simulated data of shape (batch_size, steps, ...) where additional
-                dimensions depend on the model output.
-            - 'local_params': dict
-                Time-varying parameters for each trajectory, each shaped
-                (batch_size, steps, 1).
-            - 'hyper_params': dict or None
-                Hyperparameters from transition processes, each shaped
-                (batch_size, 1).
-            - 'fixed_params': dict or None
-                Fixed scalar parameters from the prior.
-            - 'shared_params': dict or None
-                Time-invariant parameters shared across trajectories, each shaped
-                (batch_size, 1), or (batch_size, steps, 1) if ``tile_to_steps`` is True.
-            - 'fixed_params': dict or None
-                Fixed scalar parameters from the prior. Only included when
-                ``include_fixed`` is True.
+            Flat dictionary with ``'data'`` plus one entry per sampled parameter.
+            Local (time-varying) params have shape ``(batch_size, steps, 1)``;
+            hyper and shared params have shape ``(batch_size, 1)``, or
+            ``(batch_size, steps, 1)`` when ``tile_to_steps`` is True.
+            Fixed params are included only when ``include_fixed`` is True.
+
+            The instance attributes ``local_keys``, ``hyper_keys``,
+            ``shared_keys``, and ``fixed_keys`` are updated each call to
+            record which keys belong to which parameter group.
 
         Raises
         ------
@@ -224,15 +222,15 @@ class GenerativeModel:
                     k: np.tile(v[:, np.newaxis, :], (1, steps, 1))
                     for k, v in shared_params.items()
                 }
-
-        result = {
-            "data": sim_data,
-            "local_params": local_params,
-            "hyper_params": hyper_params,
-            "shared_params": shared_params,
-        }
-
-        if include_fixed:
-            result["fixed_params"] = fixed_params if fixed_params else None
+    
+        result = {"data": sim_data}
+        if local_params:
+            result.update(local_params)
+        if hyper_params:
+            result.update(hyper_params)
+        if shared_params:
+            result.update(shared_params)
+        if include_fixed and fixed_params:
+            result.update(fixed_params)
 
         return result
