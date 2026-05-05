@@ -7,64 +7,66 @@ from superstats.utils.transformations import scaled_sigmoid
 
 
 @njit(parallel=True, fastmath=True)
-def _sample_random_walk(
+def _sample_jump_process(
     local_params: np.ndarray,
-    sigma: np.ndarray,
-    delta: np.ndarray,
+    p_jump: np.ndarray,
+    proposals: np.ndarray,
     bounds: Tuple[float, float],
 ) -> np.ndarray:
-    # Generate random walk trajectories with noise and optional drift.
+    # Sample a jump process where each step either stays or jumps to a proposal.
     batch_size, steps = local_params.shape
     lower, upper = bounds
 
-    noise = np.random.randn(batch_size, steps - 1)
+    uniform = np.random.rand(batch_size, steps - 1)
 
     for b in prange(batch_size):
-        increments = delta[b] + sigma[b] * noise[b]
-        local_params[b, 1:] = local_params[b, 0] + np.cumsum(increments)
+        for t in range(1, steps):
+            if uniform[b, t - 1] < p_jump[b]:
+                local_params[b, t] = proposals[b, t - 1]
+            else:
+                local_params[b, t] = local_params[b, t - 1]
 
         local_params[b, :] = scaled_sigmoid(local_params[b, :], lower, upper)
 
     return local_params
 
 
-class RandomWalk(Transition):
+class Jump(Transition):
     """
-    Random walk transition process with optional drift.
+    Simple jump transition.
 
-    Generates trajectories that evolve as a random walk with Gaussian noise
-    and optional deterministic drift, bounded within specified limits.
+    At each step the value either stays the same or jumps to a new sample drawn
+    from a proposal prior.
     """
 
     def __init__(
         self,
         bounds: Tuple[float, float],
         initial_prior=None,
-        sigma: float | Prior = 0.1,
-        delta: float | Prior = 0.0,
+        p_jump: float | Prior = 0.1,
+        proposal_prior: Prior | None = None,
     ):
         """
-        Initialize a random walk transition.
+        Initialize the jump transition.
 
         Parameters
         ----------
         bounds : tuple of float
             Parameter bounds (lower, upper).
         initial_prior : Prior, optional
-            Prior distribution for initial parameter values.
-        sigma : float or Prior, optional
-            Step size (standard deviation of noise). Default is 0.1.
-        delta : float or Prior, optional
-            Drift term added to each step. Default is 0.0.
+            Prior distribution for the initial state.
+        p_jump : float or Prior, optional
+            Probability of jumping at each step. Default is 0.1.
+        proposal_prior : Prior, optional
+            Prior distribution used for jump proposals. Default is standard normal.
         """
         super().__init__(bounds, initial_prior)
 
         self.hyper_specs = {
-            "sigma": sigma,
-            "delta": delta,
+            "p_jump": p_jump,
         }
-
-        self.transition_type = "rw"
+        self.proposal_prior = proposal_prior or Prior("normal", loc=0.0, scale=1.0)
+        self.transition_type = "jump"
 
     def _expand_to_batch(self, x, batch_size: int):
         # Expand scalar values to batch-sized arrays.
@@ -72,22 +74,9 @@ class RandomWalk(Transition):
             return np.full(batch_size, x, dtype=self.dtype)
         return x
 
-    def _resolve_hyperparams(self, batch_size: int):
-        # Split hyperparameters into sampled vs fixed values.
-        hyper_params = {}
-        fixed_params = {}
-
-        for name, value in self.hyper_specs.items():
-            if isinstance(value, Prior):
-                hyper_params[name] = value.sample(batch_size)
-            else:
-                fixed_params[name] = value
-
-        return hyper_params, fixed_params
-
     def sample(self, batch_size: int, steps: int) -> Dict[str, Any]:
         """
-        Generate random walk parameter trajectories.
+        Generate jump process trajectories.
 
         Parameters
         ----------
@@ -109,20 +98,20 @@ class RandomWalk(Transition):
 
         hyper_params, fixed_params = self._resolve_hyperparams(batch_size)
 
-        sigma = self._expand_to_batch(
-            hyper_params["sigma"] if "sigma" in hyper_params else fixed_params["sigma"],
+        p_jump = self._expand_to_batch(
+            hyper_params.get("p_jump", fixed_params["p_jump"]),
             batch_size,
         )
 
-        delta = self._expand_to_batch(
-            hyper_params["delta"] if "delta" in hyper_params else fixed_params["delta"],
+        proposals = self.proposal_prior.sample(batch_size * (steps - 1)).reshape(
             batch_size,
+            steps - 1,
         )
 
-        local_params = _sample_random_walk(
+        local_params = _sample_jump_process(
             local_params,
-            sigma,
-            delta,
+            p_jump,
+            proposals,
             self.bounds,
         )
 

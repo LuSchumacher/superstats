@@ -37,16 +37,14 @@ class Transition(ABC):
             else Prior("normal", loc=0.0, scale=1.0)
         )
 
-        self.global_params: Dict[str, ParamSpec] = {}
+        self.hyper_specs: Dict[str, ParamSpec] = {}
 
     # -------------------------
     # resolution
     # -------------------------
 
     def _resolve(self, name: str, spec: ParamSpec) -> tuple[Prior | float, bool]:
-        """
-        Resolve parameter into (value, infer_flag).
-        """
+        # Resolve parameter into (value, infer_flag).
 
         # None -> default prior
         if spec is None:
@@ -69,29 +67,29 @@ class Transition(ABC):
     # sampling
     # -------------------------
 
+    def _resolve_hyperparams(
+        self,
+        batch_size: int
+    ) -> tuple[Dict[str, np.ndarray], Dict[str, float]]:
+        # Resolve hyperparameters into sampled and fixed components.
+
+        hyper_params: Dict[str, np.ndarray] = {}
+        fixed_params: Dict[str, float] = {}
+
+        for name, spec in self.hyper_specs.items():
+            value, infer = self._resolve(name, spec)
+            if infer:
+                hyper_params[name] = self._sample(value, batch_size)
+            else:
+                fixed_params[name] = value
+
+        return hyper_params, fixed_params
+
     def _sample(self, value: Prior | float, batch_size: int) -> np.ndarray:
         if isinstance(value, Prior):
             return value.sample(batch_size).astype(self.dtype)
 
         return np.full(batch_size, value, dtype=self.dtype)
-
-    def sample_global_params(
-        self,
-        batch_size: int
-    ) -> tuple[Dict[str, np.ndarray], Dict[str, bool]]:
-        """
-        Sample global parameters + return inference mask.
-        """
-
-        values: Dict[str, np.ndarray] = {}
-        infer_flags: Dict[str, bool] = {}
-
-        for name, spec in self.global_params.items():
-            value, infer = self._resolve(name, spec)
-            values[name] = self._sample(value, batch_size)
-            infer_flags[name] = infer
-
-        return values, infer_flags
 
     # -------------------------
     # interface

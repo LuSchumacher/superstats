@@ -2,7 +2,7 @@ from typing import Tuple, Dict, Any
 import numpy as np
 from numba import njit, prange
 
-from .transition import Transition
+from .transition import Transition, Prior
 from superstats.utils.transformations import scaled_sigmoid
 
 
@@ -12,39 +12,14 @@ def _sample_ou(
     mu: np.ndarray,
     theta: np.ndarray,
     sigma: np.ndarray,
-    dt: float,
     bounds: Tuple[float, float],
 ) -> np.ndarray:
-    """
-    Generate Ornstein-Uhlenbeck trajectories.
-
-    Parameters
-    ----------
-    local_params : np.ndarray
-        Array of shape (batch_size, steps) used to store the trajectories.
-    mu : np.ndarray
-        Long-term mean values of shape (batch_size,).
-    theta : np.ndarray
-        Mean reversion rates of shape (batch_size,).
-    sigma : np.ndarray
-        Volatility values of shape (batch_size,).
-    dt : float
-        Time step size.
-    bounds : tuple of float
-        Lower and upper bounds for transformed values.
-
-    Returns
-    -------
-    np.ndarray
-        Trajectories of shape (batch_size, steps) bounded by `bounds`.
-    """
+    # Generate Ornstein-Uhlenbeck trajectories with discrete dt=1.
 
     batch_size, steps = local_params.shape
     lower, upper = bounds
 
     noise = np.random.randn(batch_size, steps - 1)
-
-    sqrt_dt = np.sqrt(dt)
 
     for b in prange(batch_size):
         x_prev = local_params[b, 0]
@@ -52,8 +27,8 @@ def _sample_ou(
         for t in range(1, steps):
             x_prev = (
                 x_prev
-                + theta[b] * (mu[b] - x_prev) * dt
-                + sigma[b] * sqrt_dt * noise[b, t - 1]
+                + theta[b] * (mu[b] - x_prev)
+                + sigma[b] * noise[b, t - 1]
             )
             local_params[b, t] = x_prev
 
@@ -73,10 +48,9 @@ class OrnsteinUhlenbeck(Transition):
         self,
         bounds: Tuple[float, float],
         initial_prior=None,
-        sigma: float | None = None,
-        mu: float | None = None,
-        theta: float | None = None,
-        dt: float = 1.0,
+        sigma: float | Prior | None = None,
+        mu: float | Prior | None = None,
+        theta: float | Prior | None = None,
     ):
         """
         Initialize an Ornstein-Uhlenbeck transition.
@@ -87,26 +61,41 @@ class OrnsteinUhlenbeck(Transition):
             Bounds for the process values (lower, upper).
         initial_prior : Prior, optional
             Prior distribution for the initial state.
-        sigma : float, optional
-            Volatility parameter.
-        mu : float, optional
-            Long-term mean value.
-        theta : float, optional
-            Mean reversion rate.
-        dt : float, optional
-            Discrete time increment (default: 1.0).
+        sigma : float or Prior, optional
+            Volatility parameter. Default is None.
+        mu : float or Prior, optional
+            Long-term mean value. Default is None.
+        theta : float or Prior, optional
+            Mean reversion rate. Default is None.
         """
         super().__init__(bounds, initial_prior)
 
-        self.dt = dt
-
-        self.global_params = {
+        self.hyper_specs = {
             "sigma": sigma,
             "mu": mu,
             "theta": theta,
         }
 
         self.transition_type = "ou"
+
+    def _expand_to_batch(self, x, batch_size: int):
+        # Expand scalar values to batch-sized arrays.
+        if np.ndim(x) == 0:
+            return np.full(batch_size, x, dtype=self.dtype)
+        return x
+
+    def _resolve_hyperparams(self, batch_size: int):
+        # Split hyperparameters into sampled vs fixed values.
+        hyper_params = {}
+        fixed_params = {}
+
+        for name, value in self.hyper_specs.items():
+            if isinstance(value, Prior):
+                hyper_params[name] = value.sample(batch_size)
+            else:
+                fixed_params[name] = value  # keep scalar
+
+        return hyper_params, fixed_params
 
     def sample(self, batch_size: int, steps: int) -> Dict[str, Any]:
         """
@@ -122,23 +111,41 @@ class OrnsteinUhlenbeck(Transition):
         Returns
         -------
         dict
-            Dictionary containing 'local_params', 'global_params', and 'infer_mask'.
+            Dictionary containing:
+            - 'local_params': np.ndarray of shape (batch_size, steps)
+            - 'hyper_params': dict of sampled hyperparameters
+            - 'fixed_params': dict of fixed hyperparameters
         """
         local_params = np.empty((batch_size, steps), dtype=self.dtype)
         local_params[:, 0] = self.initial_prior.sample(batch_size)
-        global_params, infer_mask = self.sample_global_params(batch_size)
+
+        hyper_params, fixed_params = self._resolve_hyperparams(batch_size)
+
+        sigma = self._expand_to_batch(
+            hyper_params.get("sigma", fixed_params["sigma"]),
+            batch_size,
+        )
+
+        mu = self._expand_to_batch(
+            hyper_params.get("mu", fixed_params["mu"]),
+            batch_size,
+        )
+
+        theta = self._expand_to_batch(
+            hyper_params.get("theta", fixed_params["theta"]),
+            batch_size,
+        )
 
         local_params = _sample_ou(
             local_params,
-            global_params["sigma"],
-            global_params["mu"],
-            global_params["theta"],
-            self.dt,
+            mu,
+            theta,
+            sigma,
             self.bounds,
         )
 
         return {
             "local_params": local_params,
-            "global_params": global_params,
-            "infer_mask": infer_mask,
+            "hyper_params": hyper_params,
+            "fixed_params": fixed_params,
         }

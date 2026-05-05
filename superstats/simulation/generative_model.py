@@ -46,35 +46,7 @@ class GenerativeModel:
         self.param_order = list(self.signature.parameters.keys())
 
     def _prepare_flat_params(self, combined_params, batch_size, steps):
-        """
-        Prepare parameters for simulation by broadcasting and flattening.
-
-        This method takes combined parameter dictionaries and prepares them for
-        the simulation function by:
-        1. Broadcasting shared parameters from (batch,) to (batch, steps)
-        2. Flattening all parameters to (batch*steps,) for vectorized simulation
-        3. Ordering parameters according to the model function signature
-
-        Parameters
-        ----------
-        combined_params : dict
-            Dictionary mapping parameter names to arrays of shape (batch,) or (batch, steps).
-        batch_size : int
-            Number of independent simulation batches.
-        steps : int
-            Number of time steps per trajectory.
-
-        Returns
-        -------
-        dict
-            Dictionary mapping parameter names to flattened arrays of shape (batch*steps,).
-
-        Raises
-        ------
-        ValueError
-            If a required parameter is missing from combined_params and has no default value,
-            or if parameter shapes are unexpected.
-        """
+        # Broadcast and flatten parameters for vectorized simulation.
         flat_params = {}
         for name in self.param_order:
             if name not in combined_params:
@@ -87,18 +59,57 @@ class GenerativeModel:
                     # skip parameters with defaults
                     continue
             p = combined_params[name]
+            p = np.asarray(p)
             # shared parameters (batch,) → (batch, steps)
             if p.ndim == 1:
                 p = np.broadcast_to(p[:, None], (batch_size, steps))
+                flat_params[name] = p.reshape(batch_size * steps)
             # already trajectory parameters
-            elif p.ndim != 2:
+            elif p.ndim == 2:
+                flat_params[name] = p.reshape(batch_size * steps)
+            # fixed scalar parameters also broadcast to full trajectory length
+            elif p.ndim == 0:
+                p = np.full((batch_size, steps), p.item(), dtype=np.asarray(p).dtype)
+                flat_params[name] = p.reshape(batch_size * steps)
+            else:
                 raise ValueError(
                     f"Unexpected shape for parameter '{name}': {p.shape}"
                 )
-            # flatten to (batch * steps,)
-            flat_params[name] = p.reshape(batch_size * steps)
 
         return flat_params
+
+    def _normalize_local_params(self, params, batch_size, steps):
+        # Normalize time-varying parameters to shape (batch_size, steps, 1).
+        if not params:
+            return None
+
+        normalized = {}
+        for name, value in params.items():
+            arr = np.asarray(value)
+            if arr.ndim != 2:
+                raise ValueError(
+                    f"Local parameter '{name}' must have shape (batch_size, steps), got {arr.shape}"
+                )
+            normalized[name] = arr.reshape(batch_size, steps, 1)
+        return normalized
+
+    def _normalize_batch_params(self, params, batch_size):
+        # Normalize scalar or batch parameters to shape (batch_size, 1).
+        if not params:
+            return None
+
+        normalized = {}
+        for name, value in params.items():
+            arr = np.asarray(value)
+            if arr.ndim == 1:
+                normalized[name] = arr.reshape(batch_size, 1)
+            elif arr.ndim == 2 and arr.shape[1] == 1:
+                normalized[name] = arr
+            else:
+                raise ValueError(
+                    f"Parameter '{name}' must have shape (batch_size,) or (batch_size, 1), got {arr.shape}"
+                )
+        return normalized
 
     def sample(self, batch_size: int, steps: int):
         """
@@ -125,11 +136,16 @@ class GenerativeModel:
                 Simulated data of shape (batch_size, steps, ...) where additional
                 dimensions depend on the model output.
             - 'local_params': dict
-                Time-varying parameters for each trajectory.
-            - 'global_params': dict
-                Hyperparameters from transition processes.
-            - 'shared_params': dict, optional
-                Time-invariant parameters shared across trajectories.
+                Time-varying parameters for each trajectory, each shaped
+                (batch_size, steps, 1).
+            - 'hyper_params': dict or None
+                Hyperparameters from transition processes, each shaped
+                (batch_size, 1).
+            - 'fixed_params': dict or None
+                Fixed scalar parameters from the prior.
+            - 'shared_params': dict or None
+                Time-invariant parameters shared across trajectories, each shaped
+                (batch_size, 1).
 
         Raises
         ------
@@ -140,12 +156,16 @@ class GenerativeModel:
         # Sample parameters
         prior_draws = self.prior.sample(batch_size=batch_size, steps=steps)
         local_params = prior_draws["local_params"]
-        shared_params = prior_draws.get("shared_params")
+        shared_params = prior_draws.get("shared_params", {})
+        fixed_params = prior_draws.get("fixed_params", {})
 
         # Combine parameter dictionaries
         combined_params = dict(local_params)
-        if shared_params is not None:
-            combined_params.update(shared_params)
+        combined_params.update(shared_params)
+        # Include fixed params that are used by the model
+        for name in self.param_order:
+            if name in fixed_params:
+                combined_params[name] = fixed_params[name]
 
         # Broadcast + flatten params
         flat_params = self._prepare_flat_params(
@@ -179,16 +199,17 @@ class GenerativeModel:
             *output_shape
         )
 
+        local_params = self._normalize_local_params(local_params, batch_size, steps)
+        hyper_params = self._normalize_batch_params(prior_draws.get("hyper_params", {}), batch_size)
+        shared_params = self._normalize_batch_params(shared_params, batch_size)
+        fixed_params_output = fixed_params if fixed_params else None
+
         result = {
             "data": sim_data,
             "local_params": local_params,
-            "global_params": prior_draws["global_params"],
+            "hyper_params": hyper_params,
+            "shared_params": shared_params,
+            "fixed_params": fixed_params_output,
         }
-
-        if shared_params is not None:
-            result["shared_params"] = shared_params
-
-        if "infer_mask" in prior_draws:
-            result["infer_mask"] = prior_draws["infer_mask"]
 
         return result

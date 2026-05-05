@@ -2,8 +2,7 @@ from typing import Tuple, Dict, Any
 import numpy as np
 from numba import njit, prange
 
-from .transition import Transition
-from superstats.prior import Prior
+from .transition import Transition, Prior
 from superstats.utils.transformations import scaled_sigmoid
 
 
@@ -15,30 +14,7 @@ def _sample_ar1(
     delta: np.ndarray,
     bounds: Tuple[float, float],
 ) -> np.ndarray:
-    """
-    Generate AR(1) process trajectories.
-
-    Computes autoregressive sequences with specified correlation and applies
-    sigmoid transformation to enforce bounds.
-
-    Parameters
-    ----------
-    local_params : np.ndarray
-        Array of shape (batch_size, steps) to store trajectories.
-    sigma : np.ndarray
-        Standard deviations of shape (batch_size,).
-    phi : np.ndarray
-        Autocorrelation coefficients of shape (batch_size,).
-    delta : np.ndarray
-        Drift terms of shape (batch_size,).
-    bounds : tuple of float
-        Parameter bounds (lower, upper).
-
-    Returns
-    -------
-    np.ndarray
-        Trajectories of shape (batch_size, steps) bounded by bounds.
-    """
+    # Generate AR(1) trajectories and apply bounds.
     batch_size, steps = local_params.shape
     lower, upper = bounds
 
@@ -65,9 +41,9 @@ class AutoRegression(Transition):
         self,
         bounds: Tuple[float, float],
         initial_prior=None,
-        sigma: Prior | float | None = None,
-        phi: Prior | float | None = None,
-        delta: Prior | float | None = 0.0,
+        sigma: float | Prior | None = None,
+        phi: float | Prior | None = None,
+        delta: float | Prior = 0.0,
     ):
         """
         Initialize an AR(1) transition process.
@@ -78,22 +54,41 @@ class AutoRegression(Transition):
             Parameter bounds (lower, upper).
         initial_prior : Prior, optional
             Prior for initial values.
-        sigma : float, optional
-            Standard deviation of innovations.
-        phi : float, optional
-            Autocorrelation coefficient.
-        delta : float, optional
-            Drift component added to each step. default: 0.0.
+        sigma : float or Prior, optional
+            Standard deviation of innovations. Default is None.
+        phi : float or Prior, optional
+            Autocorrelation coefficient. Default is None.
+        delta : float or Prior, optional
+            Drift component added to each step. Default is 0.0.
         """
         super().__init__(bounds, initial_prior)
 
-        self.global_params = {
+        self.hyper_specs = {
             "sigma": sigma,
             "phi": phi,
             "delta": delta,
         }
 
         self.transition_type = "ar1"
+
+    def _expand_to_batch(self, x, batch_size: int):
+        # Expand scalar values to batch-sized arrays.
+        if np.ndim(x) == 0:
+            return np.full(batch_size, x, dtype=self.dtype)
+        return x
+
+    def _resolve_hyperparams(self, batch_size: int):
+        # Split hyperparameters into sampled vs fixed values.
+        hyper_params = {}
+        fixed_params = {}
+
+        for name, value in self.hyper_specs.items():
+            if isinstance(value, Prior):
+                hyper_params[name] = value.sample(batch_size)
+            else:
+                fixed_params[name] = value
+
+        return hyper_params, fixed_params
 
     def sample(self, batch_size: int, steps: int) -> Dict[str, Any]:
         """
@@ -109,23 +104,41 @@ class AutoRegression(Transition):
         Returns
         -------
         dict
-            Contains 'local_params' (trajectories), 'global_params' (sigma, phi, delta),
-            and 'infer_mask' (which hyperparameters are stochastic).
+            Dictionary containing:
+            - 'local_params': np.ndarray of shape (batch_size, steps)
+            - 'hyper_params': dict of sampled hyperparameters
+            - 'fixed_params': dict of fixed hyperparameters
         """
         local_params = np.empty((batch_size, steps), dtype=self.dtype)
         local_params[:, 0] = self.initial_prior.sample(batch_size)
-        global_params, infer_mask = self.sample_global_params(batch_size)
+
+        hyper_params, fixed_params = self._resolve_hyperparams(batch_size)
+
+        sigma = self._expand_to_batch(
+            hyper_params.get("sigma", fixed_params["sigma"]),
+            batch_size,
+        )
+
+        phi = self._expand_to_batch(
+            hyper_params.get("phi", fixed_params["phi"]),
+            batch_size,
+        )
+
+        delta = self._expand_to_batch(
+            hyper_params.get("delta", fixed_params["delta"]),
+            batch_size,
+        )
 
         local_params = _sample_ar1(
             local_params,
-            global_params["sigma"],
-            global_params["phi"],
-            global_params["delta"],
+            sigma,
+            phi,
+            delta,
             self.bounds,
         )
 
         return {
             "local_params": local_params,
-            "global_params": global_params,
-            "infer_mask": infer_mask,
+            "hyper_params": hyper_params,
+            "fixed_params": fixed_params,
         }
