@@ -12,12 +12,11 @@ def _sample_ou(
     mu: np.ndarray,
     theta: np.ndarray,
     sigma: np.ndarray,
-    bounds: Tuple[float, float],
+    bounds: np.ndarray,
 ) -> np.ndarray:
-    # Generate Ornstein-Uhlenbeck trajectories with discrete dt=1.
 
     batch_size, steps = local_params.shape
-    lower, upper = bounds
+    lower, upper = bounds[0], bounds[1]
 
     noise = np.random.randn(batch_size, steps - 1)
 
@@ -37,37 +36,28 @@ def _sample_ou(
     return local_params
 
 
-class OrnsteinUhlenbeck(Transition):
-    """
-    Ornstein-Uhlenbeck process transition.
+@njit
+def _one_step_ou(
+    x: np.ndarray,
+    mu: np.ndarray,
+    theta: np.ndarray,
+    sigma: np.ndarray,
+) -> np.ndarray:
 
-    dx = theta (mu - x) dt + sigma dW
-    """
+    noise = np.random.randn(x.shape[0])
+    return x + theta * (mu - x) + sigma * noise
+
+
+class OrnsteinUhlenbeck(Transition):
 
     def __init__(
         self,
-        bounds: Tuple[float, float],
-        initial_prior=None,
+        bounds: Tuple[float, float] | None = None,
+        initial_prior: Prior | None = None,
         sigma: float | Prior | None = None,
         mu: float | Prior | None = None,
         theta: float | Prior | None = None,
     ):
-        """
-        Initialize an Ornstein-Uhlenbeck transition.
-
-        Parameters
-        ----------
-        bounds : tuple of float
-            Bounds for the process values (lower, upper).
-        initial_prior : Prior, optional
-            Prior distribution for the initial state.
-        sigma : float or Prior, optional
-            Volatility parameter. Default is None.
-        mu : float or Prior, optional
-            Long-term mean value. Default is None.
-        theta : float or Prior, optional
-            Mean reversion rate. Default is None.
-        """
         super().__init__(bounds, initial_prior)
 
         self.hyper_specs = {
@@ -78,74 +68,55 @@ class OrnsteinUhlenbeck(Transition):
 
         self.transition_type = "ou"
 
-    def _expand_to_batch(self, x, batch_size: int):
-        # Expand scalar values to batch-sized arrays.
-        if np.ndim(x) == 0:
-            return np.full(batch_size, x, dtype=self.dtype)
-        return x
-
-    def _resolve_hyperparams(self, batch_size: int):
-        # Split hyperparameters into sampled vs fixed values.
-        hyper_params = {}
-        fixed_params = {}
-
-        for name, value in self.hyper_specs.items():
-            if isinstance(value, Prior):
-                hyper_params[name] = value.sample(batch_size)
-            else:
-                fixed_params[name] = value  # keep scalar
-
-        return hyper_params, fixed_params
-
     def sample(self, batch_size: int, steps: int) -> Dict[str, Any]:
-        """
-        Generate Ornstein-Uhlenbeck parameter trajectories.
 
-        Parameters
-        ----------
-        batch_size : int
-            Number of independent trajectories.
-        steps : int
-            Number of time steps per trajectory.
-
-        Returns
-        -------
-        dict
-            Dictionary containing:
-            - 'local_params': np.ndarray of shape (batch_size, steps)
-            - 'hyper_params': dict of sampled hyperparameters
-            - 'fixed_params': dict of fixed hyperparameters
-        """
         local_params = np.empty((batch_size, steps), dtype=self.dtype)
-        local_params[:, 0] = self.initial_prior.sample(batch_size)
+        local_params[:, 0] = self.initial_prior.sample(batch_size).astype(self.dtype)
 
-        hyper_params, fixed_params = self._resolve_hyperparams(batch_size)
+        hyper, fixed = self._resolve_hyperparams(batch_size)
 
-        sigma = self._expand_to_batch(
-            hyper_params.get("sigma", fixed_params["sigma"]),
-            batch_size,
-        )
+        # -------------------------
+        # SAFE resolution (batch arrays guaranteed)
+        # -------------------------
 
-        mu = self._expand_to_batch(
-            hyper_params.get("mu", fixed_params["mu"]),
-            batch_size,
-        )
+        if "sigma" in hyper:
+            sigma = hyper["sigma"]
+        else:
+            sigma = np.full(batch_size, fixed["sigma"], dtype=self.dtype)
 
-        theta = self._expand_to_batch(
-            hyper_params.get("theta", fixed_params["theta"]),
-            batch_size,
-        )
+        if "mu" in hyper:
+            mu = hyper["mu"]
+        else:
+            mu = np.full(batch_size, fixed["mu"], dtype=self.dtype)
+
+        if "theta" in hyper:
+            theta = hyper["theta"]
+        else:
+            theta = np.full(batch_size, fixed["theta"], dtype=self.dtype)
 
         local_params = _sample_ou(
             local_params,
-            mu,
-            theta,
-            sigma,
+            mu.astype(self.dtype),
+            theta.astype(self.dtype),
+            sigma.astype(self.dtype),
             self.bounds,
         )
 
         return {
             "local_params": local_params,
-            "hyper_params": hyper_params,
-            "fixed_params": fixed_params,
+            "hyper_params": hyper,
+            "fixed_params": fixed,
         }
+
+    def sample_one_step(self, x: np.ndarray, params: Dict[str, Any]) -> np.ndarray:
+
+        mu = np.asarray(params["mu"], dtype=self.dtype)
+        theta = np.asarray(params["theta"], dtype=self.dtype)
+        sigma = np.asarray(params["sigma"], dtype=self.dtype)
+
+        return _one_step_ou(
+            x,
+            mu,
+            theta,
+            sigma,
+        )

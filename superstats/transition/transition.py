@@ -5,38 +5,30 @@ from typing import Tuple, Dict, Any, Union
 import numpy as np
 
 from superstats.prior import Prior
-from superstats.defaults import DEFAULT_GLOBAL_PRIORS
-
+from superstats.defaults import (
+    DEFAULT_HYPER_PRIORS,
+    DEFAULT_BOUNDS,
+    DEFAULT_INITIAL_PRIOR,
+)
 
 ParamSpec = Union[Prior, float, None]
 
 
 class Transition(ABC):
-    """
-    Base class for stochastic parameter transition processes.
 
-    Core responsibilities:
-    - define parameter resolution rules
-    - sample global parameters
-    - expose inference mask
-    - provide shared configuration (bounds, initial prior)
-    """
+    dtype = np.float32
 
     def __init__(
         self,
-        bounds: Tuple[float, float] | np.ndarray,
+        bounds: Tuple[float, float] | np.ndarray | None = None,
         initial_prior: Prior | None = None,
-        dtype: np.dtype = np.float32,
     ):
-        self.dtype = dtype
-        self.bounds = np.asarray(bounds, dtype=dtype)
-
-        self.initial_prior = (
-            initial_prior
-            if initial_prior is not None
-            else Prior("normal", loc=0.0, scale=1.0)
+        self.bounds = (
+            np.asarray(bounds, dtype=self.dtype)
+            if bounds is not None
+            else np.asarray(DEFAULT_BOUNDS, dtype=self.dtype)
         )
-
+        self.initial_prior = initial_prior or DEFAULT_INITIAL_PRIOR
         self.hyper_specs: Dict[str, ParamSpec] = {}
 
     # -------------------------
@@ -44,52 +36,59 @@ class Transition(ABC):
     # -------------------------
 
     def _resolve(self, name: str, spec: ParamSpec) -> tuple[Prior | float, bool]:
-        # Resolve parameter into (value, infer_flag).
 
-        # None -> default prior
         if spec is None:
-            default = DEFAULT_GLOBAL_PRIORS.get(f"{name}_prior")
+            default = DEFAULT_HYPER_PRIORS.get(name)
             if default is None:
                 raise KeyError(
-                    f"No default prior found for '{name}' "
-                    f"(expected '{name}_prior')."
+                    f"No default hyperprior found for '{name}'"
                 )
             return default, True
 
-        # Prior -> infer
         if isinstance(spec, Prior):
             return spec, True
 
-        # float -> fixed
-        return spec, False
+        if isinstance(spec, (float, int)):
+            return float(spec), False
+
+        raise TypeError(f"Invalid hyperparameter '{name}': {type(spec)}")
 
     # -------------------------
-    # sampling
+    # sampling helpers
+    # -------------------------
+
+    def _sample(self, spec: Prior | float, batch_size: int) -> np.ndarray:
+        if isinstance(spec, Prior):
+            return spec.sample(batch_size).astype(self.dtype)
+
+        return np.full(batch_size, spec, dtype=self.dtype)
+
+    def _as_batch(self, x: np.ndarray | float, batch_size: int) -> np.ndarray:
+        if np.ndim(x) == 0:
+            return np.full(batch_size, x, dtype=self.dtype)
+        return np.asarray(x, dtype=self.dtype)
+
+    # -------------------------
+    # parameter resolution
     # -------------------------
 
     def _resolve_hyperparams(
         self,
         batch_size: int
     ) -> tuple[Dict[str, np.ndarray], Dict[str, float]]:
-        # Resolve hyperparameters into sampled and fixed components.
 
         hyper_params: Dict[str, np.ndarray] = {}
         fixed_params: Dict[str, float] = {}
 
         for name, spec in self.hyper_specs.items():
             value, infer = self._resolve(name, spec)
+
             if infer:
                 hyper_params[name] = self._sample(value, batch_size)
             else:
                 fixed_params[name] = value
 
         return hyper_params, fixed_params
-
-    def _sample(self, value: Prior | float, batch_size: int) -> np.ndarray:
-        if isinstance(value, Prior):
-            return value.sample(batch_size).astype(self.dtype)
-
-        return np.full(batch_size, value, dtype=self.dtype)
 
     # -------------------------
     # interface
@@ -101,4 +100,12 @@ class Transition(ABC):
         batch_size: int,
         steps: int
     ) -> Dict[str, Any]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def sample_one_step(
+        self,
+        x: np.ndarray,
+        params: Dict[str, Any]
+    ) -> np.ndarray:
         raise NotImplementedError

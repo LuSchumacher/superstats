@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Tuple, Dict, Any
 import numpy as np
 from numba import njit, prange
@@ -12,11 +14,11 @@ def _sample_ar1(
     sigma: np.ndarray,
     phi: np.ndarray,
     delta: np.ndarray,
-    bounds: Tuple[float, float],
+    bounds: np.ndarray,
 ) -> np.ndarray:
-    # Generate AR(1) trajectories and apply bounds.
+
     batch_size, steps = local_params.shape
-    lower, upper = bounds
+    lower, upper = bounds[0], bounds[1]
 
     noise = np.random.randn(batch_size, steps - 1)
 
@@ -32,35 +34,28 @@ def _sample_ar1(
     return local_params
 
 
+@njit
+def _one_step_ar1(
+    x: np.ndarray,
+    sigma: np.ndarray,
+    phi: np.ndarray,
+    delta: np.ndarray,
+) -> np.ndarray:
+
+    noise = np.random.randn(x.shape[0])
+    return phi * x + delta + sigma * noise
+
+
 class AutoRegression(Transition):
-    """
-    AR(1) process with optional drift.
-    """
 
     def __init__(
         self,
-        bounds: Tuple[float, float],
-        initial_prior=None,
+        bounds: Tuple[float, float] | None = None,
+        initial_prior: Prior | None = None,
         sigma: float | Prior | None = None,
         phi: float | Prior | None = None,
         delta: float | Prior = 0.0,
     ):
-        """
-        Initialize an AR(1) transition process.
-
-        Parameters
-        ----------
-        bounds : tuple of float
-            Parameter bounds (lower, upper).
-        initial_prior : Prior, optional
-            Prior for initial values.
-        sigma : float or Prior, optional
-            Standard deviation of innovations. Default is None.
-        phi : float or Prior, optional
-            Autocorrelation coefficient. Default is None.
-        delta : float or Prior, optional
-            Drift component added to each step. Default is 0.0.
-        """
         super().__init__(bounds, initial_prior)
 
         self.hyper_specs = {
@@ -71,74 +66,55 @@ class AutoRegression(Transition):
 
         self.transition_type = "ar1"
 
-    def _expand_to_batch(self, x, batch_size: int):
-        # Expand scalar values to batch-sized arrays.
-        if np.ndim(x) == 0:
-            return np.full(batch_size, x, dtype=self.dtype)
-        return x
-
-    def _resolve_hyperparams(self, batch_size: int):
-        # Split hyperparameters into sampled vs fixed values.
-        hyper_params = {}
-        fixed_params = {}
-
-        for name, value in self.hyper_specs.items():
-            if isinstance(value, Prior):
-                hyper_params[name] = value.sample(batch_size)
-            else:
-                fixed_params[name] = value
-
-        return hyper_params, fixed_params
-
     def sample(self, batch_size: int, steps: int) -> Dict[str, Any]:
-        """
-        Generate AR(1) parameter trajectories.
 
-        Parameters
-        ----------
-        batch_size : int
-            Number of independent trajectories.
-        steps : int
-            Number of time steps per trajectory.
-
-        Returns
-        -------
-        dict
-            Dictionary containing:
-            - 'local_params': np.ndarray of shape (batch_size, steps)
-            - 'hyper_params': dict of sampled hyperparameters
-            - 'fixed_params': dict of fixed hyperparameters
-        """
         local_params = np.empty((batch_size, steps), dtype=self.dtype)
-        local_params[:, 0] = self.initial_prior.sample(batch_size)
+        local_params[:, 0] = self.initial_prior.sample(batch_size).astype(self.dtype)
 
-        hyper_params, fixed_params = self._resolve_hyperparams(batch_size)
+        hyper, fixed = self._resolve_hyperparams(batch_size)
 
-        sigma = self._expand_to_batch(
-            hyper_params.get("sigma", fixed_params["sigma"]),
-            batch_size,
-        )
+        # -------------------------
+        # SAFE parameter resolution
+        # -------------------------
 
-        phi = self._expand_to_batch(
-            hyper_params.get("phi", fixed_params["phi"]),
-            batch_size,
-        )
+        if "sigma" in hyper:
+            sigma = hyper["sigma"]
+        else:
+            sigma = np.full(batch_size, fixed["sigma"], dtype=self.dtype)
 
-        delta = self._expand_to_batch(
-            hyper_params.get("delta", fixed_params["delta"]),
-            batch_size,
-        )
+        if "phi" in hyper:
+            phi = hyper["phi"]
+        else:
+            phi = np.full(batch_size, fixed["phi"], dtype=self.dtype)
+
+        if "delta" in hyper:
+            delta = hyper["delta"]
+        else:
+            delta = np.full(batch_size, fixed["delta"], dtype=self.dtype)
 
         local_params = _sample_ar1(
             local_params,
-            sigma,
-            phi,
-            delta,
+            sigma.astype(self.dtype),
+            phi.astype(self.dtype),
+            delta.astype(self.dtype),
             self.bounds,
         )
 
         return {
             "local_params": local_params,
-            "hyper_params": hyper_params,
-            "fixed_params": fixed_params,
+            "hyper_params": hyper,
+            "fixed_params": fixed,
         }
+
+    def sample_one_step(self, x: np.ndarray, params: Dict[str, Any]) -> np.ndarray:
+
+        sigma = np.asarray(params["sigma"], dtype=self.dtype)
+        phi = np.asarray(params["phi"], dtype=self.dtype)
+        delta = np.asarray(params["delta"], dtype=self.dtype)
+
+        return _one_step_ar1(
+            x,
+            sigma,
+            phi,
+            delta,
+        )

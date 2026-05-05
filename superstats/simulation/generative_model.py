@@ -1,7 +1,6 @@
 from typing import Callable, Dict
 import inspect
 import numpy as np
-from numba import njit, prange
 
 from superstats.prior.joint_prior import JointPrior
 
