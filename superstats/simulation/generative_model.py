@@ -41,9 +41,17 @@ class GenerativeModel:
         """
         self.prior = prior
         self.model = model
+
         # Inspect simulator signature
         self.signature = inspect.signature(model)
         self.param_order = list(self.signature.parameters.keys())
+
+        # Run a pilot draw to determine key groups once
+        pilot = self.prior.sample(batch_size=1, steps=1)
+        self.local_keys = list(pilot["local_params"].keys()) if pilot.get("local_params") else []
+        self.hyper_keys = list(pilot["hyper_params"].keys()) if pilot.get("hyper_params") else []
+        self.shared_keys = list(pilot["shared_params"].keys()) if pilot.get("shared_params") else []
+        self.fixed_keys = list(pilot["fixed_params"].keys()) if pilot.get("fixed_params") else []
 
     def _prepare_flat_params(self, combined_params, batch_size, steps):
         # Broadcast and flatten parameters for vectorized simulation.
@@ -111,7 +119,7 @@ class GenerativeModel:
                 )
         return normalized
 
-    def sample(self, batch_size: int, steps: int):
+    def sample(self, batch_size: int, steps: int, include_fixed: bool = False, tile_to_steps: bool = False):
         """
         Sample parameters from the prior and generate simulated data.
 
@@ -127,25 +135,26 @@ class GenerativeModel:
             Number of independent simulation batches to generate.
         steps : int
             Number of time steps per trajectory.
+        include_fixed : bool, optional
+            If True, include ``fixed_params`` in the returned dictionary.
+            Default is False.
+        tile_to_steps : bool, optional
+            If True, tile ``hyper_params`` and ``shared_params`` from shape
+            (batch_size, 1) to (batch_size, steps, 1), aligning them with
+            the time axis of local parameters. Default is False.
 
         Returns
         -------
         dict
-            Dictionary containing:
-            - 'data': np.ndarray
-                Simulated data of shape (batch_size, steps, ...) where additional
-                dimensions depend on the model output.
-            - 'local_params': dict
-                Time-varying parameters for each trajectory, each shaped
-                (batch_size, steps, 1).
-            - 'hyper_params': dict or None
-                Hyperparameters from transition processes, each shaped
-                (batch_size, 1).
-            - 'fixed_params': dict or None
-                Fixed scalar parameters from the prior.
-            - 'shared_params': dict or None
-                Time-invariant parameters shared across trajectories, each shaped
-                (batch_size, 1).
+            Flat dictionary with ``'data'`` plus one entry per sampled parameter.
+            Local (time-varying) params have shape ``(batch_size, steps, 1)``;
+            hyper and shared params have shape ``(batch_size, 1)``, or
+            ``(batch_size, steps, 1)`` when ``tile_to_steps`` is True.
+            Fixed params are included only when ``include_fixed`` is True.
+
+            The instance attributes ``local_keys``, ``hyper_keys``,
+            ``shared_keys``, and ``fixed_keys`` are updated each call to
+            record which keys belong to which parameter group.
 
         Raises
         ------
@@ -202,14 +211,27 @@ class GenerativeModel:
         local_params = self._normalize_local_params(local_params, batch_size, steps)
         hyper_params = self._normalize_batch_params(prior_draws.get("hyper_params", {}), batch_size)
         shared_params = self._normalize_batch_params(shared_params, batch_size)
-        fixed_params_output = fixed_params if fixed_params else None
 
-        result = {
-            "data": sim_data,
-            "local_params": local_params,
-            "hyper_params": hyper_params,
-            "shared_params": shared_params,
-            "fixed_params": fixed_params_output,
-        }
+        if tile_to_steps:
+            if hyper_params is not None:
+                hyper_params = {
+                    k: np.tile(v[:, np.newaxis, :], (1, steps, 1))
+                    for k, v in hyper_params.items()
+                }
+            if shared_params is not None:
+                shared_params = {
+                    k: np.tile(v[:, np.newaxis, :], (1, steps, 1))
+                    for k, v in shared_params.items()
+                }
+    
+        result = {"data": sim_data}
+        if local_params:
+            result.update(local_params)
+        if hyper_params:
+            result.update(hyper_params)
+        if shared_params:
+            result.update(shared_params)
+        if include_fixed and fixed_params:
+            result.update(fixed_params)
 
         return result
