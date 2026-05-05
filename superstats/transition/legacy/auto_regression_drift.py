@@ -57,7 +57,7 @@ class AutoRegressionDrift(Transition):
         }
 
     def _draw_param(self, prior_or_value, batch_size):
-        """Draw samples from prior or broadcast constant."""
+        # Draw samples from prior or broadcast constant.
         if isinstance(prior_or_value, Prior):
             return prior_or_value.sample(batch_size)
 

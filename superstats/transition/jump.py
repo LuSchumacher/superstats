@@ -31,6 +31,18 @@ def _sample_jump_process(
     return local_params
 
 
+@njit
+def _one_step_jump(
+    x: np.ndarray,
+    p_jump: np.ndarray,
+    proposal: np.ndarray,
+) -> np.ndarray:
+    # Sample one step of jump process.
+    jump = np.random.binomial(1, p_jump, size=x.shape[0])
+    x_next = np.where(jump, proposal, x)
+    return x_next
+
+
 class Jump(Transition):
     """
     Simple jump transition.
@@ -120,3 +132,23 @@ class Jump(Transition):
             "hyper_params": hyper_params,
             "fixed_params": fixed_params,
         }
+
+    def one_step(self, x: np.ndarray, params: Dict[str, Any]) -> np.ndarray:
+        """
+        Sample one step from the jump transition.
+
+        Parameters
+        ----------
+        x : np.ndarray
+            Current state, shape (batch,)
+        params : dict
+            Resolved parameters containing 'p_jump'
+
+        Returns
+        -------
+        np.ndarray
+            Next state, shape (batch,)
+        """
+        p_jump = self._expand_to_batch(params['p_jump'], x.shape[0])
+        proposal = self.proposal_prior.sample(x.shape[0])
+        return _one_step_jump(x, p_jump, proposal)

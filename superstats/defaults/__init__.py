@@ -1,1 +1,5 @@
-from .default_priors import DEFAULT_GLOBAL_PRIORS
+from .transition_defaults import (
+    DEFAULT_HYPER_PRIORS,
+    DEFAULT_BOUNDS,
+    DEFAULT_INITIAL_PRIOR,
+)
