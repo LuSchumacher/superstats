@@ -2,7 +2,7 @@ from typing import Tuple, Dict, Any
 import numpy as np
 from numba import njit, prange
 
-from .transition import Transition
+from .transition import Transition, Prior
 from superstats.utils.transformations import scaled_sigmoid
 
 
@@ -13,28 +13,7 @@ def _sample_random_walk(
     delta: np.ndarray,
     bounds: Tuple[float, float],
 ) -> np.ndarray:
-    """
-    Generate random walk trajectories with noise and optional drift.
-
-    Computes cumulative increments and applies sigmoid transformation to
-    enforce bounds.
-
-    Parameters
-    ----------
-    local_params : np.ndarray
-        Array of shape (batch_size, steps) to store trajectories.
-    sigma : np.ndarray
-        Step sizes of shape (batch_size,).
-    delta : np.ndarray
-        Drift terms of shape (batch_size,).
-    bounds : tuple of float
-        Parameter bounds (lower, upper).
-
-    Returns
-    -------
-    np.ndarray
-        Trajectories of shape (batch_size, steps) bounded by bounds.
-    """
+    # Generate random walk trajectories with noise and optional drift.
     batch_size, steps = local_params.shape
     lower, upper = bounds
 
@@ -51,15 +30,18 @@ def _sample_random_walk(
 
 class RandomWalk(Transition):
     """
-    Gaussian random walk (with optional drift via delta).
+    Random walk transition process with optional drift.
+
+    Generates trajectories that evolve as a random walk with Gaussian noise
+    and optional deterministic drift, bounded within specified limits.
     """
 
     def __init__(
         self,
         bounds: Tuple[float, float],
         initial_prior=None,
-        sigma: float | None = None,
-        delta: float | None = 0.0,
+        sigma: float | Prior = 0.1,
+        delta: float | Prior = 0.0,
     ):
         """
         Initialize a random walk transition.
@@ -69,20 +51,39 @@ class RandomWalk(Transition):
         bounds : tuple of float
             Parameter bounds (lower, upper).
         initial_prior : Prior, optional
-            Prior for initial values.
-        sigma : float, optional
-            Standard deviation of increments (step size).
-        delta : float, optional
-            Drift component added to each increment. Default: 0.0.
+            Prior distribution for initial parameter values.
+        sigma : float or Prior, optional
+            Step size (standard deviation of noise). Default is 0.1.
+        delta : float or Prior, optional
+            Drift term added to each step. Default is 0.0.
         """
         super().__init__(bounds, initial_prior)
 
-        self.global_params = {
+        self.hyper_specs = {
             "sigma": sigma,
             "delta": delta,
         }
 
         self.transition_type = "rw"
+
+    def _expand_to_batch(self, x, batch_size: int):
+        # Expand scalar values to batch-sized arrays.
+        if np.ndim(x) == 0:
+            return np.full(batch_size, x, dtype=self.dtype)
+        return x
+
+    def _resolve_hyperparams(self, batch_size: int):
+        # Split hyperparameters into sampled vs fixed values.
+        hyper_params = {}
+        fixed_params = {}
+
+        for name, value in self.hyper_specs.items():
+            if isinstance(value, Prior):
+                hyper_params[name] = value.sample(batch_size)
+            else:
+                fixed_params[name] = value
+
+        return hyper_params, fixed_params
 
     def sample(self, batch_size: int, steps: int) -> Dict[str, Any]:
         """
@@ -98,22 +99,35 @@ class RandomWalk(Transition):
         Returns
         -------
         dict
-            Contains 'local_params' (trajectories), 'global_params' (sigma, delta),
-            and 'infer_mask' (which hyperparameters are stochastic).
+            Dictionary containing:
+            - 'local_params': np.ndarray of shape (batch_size, steps)
+            - 'hyper_params': dict of sampled hyperparameters
+            - 'fixed_params': dict of fixed hyperparameters
         """
         local_params = np.empty((batch_size, steps), dtype=self.dtype)
         local_params[:, 0] = self.initial_prior.sample(batch_size)
-        global_params, infer_mask = self.sample_global_params(batch_size)
+
+        hyper_params, fixed_params = self._resolve_hyperparams(batch_size)
+
+        sigma = self._expand_to_batch(
+            hyper_params["sigma"] if "sigma" in hyper_params else fixed_params["sigma"],
+            batch_size,
+        )
+
+        delta = self._expand_to_batch(
+            hyper_params["delta"] if "delta" in hyper_params else fixed_params["delta"],
+            batch_size,
+        )
 
         local_params = _sample_random_walk(
             local_params,
-            global_params["sigma"],
-            global_params["delta"],
+            sigma,
+            delta,
             self.bounds,
         )
 
         return {
             "local_params": local_params,
-            "global_params": global_params,
-            "infer_mask": infer_mask,
+            "hyper_params": hyper_params,
+            "fixed_params": fixed_params,
         }
