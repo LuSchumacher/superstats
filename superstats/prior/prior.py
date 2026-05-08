@@ -1,63 +1,50 @@
 import numpy as np
-from typing import Literal
+from typing import Literal, Optional, Sequence
 
 
 class Prior:
     """
     Simple generative prior distribution.
 
-    The class wraps a small set of common distributions and allows
-    drawing a batch of independent samples for use as shared model
-    parameters. Supported distributions are
-    ``normal``, ``uniform``, ``beta`` and ``halfnormal``.
-
-    Attributes
-    ----------
-    dist : str
-        Name of the distribution ('normal', 'uniform', 'beta', 'halfnormal').
-    loc : float
-        Mean of the normal distribution.
-    scale : float
-        Standard deviation for normal and halfnormal distributions.
-    low : float
-        Lower bound for the uniform distribution.
-    high : float
-        Upper bound for the uniform distribution.
-    a : float
-        Alpha parameter for the beta distribution.
-    b : float
-        Beta parameter for the beta distribution.
+    Supported distributions:
+    - normal
+    - uniform
+    - beta
+    - halfnormal
+    - dirichlet
     """
 
     def __init__(
         self,
-        dist: Literal["normal", "uniform", "beta", "halfnormal"],
+        dist: Literal["normal", "uniform", "beta", "halfnormal", "dirichlet"],
         loc: float = 0.0,
         scale: float = 1.0,
         low: float = 0.0,
         high: float = 1.0,
         a: float = 1.0,
-        b: float = 1.0
+        b: float = 1.0,
+        alpha: Sequence[float] = None,
     ):
         """
-        Initialize a prior distribution.
-
         Parameters
         ----------
-        dist : {'normal', 'uniform', 'beta', 'halfnormal'}
-            Name of the distribution to sample from.
-        loc : float, optional
-            Mean of the normal distribution (default: 0.0).
-        scale : float, optional
-            Standard deviation for normal and halfnormal (default: 1.0).
-        low : float, optional
-            Lower bound for uniform distribution (default: 0.0).
-        high : float, optional
-            Upper bound for uniform distribution (default: 1.0).
-        a : float, optional
-            Alpha parameter for beta distribution (default: 1.0).
-        b : float, optional
-            Beta parameter for beta distribution (default: 1.0).
+        dist : str
+            Distribution type.
+        loc : float
+            Mean for normal.
+        scale : float
+            Std for normal/halfnormal.
+        low : float
+            Lower bound for uniform.
+        high : float
+            Upper bound for uniform.
+        a : float
+            Alpha for beta.
+        b : float
+            Beta for beta.
+        alpha : sequence of float, optional
+            Dirichlet concentration parameters. If None, defaults to
+            a symmetric Dirichlet with alpha = 1 for each dimension.
         """
         self.dist = dist
         self.loc = loc
@@ -66,32 +53,46 @@ class Prior:
         self.high = high
         self.a = a
         self.b = b
+        self.alpha = alpha
 
     def sample(self, batch_size: int) -> np.ndarray:
         """
-        Draw a batch of values from the configured distribution.
-
-        Parameters
-        ----------
-        batch_size : int
-            Number of independent samples to generate.
+        Draw samples from the prior.
 
         Returns
         -------
         np.ndarray
-            Float32 array of shape ``(batch_size,)`` containing the draws.
+            Shape (batch_size,) or (batch_size, K) for Dirichlet.
         """
+
         if self.dist == "normal":
             samples = np.random.normal(self.loc, self.scale, size=batch_size)
 
         elif self.dist == "halfnormal":
-            samples = np.abs(np.random.normal(0.0, self.scale, size=batch_size))
+            samples = np.abs(
+                np.random.normal(0.0, self.scale, size=batch_size)
+            )
 
         elif self.dist == "uniform":
             samples = np.random.uniform(self.low, self.high, size=batch_size)
 
         elif self.dist == "beta":
             samples = np.random.beta(self.a, self.b, size=batch_size)
+
+        elif self.dist == "dirichlet":
+            # default: uniform over simplex
+            if self.alpha is None:
+                raise ValueError(
+                    "alpha must be provided for dirichlet "
+                    "(e.g. [1, 1, 1] for uniform simplex)"
+                )
+
+            alpha = np.asarray(self.alpha, dtype=np.float32)
+
+            if alpha.ndim == 0:
+                raise ValueError("alpha must be a vector-like sequence")
+
+            samples = np.random.dirichlet(alpha, size=batch_size)
 
         else:
             raise ValueError(f"Unsupported prior distribution: {self.dist}")

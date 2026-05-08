@@ -38,13 +38,12 @@ def _sample_ou(
 
 @njit
 def _one_step_ou(
-    x: np.ndarray,
-    mu: np.ndarray,
-    theta: np.ndarray,
-    sigma: np.ndarray,
-) -> np.ndarray:
-
-    noise = np.random.randn(x.shape[0])
+    x: float,
+    mu: float,
+    theta: float,
+    sigma: float,
+) -> float:
+    noise = np.random.randn()
     return x + theta * (mu - x) + sigma * noise
 
 
@@ -108,12 +107,10 @@ class OrnsteinUhlenbeck(Transition):
             "fixed_params": fixed,
         }
 
-    def sample_one_step(self, x: np.ndarray, params: Dict[str, Any]) -> np.ndarray:
-
-        mu = np.asarray(params["mu"], dtype=self.dtype)
-        theta = np.asarray(params["theta"], dtype=self.dtype)
-        sigma = np.asarray(params["sigma"], dtype=self.dtype)
-
+    def sample_one_step(self, x: float, params: Dict[str, Any]) -> float:
+        mu = float(params["mu"])
+        theta = float(params["theta"])
+        sigma = float(params["sigma"])
         return _one_step_ou(
             x,
             mu,

@@ -23,17 +23,21 @@ class Transition(ABC):
         bounds: Tuple[float, float] | np.ndarray | None = None,
         initial_prior: Prior | None = None,
     ):
+        self._user_defined_bounds = bounds is not None
+        self._user_defined_initial_prior = initial_prior is not None
+
         self.bounds = (
             np.asarray(bounds, dtype=self.dtype)
             if bounds is not None
             else np.asarray(DEFAULT_BOUNDS, dtype=self.dtype)
         )
-        self.initial_prior = initial_prior or DEFAULT_INITIAL_PRIOR
-        self.hyper_specs: Dict[str, ParamSpec] = {}
 
-    # -------------------------
-    # resolution
-    # -------------------------
+        self.initial_prior = (
+            initial_prior
+            if initial_prior is not None
+            else DEFAULT_INITIAL_PRIOR
+        )
+        self.hyper_specs: Dict[str, ParamSpec] = {}
 
     def _resolve(self, name: str, spec: ParamSpec) -> tuple[Prior | float, bool]:
 
@@ -53,10 +57,6 @@ class Transition(ABC):
 
         raise TypeError(f"Invalid hyperparameter '{name}': {type(spec)}")
 
-    # -------------------------
-    # sampling helpers
-    # -------------------------
-
     def _sample(self, spec: Prior | float, batch_size: int) -> np.ndarray:
         if isinstance(spec, Prior):
             return spec.sample(batch_size).astype(self.dtype)
@@ -67,10 +67,6 @@ class Transition(ABC):
         if np.ndim(x) == 0:
             return np.full(batch_size, x, dtype=self.dtype)
         return np.asarray(x, dtype=self.dtype)
-
-    # -------------------------
-    # parameter resolution
-    # -------------------------
 
     def _resolve_hyperparams(
         self,
@@ -90,22 +86,10 @@ class Transition(ABC):
 
         return hyper_params, fixed_params
 
-    # -------------------------
-    # interface
-    # -------------------------
-
     @abstractmethod
     def sample(
         self,
         batch_size: int,
         steps: int
     ) -> Dict[str, Any]:
-        raise NotImplementedError
-
-    @abstractmethod
-    def sample_one_step(
-        self,
-        x: np.ndarray,
-        params: Dict[str, Any]
-    ) -> np.ndarray:
         raise NotImplementedError

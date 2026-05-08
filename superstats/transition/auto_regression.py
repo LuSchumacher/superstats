@@ -36,13 +36,12 @@ def _sample_ar1(
 
 @njit
 def _one_step_ar1(
-    x: np.ndarray,
-    sigma: np.ndarray,
-    phi: np.ndarray,
-    delta: np.ndarray,
-) -> np.ndarray:
-
-    noise = np.random.randn(x.shape[0])
+    x: float,
+    sigma: float,
+    phi: float,
+    delta: float,
+) -> float:
+    noise = np.random.randn()
     return phi * x + delta + sigma * noise
 
 
@@ -106,11 +105,11 @@ class AutoRegression(Transition):
             "fixed_params": fixed,
         }
 
-    def sample_one_step(self, x: np.ndarray, params: Dict[str, Any]) -> np.ndarray:
+    def sample_one_step(self, x: float, params: Dict[str, Any]) -> float:
 
-        sigma = np.asarray(params["sigma"], dtype=self.dtype)
-        phi = np.asarray(params["phi"], dtype=self.dtype)
-        delta = np.asarray(params["delta"], dtype=self.dtype)
+        sigma = float(params["sigma"])
+        phi = float(params["phi"])
+        delta = float(params["delta"])
 
         return _one_step_ar1(
             x,

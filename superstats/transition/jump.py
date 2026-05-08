@@ -30,6 +30,15 @@ def _sample_jump_process(
 
     return local_params
 
+@njit
+def _one_step_jump(
+    x: float,
+    p_jump: float,
+    proposal: float,
+) -> float:
+    if np.random.rand() < p_jump:
+        return proposal
+    return x
 
 class Jump(Transition):
     """
@@ -45,6 +54,8 @@ class Jump(Transition):
         proposal_prior: Prior | None = None,
     ):
         super().__init__(bounds, initial_prior)
+
+        self._user_defined_p_jump = p_jump != 1.0
 
         self.hyper_specs = {
             "p_jump": p_jump,
@@ -83,10 +94,11 @@ class Jump(Transition):
             "fixed_params": fixed,
         }
 
-    def sample_one_step(self, x: np.ndarray, params: Dict[str, Any]) -> np.ndarray:
-
-        p_jump = np.asarray(params["p_jump"], dtype=self.dtype)
-        proposal = self.proposal_prior.sample(x.shape[0]).astype(self.dtype)
-
-        jump = np.random.rand(x.shape[0]) < p_jump
-        return np.where(jump, proposal, x)
+    def sample_one_step(self, x: float, params: Dict[str, Any]) -> float:
+        p_jump = float(params["p_jump"])
+        proposal = float(self.proposal_prior.sample(1)[0])
+        return _one_step_jump(
+            x,
+            p_jump,
+            proposal,
+        )

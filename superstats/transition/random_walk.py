@@ -31,11 +31,11 @@ def _sample_random_walk(
 
 @njit
 def _one_step_random_walk(
-    x: np.ndarray,
-    sigma: np.ndarray,
-    delta: np.ndarray,
-) -> np.ndarray:
-    noise = np.random.randn(x.shape[0])
+    x: float,
+    sigma: float,
+    delta: float,
+) -> float:
+    noise = np.random.randn()
     return x + delta + sigma * noise
 
 
@@ -90,9 +90,11 @@ class RandomWalk(Transition):
             "fixed_params": fixed,
         }
 
-    def sample_one_step(self, x: np.ndarray, params: Dict[str, Any]) -> np.ndarray:
-
-        sigma = np.asarray(params["sigma"], dtype=self.dtype)
-        delta = np.asarray(params["delta"], dtype=self.dtype)
-
-        return _one_step_random_walk(x, sigma, delta)
+    def sample_one_step(self, x: float, params: Dict[str, Any]) -> float:
+        sigma = float(params["sigma"])
+        delta = float(params["delta"])
+        return _one_step_random_walk(
+            x,
+            sigma,
+            delta,
+        )
