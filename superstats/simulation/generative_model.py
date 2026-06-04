@@ -101,21 +101,35 @@ class GenerativeModel:
         return normalized
 
     def _normalize_batch_params(self, params, batch_size):
-        # Normalize scalar or batch parameters to shape (batch_size, 1).
         if not params:
             return None
 
         normalized = {}
+
         for name, value in params.items():
             arr = np.asarray(value)
+
+            # scalar per batch -> (B,1 )
             if arr.ndim == 1:
                 normalized[name] = arr.reshape(batch_size, 1)
+
+            # already batched scalar parameters -> (B, 1)
             elif arr.ndim == 2 and arr.shape[1] == 1:
                 normalized[name] = arr
+
+            # vector-valued hyperparameter (e.g. mixture weights)
+            elif arr.ndim == 2:
+                normalized[name] = arr  # keep (B, K)
+
+            # scalar constant
+            elif arr.ndim == 0:
+                normalized[name] = np.full((batch_size, 1), arr.item(), dtype=arr.dtype)
+
             else:
                 raise ValueError(
-                    f"Parameter '{name}' must have shape (batch_size,) or (batch_size, 1), got {arr.shape}"
+                    f"Parameter '{name}' has invalid shape {arr.shape}"
                 )
+
         return normalized
 
     def sample(self, batch_size: int, steps: int, include_fixed: bool = False, tile_to_steps: bool = False):
