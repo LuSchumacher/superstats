@@ -43,8 +43,7 @@ class Prior:
         b : float
             Beta for beta.
         alpha : sequence of float, optional
-            Dirichlet concentration parameters. If None, defaults to
-            a symmetric Dirichlet with alpha = 1 for each dimension.
+            Dirichlet concentration parameters.
         """
         self.dist = dist
         self.loc = loc
@@ -80,7 +79,6 @@ class Prior:
             samples = np.random.beta(self.a, self.b, size=batch_size)
 
         elif self.dist == "dirichlet":
-            # default: uniform over simplex
             if self.alpha is None:
                 raise ValueError(
                     "alpha must be provided for dirichlet "

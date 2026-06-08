@@ -67,14 +67,14 @@ class GenerativeModel:
                     continue
             p = combined_params[name]
             p = np.asarray(p)
-            # shared parameters (batch,) → (batch, steps)
+            # shared parameters
             if p.ndim == 1:
                 p = np.broadcast_to(p[:, None], (batch_size, steps))
                 flat_params[name] = p.reshape(batch_size * steps)
-            # already trajectory parameters
+            # local parameters
             elif p.ndim == 2:
                 flat_params[name] = p.reshape(batch_size * steps)
-            # fixed scalar parameters also broadcast to full trajectory length
+            # fixed parameters
             elif p.ndim == 0:
                 p = np.full((batch_size, steps), p.item(), dtype=np.asarray(p).dtype)
                 flat_params[name] = p.reshape(batch_size * steps)
