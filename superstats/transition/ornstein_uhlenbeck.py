@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Tuple, Dict, Any
 import numpy as np
 from numba import njit, prange
@@ -48,6 +50,21 @@ def _one_step_ou(
 
 
 class OrnsteinUhlenbeck(Transition):
+    """Ornstein-Uhlenbeck mean-reverting transition.
+
+    Parameters
+    ----------
+    bounds : tuple or None
+        Lower and upper bounds for the latent state.
+    initial_prior : Prior or None
+        Prior for the initial latent state.
+    sigma : float or Prior or None
+        Diffusion scale.
+    mu : float or Prior or None
+        Long-run mean to revert towards.
+    theta : float or Prior or None
+        Mean-reversion speed.
+    """
 
     def __init__(
         self,
@@ -68,15 +85,25 @@ class OrnsteinUhlenbeck(Transition):
         self.transition_type = "ou"
 
     def sample(self, batch_size: int, steps: int) -> Dict[str, Any]:
+        """
+        Draw `batch_size` Ornstein-Uhlenbeck trajectories of length `steps`.
+
+        Parameters
+        ----------
+        batch_size : int
+        steps : int
+
+        Returns
+        -------
+        dict
+            Dictionary with keys ``local_params``, ``hyper_params``,
+            and ``fixed_params``.
+        """
 
         local_params = np.empty((batch_size, steps), dtype=self.dtype)
         local_params[:, 0] = self.initial_prior.sample(batch_size).astype(self.dtype)
 
         hyper, fixed = self._resolve_hyperparams(batch_size)
-
-        # -------------------------
-        # SAFE resolution (batch arrays guaranteed)
-        # -------------------------
 
         if "sigma" in hyper:
             sigma = hyper["sigma"]
@@ -108,6 +135,22 @@ class OrnsteinUhlenbeck(Transition):
         }
 
     def sample_one_step(self, x: float, params: Dict[str, Any]) -> float:
+        """
+        Advance a single OU step.
+
+        Parameters
+        ----------
+        x : float
+            Previous latent state.
+        params : dict
+            Expect keys ``mu``, ``theta``, ``sigma``.
+
+        Returns
+        -------
+        float
+            Next latent state.
+        """
+
         mu = float(params["mu"])
         theta = float(params["theta"])
         sigma = float(params["sigma"])

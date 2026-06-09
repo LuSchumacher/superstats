@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Tuple, Dict, Any
 import numpy as np
 from numba import njit, prange
@@ -41,9 +43,23 @@ def _one_step_jump(
     return x
 
 class Jump(Transition):
-    """
-    Simple jump process:
-    stay or jump to proposal draw.
+    """Simple jump process: stay or jump to a proposal draw.
+
+    Parameters
+    ----------
+    bounds : tuple or None
+        Lower and upper bounds for the latent state.
+    initial_prior : Prior or None
+        Prior for the initial latent state.
+    p_jump : float or Prior
+        Probability of jumping at each step (or a Prior to infer per-batch).
+    proposal_prior : Prior or None
+        Prior from which to draw proposal values when a jump occurs.
+
+    Notes
+    -----
+    At each step the process either stays at the previous value or jumps
+    to an independent proposal sampled from ``proposal_prior``.
     """
 
     def __init__(
@@ -65,6 +81,20 @@ class Jump(Transition):
         self.transition_type = "jump"
 
     def sample(self, batch_size: int, steps: int) -> Dict[str, Any]:
+        """
+        Draw `batch_size` jump-process trajectories of length `steps`.
+
+        Parameters
+        ----------
+        batch_size : int
+        steps : int
+
+        Returns
+        -------
+        dict
+            Dictionary with keys ``local_params``, ``hyper_params``, and
+            ``fixed_params``.
+        """
 
         local_params = np.empty((batch_size, steps), dtype=self.dtype)
         local_params[:, 0] = self.initial_prior.sample(batch_size).astype(self.dtype)
@@ -95,6 +125,22 @@ class Jump(Transition):
         }
 
     def sample_one_step(self, x: float, params: Dict[str, Any]) -> float:
+        """
+        Take one step of the jump process.
+
+        Parameters
+        ----------
+        x : float
+            Previous latent state.
+        params : dict
+            Expect key ``p_jump``.
+
+        Returns
+        -------
+        float
+            Next latent state.
+        """
+
         p_jump = float(params["p_jump"])
         proposal = float(self.proposal_prior.sample(1)[0])
         return _one_step_jump(

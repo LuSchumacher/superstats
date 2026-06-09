@@ -60,10 +60,7 @@ class Mixture(Transition):
             t.initial_prior = self.initial_prior
             
 
-        self.names = names or [
-            t.transition_type + f"_{i}"
-            for i, t in enumerate(self.transitions)
-        ]
+        self.names = names or [t.transition_type for t in self.transitions]
 
         if len(self.names) != self.K:
             raise ValueError(
@@ -281,15 +278,11 @@ class Mixture(Transition):
 
             # sampled hyperparameters
             for k, v in resolved["hyper"].items():
-                hyper_params[
-                    f"{name}.{k}"
-                ] = v.astype(self.dtype)
+                hyper_params[f"{name}_{k}"] = v.astype(self.dtype)
 
             # fixed hyperparameters
             for k, v in resolved["fixed"].items():
-                fixed_params[
-                    f"{name}.{k}"
-                ] = float(v)
+                fixed_params[f"{name}_{k}"] = float(v)
 
         if isinstance(self.mixture_weights, Prior):
             hyper_params["mixture_weights"] = (

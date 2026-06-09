@@ -15,6 +15,23 @@ ParamSpec = Union[Prior, float, None]
 
 
 class Transition(ABC):
+    """Base class for time-varying parameter transitions.
+
+    Subclasses implement stochastic dynamics for a single scalar latent
+    parameter. Subclasses must implement `sample` (generate full
+    trajectories) and `sample_one_step` (advance a single time step).
+
+    Attributes
+    ----------
+    bounds : ndarray
+        Lower and upper bounds for the latent state (applied via
+        `scaled_sigmoid`).
+    initial_prior : Prior
+        Prior used to draw initial latent states.
+    hyper_specs : dict
+        Mapping from hyperparameter names to either a `Prior` (to be
+        sampled per-batch) or a scalar fixed value.
+    """
 
     dtype = np.float32
 
@@ -92,4 +109,21 @@ class Transition(ABC):
         batch_size: int,
         steps: int
     ) -> Dict[str, Any]:
+        """
+        Generate `batch_size` latent trajectories of length `steps`.
+
+        Parameters
+        ----------
+        batch_size : int
+            Number of independent trajectories to draw.
+        steps : int
+            Number of time steps per trajectory (including initial state).
+
+        Returns
+        -------
+        dict
+            Dictionary with at least keys ``local_params`` (ndarray,
+            shape ``(batch_size, steps)``), ``hyper_params`` and
+            ``fixed_params`` describing sampled and fixed hyperparameters.
+        """
         raise NotImplementedError
