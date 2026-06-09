@@ -9,7 +9,7 @@ del setup
 from . import (
     prior,
     simulation,
-    study,
+    workflow,
     transition,
     networks
 )
