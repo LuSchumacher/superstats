@@ -5,54 +5,50 @@ from numba import njit, prange
 @njit(parallel=True, fastmath=True)
 def r2_score_per_step(true: np.ndarray, estimated: np.ndarray) -> np.ndarray:
     """
-    R² score per simulation, trial and parameter.
-
     Parameters
     ----------
     true : np.ndarray, shape (num_sim, num_trials, num_params)
     estimated : np.ndarray, shape (num_sim, num_trials, num_params)
+        Posterior medians — compute before calling this function.
 
     Returns
     -------
-    np.ndarray, shape (num_sim, num_trials, num_params)
+    np.ndarray, shape (num_trials, num_params)
     """
     num_sim, num_trials, num_params = true.shape
-    r2_scores = np.zeros((num_sim, num_trials, num_params))
-    for s in prange(num_sim):
-        for t in range(num_trials):
-            for p in range(num_params):
-                y_true = true[s, :t+1, p]
-                y_pred = estimated[s, :t+1, p]
-                ss_res = np.sum((y_true - y_pred) ** 2)
-                ss_tot = np.sum((y_true - np.mean(y_true)) ** 2)
-                r2_scores[s, t, p] = 1.0 - ss_res / (ss_tot + 1e-12)
+    r2_scores = np.zeros((num_trials, num_params))
+    for t in prange(num_trials):
+        for p in range(num_params):
+            y_true = true[:, t, p]
+            y_pred = estimated[:, t, p]
+            ss_res = np.sum((y_true - y_pred) ** 2)
+            ss_tot = np.sum((y_true - np.mean(y_true)) ** 2)
+            r2_scores[t, p] = 1.0 - ss_res / (ss_tot + 1e-12)
     return r2_scores
 
 
 @njit(parallel=True, fastmath=True)
 def nrmse_per_step(true: np.ndarray, estimated: np.ndarray) -> np.ndarray:
     """
-    Normalised RMSE per simulation, trial and parameter.
-
     Parameters
     ----------
     true : np.ndarray, shape (num_sim, num_trials, num_params)
     estimated : np.ndarray, shape (num_sim, num_trials, num_params)
+        Posterior medians.
 
     Returns
     -------
-    np.ndarray, shape (num_sim, num_trials, num_params)
+    np.ndarray, shape (num_trials, num_params)
     """
     num_sim, num_trials, num_params = true.shape
-    nrmse = np.zeros((num_sim, num_trials, num_params))
-    for s in prange(num_sim):
-        for t in range(num_trials):
-            for p in range(num_params):
-                y_true = true[s, :t+1, p]
-                y_pred = estimated[s, :t+1, p]
-                rmse = np.sqrt(np.mean((y_pred - y_true) ** 2))
-                true_range = y_true.max() - y_true.min()
-                nrmse[s, t, p] = rmse / (true_range + 1e-12)
+    nrmse = np.zeros((num_trials, num_params))
+    for t in prange(num_trials):
+        for p in range(num_params):
+            y_true = true[:, t, p]
+            y_pred = estimated[:, t, p]
+            rmse = np.sqrt(np.mean((y_pred - y_true) ** 2))
+            true_range = y_true.max() - y_true.min()
+            nrmse[t, p] = rmse / (true_range + 1e-12)
     return nrmse
 
 

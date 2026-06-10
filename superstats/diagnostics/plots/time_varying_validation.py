@@ -25,6 +25,7 @@ METRIC_LABELS = {
     "calibration": "Calibration\nError",
 }
 
+
 def _summarize(
     values: np.ndarray,
     estimator: str,
@@ -85,7 +86,9 @@ def plot_time_varying_validation(
     param_names : list of str, optional
         Column labels. Defaults to param_0, param_1, ...
     estimator : "median" | "mean"
+        Used for contraction and calibration (which retain sim axis).
     uncertainty : "ci" | "std" | "mad"
+        Used for contraction and calibration CI bands.
     bootstrap_calibration : bool
         If True, show CI band for calibration error via bootstrap.
     n_bootstrap : int
@@ -96,29 +99,26 @@ def plot_time_varying_validation(
     if param_names is None:
         param_names = [f"param_{p}" for p in range(num_params)]
 
-    # -- point estimates for r2 and nrmse --
-    point_est = estimated.mean(axis=2)  # (num_sim, num_trials, num_params)
+    # -- point estimates: posterior median per sim per trial --
+    point_est = np.median(estimated, axis=2)  # (num_sim, num_trials, num_params)
 
-    r2          = r2_score_per_step(true, point_est)
-    nrmse       = nrmse_per_step(true, point_est)
+    # r2 and nrmse: already aggregated across sims -> (num_trials, num_params)
+    r2    = r2_score_per_step(true, point_est)
+    nrmse = nrmse_per_step(true, point_est)
+
+    # contraction: per sim -> (num_sim, num_trials, num_params)
     contraction = posterior_contraction_per_step(true, estimated)
+
+    # calibration: (num_trials, num_params) or (n_bootstrap, num_trials, num_params)
     calibration = calibration_error_per_step(
         estimated, true,
         bootstrap=bootstrap_calibration,
         n_bootstrap=n_bootstrap,
     )
 
-    # calibration shape: (num_trials, num_params) or (n_bootstrap, num_trials, num_params)
     calibration_has_ci = bootstrap_calibration
 
-    metrics = {
-        "r2":          r2,           # (num_sim, num_trials, num_params)
-        "nrmse":       nrmse,        # (num_sim, num_trials, num_params)
-        "contraction": contraction,  # (num_sim, num_trials, num_params)
-        "calibration": calibration,  # (num_trials, num_params) or (n_bootstrap, ...)
-    }
-
-    metric_keys = list(metrics.keys())
+    metric_keys = ["r2", "nrmse", "contraction", "calibration"]
     n_rows = len(metric_keys)
     n_cols = num_params
     trials = np.arange(1, num_trials + 1)
@@ -133,22 +133,41 @@ def plot_time_varying_validation(
 
     for row_i, key in enumerate(metric_keys):
         color = METRIC_COLORS[key]
-        data  = metrics[key]
 
-        # collect y range for shared axis
         y_min, y_max = np.inf, -np.inf
-
         summaries = []
+
         for p in range(num_params):
-            if key == "calibration" and not calibration_has_ci:
-                # already aggregated — no band
-                center = data[:, p]
+            if key == "r2":
+                # (num_trials,) — no CI band
+                center = r2[:, p]
                 lower  = center
                 upper  = center
-            else:
+
+            elif key == "nrmse":
+                # (num_trials,) — no CI band
+                center = nrmse[:, p]
+                lower  = center
+                upper  = center
+
+            elif key == "contraction":
+                # (num_sim, num_trials) — has CI band
                 center, lower, upper = _summarize(
-                    data[:, :, p], estimator, uncertainty
+                    contraction[:, :, p], estimator, uncertainty
                 )
+
+            elif key == "calibration":
+                if calibration_has_ci:
+                    # (n_bootstrap, num_trials) — has CI band
+                    center, lower, upper = _summarize(
+                        calibration[:, :, p], estimator, uncertainty
+                    )
+                else:
+                    # (num_trials,) — no CI band
+                    center = calibration[:, p]
+                    lower  = center
+                    upper  = center
+
             summaries.append((center, lower, upper))
             y_min = min(y_min, lower.min())
             y_max = max(y_max, upper.max())
