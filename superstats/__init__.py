@@ -7,6 +7,7 @@ setup()
 del setup
 
 from . import (
+    diagnostics,
     prior,
     simulation,
     workflow,
