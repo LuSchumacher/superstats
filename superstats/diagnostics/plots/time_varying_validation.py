@@ -131,6 +131,21 @@ def plot_time_varying_validation(
         for r in range(n_rows)
     ])
 
+    print("trials shape:", trials.shape)
+    print("r2 shape:", r2.shape)
+    print("nrmse shape:", nrmse.shape)
+    print("contraction shape:", contraction.shape)
+    print("calibration shape:", calibration.shape)
+
+    for row_i, key in enumerate(metric_keys):
+        for p in range(num_params):
+            if key == "r2":
+                print(f"r2[:,{p}] shape:", r2[:, p].shape)
+            elif key == "contraction":
+                c, l, u = _summarize(contraction[:, :, p], estimator, uncertainty)
+                print(f"contraction center p={p} shape:", c.shape)
+
+
     for row_i, key in enumerate(metric_keys):
         color = METRIC_COLORS[key]
 
