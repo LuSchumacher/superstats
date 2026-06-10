@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from superstats.prior.joint_prior import JointPrior
+from superstats.diagnostics.plots.prior_push_forward import plot_push_forward as _plot_push_forward
+
 
 class GenerativeModel:
     """
@@ -259,119 +261,10 @@ class GenerativeModel:
 
     def plot_push_forward(
         self,
-        batch_size: int = 6,
-        steps: int = 100,
+        batch_size: int = 20,
+        steps: int = 200,
         data_dim: int = 0,
-        type: str = "hist",
-        aggregate: bool = False,
-        stats_fun: callable = None,
-        n_cols: int = 3,
-        color: str = "#822621",
-        title_fontsize: int = 14,
-        tick_fontsize: int = 10,
-        alpha: float = 0.8,
+        **kwargs,
     ):
         data = self.sample(batch_size=batch_size, steps=steps)["data"]
-        x = data[:, :, data_dim]  # (batch_size, steps)
-
-        COL_WIDTH, ROW_HEIGHT = 4.0, 3.0
-
-        # ----------------------------------------------------------------
-        # trajectory + aggregate: mean line + 95% CI
-        # ----------------------------------------------------------------
-        if type == "trajectory" and aggregate:
-            mean = x.mean(axis=0)
-            lower = np.percentile(x, 2.5, axis=0)
-            upper = np.percentile(x, 97.5, axis=0)
-            t = np.arange(steps)
-
-            fig, ax = plt.subplots(figsize=(COL_WIDTH * 2, ROW_HEIGHT))
-            ax.plot(t, mean, color=color, linewidth=2.0)
-            ax.fill_between(t, lower, upper, color=color, alpha=0.25)
-            ax.set_xlabel("step", fontsize=tick_fontsize)
-            ax.grid(alpha=0.3)
-            ax.tick_params(labelsize=tick_fontsize)
-
-        # ----------------------------------------------------------------
-        # hist + aggregate: stats_fun per batch item -> hist of results
-        # ----------------------------------------------------------------
-        elif type == "hist" and aggregate:
-            fn = stats_fun if stats_fun is not None else lambda x: x.mean(axis=-1)
-            stats = fn(x)
-            stats = np.asarray(stats).reshape(-1)
-
-            fig, ax = plt.subplots(figsize=(COL_WIDTH * 2, ROW_HEIGHT))
-            sns.histplot(
-                stats,
-                bins=30,
-                stat="density",
-                kde=True,
-                line_kws={"linewidth": 2.0},
-                ax=ax,
-                color=color,
-                alpha=alpha,
-            )
-            ax.set_xlabel("")
-            ax.set_ylabel("")
-            ax.grid(alpha=0.3)
-            ax.tick_params(labelsize=tick_fontsize)
-
-        # ----------------------------------------------------------------
-        # trajectory + no aggregate: one panel per batch item
-        # ----------------------------------------------------------------
-        elif type == "trajectory":
-            n_rows = int(np.ceil(batch_size / n_cols))
-            fig, axes = plt.subplots(
-                n_rows, n_cols,
-                figsize=(COL_WIDTH * n_cols, ROW_HEIGHT * n_rows),
-            )
-            axes = np.atleast_1d(axes).ravel()
-            t = np.arange(steps)
-
-            for i in range(batch_size):
-                ax = axes[i]
-                ax.plot(t, x[i], color=color, alpha=alpha, linewidth=1.5)
-                ax.set_title(f"dataset {i}", fontsize=title_fontsize)
-                ax.set_xlabel("step", fontsize=tick_fontsize)
-                ax.grid(alpha=0.3)
-                ax.tick_params(labelsize=tick_fontsize)
-
-            for j in range(batch_size, len(axes)):
-                axes[j].axis("off")
-
-        # ----------------------------------------------------------------
-        # hist + no aggregate: one panel per batch item
-        # ----------------------------------------------------------------
-        else:
-            n_rows = int(np.ceil(batch_size / n_cols))
-            fig, axes = plt.subplots(
-                n_rows, n_cols,
-                figsize=(COL_WIDTH * n_cols, ROW_HEIGHT * n_rows),
-            )
-            axes = np.atleast_1d(axes).ravel()
-
-            for i in range(batch_size):
-                ax = axes[i]
-                sns.histplot(
-                    x[i],
-                    bins=30,
-                    stat="density",
-                    kde=True,
-                    line_kws={"linewidth": 2.0},
-                    ax=ax,
-                    color=color,
-                    alpha=alpha,
-                )
-                ax.set_title(f"dataset {i}", fontsize=title_fontsize)
-                ax.set_xlabel("")
-                ax.set_ylabel("")
-                ax.grid(alpha=0.3)
-                ax.tick_params(labelsize=tick_fontsize)
-
-            for j in range(batch_size, len(axes)):
-                axes[j].axis("off")
-
-        sns.despine()
-        plt.tight_layout()
-        
-        return fig
+        return _plot_push_forward(data=data, data_dim=data_dim, **kwargs)
