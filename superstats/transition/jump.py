@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Tuple, Dict, Any
 import numpy as np
 from numba import njit, prange
