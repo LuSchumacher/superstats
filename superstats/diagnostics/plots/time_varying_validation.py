@@ -12,10 +12,10 @@ from superstats.diagnostics.metrics import (
 )
 
 METRIC_COLORS = {
-    "r2":          "#C1440E",
-    "nrmse":       "#E8871A",
-    "contraction": "#D4A843",
-    "calibration": "#7B3F00",
+    "r2":          "#822621",
+    "nrmse":       "#C1440E",
+    "contraction": "#E8871A",
+    "calibration": "#D4A843",
 }
 
 METRIC_LABELS = {

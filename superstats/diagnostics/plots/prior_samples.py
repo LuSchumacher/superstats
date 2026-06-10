@@ -6,11 +6,11 @@ import matplotlib.gridspec as gridspec
 import seaborn as sns
 
 
-PALETTE = ["#C1440E", "#E8871A", "#D4A843", "#7B3F00"]
+PALETTE = ["#822621", "#C1440E", "#E8871A", "#D4A843", ]
 
 
 def _trajectory_palette(base_color: str, n: int) -> list:
-    warm_ramp = ["#C4846A", base_color, "#4A0E0E"]
+    warm_ramp = ["#D4A843", base_color, "#822621"]
     cmap = mcolors.LinearSegmentedColormap.from_list("warm_traj", warm_ramp)
     return [cmap(i / max(n - 1, 1)) for i in range(n)]
 

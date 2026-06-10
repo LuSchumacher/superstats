@@ -13,7 +13,7 @@ from superstats.diagnostics.plots.prior_samples import (
     plot_joint_prior          as _plot_joint_prior,
 )
 
-PALETTE = ["#C1440E", "#E8871A", "#D4A843", "#7B3F00"]
+PALETTE = ["#822621", "#C1440E", "#E8871A", "#D4A843"]
 
 
 class JointPrior:
