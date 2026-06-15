@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from superstats.prior.joint_prior import JointPrior
-from superstats.diagnostics.plots.prior_push_forward import plot_push_forward as _plot_push_forward
+from superstats.diagnostics.plots.prior_push_forward import plot_push_forward
 
 
 class GenerativeModel:
@@ -50,13 +50,13 @@ class GenerativeModel:
         self.param_order = list(self.signature.parameters.keys())
 
         # Run a pilot draw to determine key groups once
-        pilot = self.prior.sample(batch_size=1, steps=1)
+        pilot = self.prior.sample(batch_size=1, num_steps=1)
         self.local_keys = list(pilot["local_params"].keys()) if pilot.get("local_params") else []
         self.hyper_keys = list(pilot["hyper_params"].keys()) if pilot.get("hyper_params") else []
         self.shared_keys = list(pilot["shared_params"].keys()) if pilot.get("shared_params") else []
         self.fixed_keys = list(pilot["fixed_params"].keys()) if pilot.get("fixed_params") else []
 
-    def _prepare_flat_params(self, combined_params, batch_size, steps):
+    def _prepare_flat_params(self, combined_params, batch_size, num_steps):
         # Broadcast and flatten parameters for vectorized simulation.
         flat_params = {}
         for name in self.param_order:
@@ -73,15 +73,15 @@ class GenerativeModel:
             p = np.asarray(p)
             # shared parameters
             if p.ndim == 1:
-                p = np.broadcast_to(p[:, None], (batch_size, steps))
-                flat_params[name] = p.reshape(batch_size * steps)
+                p = np.broadcast_to(p[:, None], (batch_size, num_steps))
+                flat_params[name] = p.reshape(batch_size * num_steps)
             # local parameters
             elif p.ndim == 2:
-                flat_params[name] = p.reshape(batch_size * steps)
+                flat_params[name] = p.reshape(batch_size * num_steps)
             # fixed parameters
             elif p.ndim == 0:
-                p = np.full((batch_size, steps), p.item(), dtype=np.asarray(p).dtype)
-                flat_params[name] = p.reshape(batch_size * steps)
+                p = np.full((batch_size, num_steps), p.item(), dtype=np.asarray(p).dtype)
+                flat_params[name] = p.reshape(batch_size * num_steps)
             else:
                 raise ValueError(
                     f"Unexpected shape for parameter '{name}': {p.shape}"
@@ -89,8 +89,7 @@ class GenerativeModel:
 
         return flat_params
 
-    def _normalize_local_params(self, params, batch_size, steps):
-        # Normalize time-varying parameters to shape (batch_size, steps, 1).
+    def _normalize_local_params(self, params, batch_size, num_steps):
         if not params:
             return None
 
@@ -99,9 +98,9 @@ class GenerativeModel:
             arr = np.asarray(value)
             if arr.ndim != 2:
                 raise ValueError(
-                    f"Local parameter '{name}' must have shape (batch_size, steps), got {arr.shape}"
+                    f"Local parameter '{name}' must have shape (batch_size, num_steps), got {arr.shape}"
                 )
-            normalized[name] = arr.reshape(batch_size, steps, 1)
+            normalized[name] = arr.reshape(batch_size, num_steps, 1)
         return normalized
 
     def _normalize_batch_params(self, params, batch_size):
@@ -139,7 +138,7 @@ class GenerativeModel:
     def sample(
         self,
         batch_size: int,
-        steps: int,
+        num_steps: int,
         include_fixed: bool = False,
         tile_to_steps: bool = False
     ):
@@ -156,23 +155,23 @@ class GenerativeModel:
         ----------
         batch_size : int
             Number of independent simulation batches to generate.
-        steps : int
+        num_steps : int
             Number of time steps per trajectory.
         include_fixed : bool, optional
             If True, include ``fixed_params`` in the returned dictionary.
             Default is False.
         tile_to_steps : bool, optional
             If True, tile ``hyper_params`` and ``shared_params`` from shape
-            (batch_size, 1) to (batch_size, steps, 1), aligning them with
+            (batch_size, 1) to (batch_size, num_steps, 1), aligning them with
             the time axis of local parameters. Default is False.
 
         Returns
         -------
         dict
             Flat dictionary with ``'data'`` plus one entry per sampled parameter.
-            Local (time-varying) params have shape ``(batch_size, steps, 1)``;
+            Local (time-varying) params have shape ``(batch_size, num_steps, 1)``;
             hyper and shared params have shape ``(batch_size, 1)``, or
-            ``(batch_size, steps, 1)`` when ``tile_to_steps`` is True.
+            ``(batch_size, num_steps, 1)`` when ``tile_to_steps`` is True.
             Fixed params are included only when ``include_fixed`` is True.
 
             The instance attributes ``local_keys``, ``hyper_keys``,
@@ -186,7 +185,7 @@ class GenerativeModel:
         """
 
         # Sample parameters
-        prior_draws = self.prior.sample(batch_size=batch_size, steps=steps)
+        prior_draws = self.prior.sample(batch_size=batch_size, num_steps=num_steps)
         local_params = prior_draws["local_params"]
         shared_params = prior_draws.get("shared_params", {})
         fixed_params = prior_draws.get("fixed_params", {})
@@ -201,7 +200,7 @@ class GenerativeModel:
 
         # Broadcast + flatten params
         flat_params = self._prepare_flat_params(
-            combined_params, batch_size, steps
+            combined_params, batch_size, num_steps
         )
 
         # Order parameters according to model signature
@@ -227,23 +226,23 @@ class GenerativeModel:
 
         sim_data = sim_data.reshape(
             batch_size,
-            steps,
+            num_steps,
             *output_shape
         )
 
-        local_params = self._normalize_local_params(local_params, batch_size, steps)
+        local_params = self._normalize_local_params(local_params, batch_size, num_steps)
         hyper_params = self._normalize_batch_params(prior_draws.get("hyper_params", {}), batch_size)
         shared_params = self._normalize_batch_params(shared_params, batch_size)
 
         if tile_to_steps:
             if hyper_params is not None:
                 hyper_params = {
-                    k: np.tile(v[:, np.newaxis, :], (1, steps, 1))
+                    k: np.tile(v[:, np.newaxis, :], (1, num_steps, 1))
                     for k, v in hyper_params.items()
                 }
             if shared_params is not None:
                 shared_params = {
-                    k: np.tile(v[:, np.newaxis, :], (1, steps, 1))
+                    k: np.tile(v[:, np.newaxis, :], (1, num_steps, 1))
                     for k, v in shared_params.items()
                 }
     
@@ -261,10 +260,10 @@ class GenerativeModel:
 
     def plot_push_forward(
         self,
-        batch_size: int = 20,
-        steps: int = 200,
+        num_sim: int = 20,
+        num_steps: int = 200,
         data_dim: int = 0,
         **kwargs,
     ):
-        data = self.sample(batch_size=batch_size, steps=steps)["data"]
-        return _plot_push_forward(data=data, data_dim=data_dim, **kwargs)
+        data = self.sample(batch_size=num_sim, num_steps=num_steps)["data"]
+        return plot_push_forward(data=data, data_dim=data_dim, **kwargs)

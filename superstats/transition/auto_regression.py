@@ -82,14 +82,14 @@ class AutoRegression(Transition):
 
         self.transition_type = "ar1"
 
-    def sample(self, batch_size: int, steps: int) -> Dict[str, Any]:
+    def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
         """
-        Draw `batch_size` AR(1) trajectories of length `steps`.
+        Draw `batch_size` AR(1) trajectories of length `num_steps`.
 
         Parameters
         ----------
         batch_size : int
-        steps : int
+        num_steps : int
 
         Returns
         -------
@@ -98,7 +98,7 @@ class AutoRegression(Transition):
             and ``fixed_params``.
         """
 
-        local_params = np.empty((batch_size, steps), dtype=self.dtype)
+        local_params = np.empty((batch_size, num_steps), dtype=self.dtype)
         local_params[:, 0] = self.initial_prior.sample(batch_size).astype(self.dtype)
 
         hyper, fixed = self._resolve_hyperparams(batch_size)

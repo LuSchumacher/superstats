@@ -78,14 +78,14 @@ class Jump(Transition):
         self.proposal_prior = proposal_prior or Prior("normal", loc=0.0, scale=1.0)
         self.transition_type = "jump"
 
-    def sample(self, batch_size: int, steps: int) -> Dict[str, Any]:
+    def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
         """
-        Draw `batch_size` jump-process trajectories of length `steps`.
+        Draw `batch_size` jump-process trajectories of length `num_steps`.
 
         Parameters
         ----------
         batch_size : int
-        steps : int
+        num_steps : int
 
         Returns
         -------
@@ -94,7 +94,7 @@ class Jump(Transition):
             ``fixed_params``.
         """
 
-        local_params = np.empty((batch_size, steps), dtype=self.dtype)
+        local_params = np.empty((batch_size, num_steps), dtype=self.dtype)
         local_params[:, 0] = self.initial_prior.sample(batch_size).astype(self.dtype)
 
         hyper, fixed = self._resolve_hyperparams(batch_size)
@@ -104,9 +104,9 @@ class Jump(Transition):
         else:
             p_jump = np.full(batch_size, fixed["p_jump"], dtype=self.dtype)
 
-        proposals = self.proposal_prior.sample(batch_size * (steps - 1)).reshape(
+        proposals = self.proposal_prior.sample(batch_size * (num_steps - 1)).reshape(
             batch_size,
-            steps - 1,
+            num_steps - 1,
         ).astype(self.dtype)
 
         local_params = _sample_jump_process(

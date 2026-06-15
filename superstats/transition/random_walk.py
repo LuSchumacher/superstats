@@ -75,26 +75,26 @@ class RandomWalk(Transition):
 
         self.transition_type = "rw"
 
-    def sample(self, batch_size: int, steps: int) -> Dict[str, Any]:
+    def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
         """
-        Draw `batch_size` random-walk trajectories of length `steps`.
+        Draw `batch_size` random-walk trajectories of length `num_steps`.
 
         Parameters
         ----------
         batch_size : int
             Number of trajectories to draw.
-        steps : int
+        num_steps : int
             Number of time points (including initial state).
 
         Returns
         -------
         dict
-            Contains ``local_params`` (ndarray of shape ``(batch_size, steps)``),
+            Contains ``local_params`` (ndarray of shape ``(batch_size, num_steps)``),
             ``hyper_params`` (sampled per-batch hyperparameters) and
             ``fixed_params`` (fixed scalar hyperparameters).
         """
 
-        local_params = np.empty((batch_size, steps), dtype=self.dtype)
+        local_params = np.empty((batch_size, num_steps), dtype=self.dtype)
         local_params[:, 0] = self.initial_prior.sample(batch_size).astype(self.dtype)
 
         hyper, fixed = self._resolve_hyperparams(batch_size)

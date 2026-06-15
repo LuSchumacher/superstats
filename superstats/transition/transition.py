@@ -105,16 +105,16 @@ class Transition(ABC):
     def sample(
         self,
         batch_size: int,
-        steps: int
+        num_steps: int
     ) -> Dict[str, Any]:
         """
-        Generate `batch_size` latent trajectories of length `steps`.
+        Generate `batch_size` latent trajectories of length `num_steps`.
 
         Parameters
         ----------
         batch_size : int
             Number of independent trajectories to draw.
-        steps : int
+        num_steps : int
             Number of time steps per trajectory (including initial state).
 
         Returns

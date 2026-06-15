@@ -159,20 +159,20 @@ class Mixture(Transition):
     def _sample_regimes(
         self,
         weights: np.ndarray,
-        steps: int
+        num_steps: int
     ) -> np.ndarray:
 
         batch_size = weights.shape[0]
 
         regimes = np.zeros(
-            (batch_size, steps),
+            (batch_size, num_steps),
             dtype=np.int32
         )
 
         for b in range(batch_size):
             regimes[b] = np.random.choice(
                 self.K,
-                size=steps,
+                size=num_steps,
                 p=weights[b]
             )
 
@@ -181,7 +181,7 @@ class Mixture(Transition):
     def sample(
         self,
         batch_size: int,
-        steps: int
+        num_steps: int
     ) -> Dict[str, Any]:
 
         if self.initial_prior is None:
@@ -193,7 +193,7 @@ class Mixture(Transition):
             )
 
         local_params = np.empty(
-            (batch_size, steps),
+            (batch_size, num_steps),
             dtype=self.dtype
         )
 
@@ -211,7 +211,7 @@ class Mixture(Transition):
 
         regimes = self._sample_regimes(
             weights,
-            steps
+            num_steps
         )
 
         # resolve transition hyperparameters
@@ -243,7 +243,7 @@ class Mixture(Transition):
             })
 
         for b in range(batch_size):          
-            for t in range(1, steps):
+            for t in range(1, num_steps):
 
                 k = regimes[b, t]
                 model = self.transitions[k]

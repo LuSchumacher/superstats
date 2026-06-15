@@ -1,12 +1,8 @@
-import bayesflow as bf
+DEFAULT_SUMMARY_NETWORK = {
+    "recurrent_type": "gru",
+    "hidden_dim": 128
+}
 
-from superstats.networks import RecurrentNet
-
-DEFAULT_SUMMARY_NETWORK = RecurrentNet(
-    recurrent_type="gru",
-    hidden_dim=128
-)
-
-DEFAULT_INFERENCE_NETWORK = bf.networks.StableConsistencyModel(
-    subnet_kwargs={"widths": (128,)*3}
-)
+DEFAULT_INFERENCE_NETWORK = {
+    "subnet_kwargs": {"widths": (128,)*3}
+}

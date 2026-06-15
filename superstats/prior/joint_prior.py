@@ -26,7 +26,7 @@ class JointPrior:
     - float/int -> fixed parameters
 
     Returns structured output:
-    - local_params  : time-varying (batch, steps)
+    - local_params  : time-varying (batch, num_steps)
     - hyper_params  : inferred hyperparameters
     - shared_params : inferred stationary parameters (batch,)
     - fixed_params  : all fixed values (including fixed hyperparameters)
@@ -35,7 +35,7 @@ class JointPrior:
     def __init__(self, **kwargs: Transition | Prior | float | int):
         self.params = kwargs
 
-    def sample(self, batch_size: int, steps: int) -> Dict[str, Any]:
+    def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
 
         local_params: Dict[str, np.ndarray] = {}
         hyper_params: Dict[str, np.ndarray] = {}
@@ -44,7 +44,7 @@ class JointPrior:
 
         for name, param in self.params.items():
             if isinstance(param, Transition):
-                samples = param.sample(batch_size=batch_size, steps=steps)
+                samples = param.sample(batch_size=batch_size, num_steps=num_steps)
                 local_params[name] = samples["local_params"]
 
                 for k, v in samples["hyper_params"].items():
@@ -87,11 +87,11 @@ class JointPrior:
 
     def plot_time_varying_prior(
         self,
-        steps: int = 200,
+        num_steps: int = 200,
         num_trajectories: int = 20,
         **kwargs
     ):
-        samples = self.sample(batch_size=num_trajectories, steps=steps)
+        samples = self.sample(batch_size=num_trajectories, num_steps=num_steps)
         return _plot_time_varying_prior(
             local_params=samples["local_params"],
             param_bounds=self._param_bounds(),
@@ -99,7 +99,7 @@ class JointPrior:
         )
 
     def plot_time_invariant_prior(self, num_draws: int = 1000, **kwargs):
-        samples = self.sample(batch_size=num_draws, steps=1)
+        samples = self.sample(batch_size=num_draws, num_steps=1)
         return _plot_time_invariant_prior(
             hyper_params=samples["hyper_params"],
             shared_params=samples["shared_params"],
@@ -109,12 +109,12 @@ class JointPrior:
 
     def plot_joint_prior(
         self,
-        steps: int = 200,
+        num_steps: int = 200,
         num_trajectories: int = 20,
         num_draws: int = 2000,
         **kwargs
     ):
-        samples = self.sample(batch_size=num_draws, steps=steps)
+        samples = self.sample(batch_size=num_draws, num_steps=num_steps)
         local_params = {
             k: v[:num_trajectories]
             for k, v in samples["local_params"].items()
