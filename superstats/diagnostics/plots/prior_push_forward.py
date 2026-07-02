@@ -16,8 +16,8 @@ def plot_push_forward(
     kind: str = "dist",
     aggregate_fun: str | Callable | None = None,
     uncertainty_fun: str | Callable | None = None,
-    spaghetti: bool = True,
     marginal: bool = True,
+    spaghetti: bool = False,
     n_cols: int = 3,
     color: str = "#822621",
     title_fontsize: int = 14,
@@ -156,7 +156,7 @@ def plot_push_forward(
                     lower,
                     upper,
                     color=color,
-                    alpha=0.25,
+                    alpha=0.4,
                     edgecolor="none",
                     zorder=1,
                 )

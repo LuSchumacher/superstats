@@ -6,7 +6,7 @@ from .prior_samples import (
 from .posterior_samples import (
     plot_time_varying_posterior,
     plot_time_invariant_posterior,
-    plot_joint_posterior,
+    # plot_joint_posterior,
 
 )
 from .prior_push_forward import plot_push_forward

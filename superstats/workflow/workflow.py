@@ -4,6 +4,9 @@ import bayesflow as bf
 import numpy as np
 import keras
 import functools
+import os
+import pickle
+import warnings
 
 from bayesflow.adapters import Adapter
 from bayesflow.networks import SummaryNetwork, InferenceNetwork
@@ -20,12 +23,13 @@ from superstats.diagnostics.plots.time_varying_validation import (
 from superstats.diagnostics.plots.posterior_samples import (
     plot_time_varying_posterior,
     plot_time_invariant_posterior,
-    plot_joint_posterior,
+    # plot_joint_posterior,
 )
 
 
 class Workflow:
     """Lightweight amortized Bayesian inference workflow wrapper."""
+
 
     def __init__(
         self,
@@ -34,6 +38,8 @@ class Workflow:
         summary_network: Literal["recurrent"] | SummaryNetwork | None = "recurrent",
         inference_network: Literal["consistency"] | InferenceNetwork = "consistency",
         checkpoint_filepath: str | None = None,
+        restore_approximator: bool = True,
+        restore_history: bool = True,
         **kwargs
     ):
         self.simulator = simulator
@@ -68,6 +74,18 @@ class Workflow:
 
         self.checkpoint_filepath = checkpoint_filepath
 
+        if restore_approximator and self.checkpoint_filepath is not None and os.path.isdir(self.checkpoint_filepath):
+            restore = True
+        elif restore_approximator:
+            warnings.warn(
+                f"restore_approximator=True but no model found at '{self.checkpoint_filepath}'. "
+                "Starting with no trained model.",
+                stacklevel=2
+            )
+            restore = False
+        else:
+            restore = False
+
         self.workflow = bf.BasicWorkflow(
             simulator=self.simulator,
             adapter=self.adapter,
@@ -75,8 +93,43 @@ class Workflow:
             inference_network=self.inference_network,
             standardize="all",
             checkpoint_filepath=self.checkpoint_filepath,
+            restore=restore,
             **kwargs
         )
+
+
+        if restore_history and self.checkpoint_filepath is not None and os.path.isdir(self.checkpoint_filepath):
+            self._load_history()
+        elif restore_history:
+            warnings.warn(
+                f"restore_history=True but no history found at '{self.checkpoint_filepath}'. "
+                "Starting with no history.",
+                stacklevel=2
+            )
+
+
+    def _load_history(self) -> None:
+        if self.checkpoint_filepath is None:
+            return
+        path = os.path.join(self.checkpoint_filepath, "history.pkl")
+        if not os.path.exists(path):
+            return
+        with open(path, "rb") as f:
+            self.workflow.history = pickle.load(f)
+
+
+    def _save_history(self, new_history: keras.callbacks.History) -> None:
+        if self.checkpoint_filepath is None:
+            return
+        existing = self.workflow.history
+        if existing is not None:
+            for key, values in new_history.history.items():
+                existing.history.setdefault(key, []).extend(values)
+            new_history = existing
+        os.makedirs(self.checkpoint_filepath, exist_ok=True)
+        with open(os.path.join(self.checkpoint_filepath, "history.pkl"), "wb") as f:
+            pickle.dump(new_history, f)
+        self.workflow.history = new_history
 
 
     def fit_offline(
@@ -85,6 +138,7 @@ class Workflow:
         validation_data,
         epochs: int = 100,
         batch_size: int = 32,
+        save_history: bool = True,
         **kwargs
     ) -> keras.callbacks.History:
         history = self.workflow.fit_offline(
@@ -95,6 +149,9 @@ class Workflow:
             **kwargs
         )
 
+        if save_history:
+            self._save_history(history)
+
         return history
 
 
@@ -104,6 +161,7 @@ class Workflow:
         epochs: int = 100,
         num_batches_per_epoch: int = 100,
         batch_size: int = 32,
+        save_history: bool = True,
         **kwargs
     ) -> keras.callbacks.History:
         original_sample = self.simulator.sample
@@ -120,8 +178,15 @@ class Workflow:
         finally:
             self.simulator.sample = original_sample
 
+        if save_history:
+            self._save_history(history)
+
         return history
-    
+
+
+    @property
+    def history(self):
+        return self.workflow.history
 
     @property
     def approximator(self):
@@ -159,10 +224,7 @@ class Workflow:
         )
         return samples
 
-    def plot_history(
-        self,
-        history: keras.callbacks.History
-    ):
+    def plot_history(self, history):
         return bf.diagnostics.plots.loss(history, train_color="#822621")
 
     def validate_time_varying(

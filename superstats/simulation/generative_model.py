@@ -263,7 +263,21 @@ class GenerativeModel:
         num_sim: int = 20,
         num_steps: int = 200,
         data_dim: int = 0,
+        kind: str = "dist",
+        aggregate_fun: str | Callable | None = None,
+        uncertainty_fun: str | Callable | None = None,
+        spaghetti: bool = True,
+        marginal: bool = True,
         **kwargs,
     ):
         data = self.sample(batch_size=num_sim, num_steps=num_steps)["data"]
-        return plot_push_forward(data=data, data_dim=data_dim, **kwargs)
+        return plot_push_forward(
+            data=data,
+            data_dim=data_dim,
+            kind=kind,
+            aggregate_fun=aggregate_fun,
+            uncertainty_fun=uncertainty_fun,
+            spaghetti=spaghetti,
+            marginal=marginal,
+            **kwargs
+        )

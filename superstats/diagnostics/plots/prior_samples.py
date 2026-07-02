@@ -1,3 +1,5 @@
+from typing import Sequence
+
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
@@ -15,15 +17,15 @@ PALETTE = [
 
 
 def plot_time_varying_prior(
-    local_params: dict,
-    param_bounds: dict | None = None,
+    local_params: dict[str, np.ndarray],
+    param_bounds: dict[str, tuple[float, float]] | None = None,
     color: str = "#822621",
     num_cols: int = 2,
     title_fontsize: int = 16,
     label_fontsize: int = 14,
     tick_fontsize: int = 12,
     alpha: float = 0.5,
-):
+) -> plt.Figure:
     """
     Plot time-varying parameter trajectories with marginal KDE.
 
@@ -119,14 +121,14 @@ def plot_time_varying_prior(
 
 
 def plot_time_invariant_prior(
-    hyper_params: dict,
-    shared_params: dict,
-    mixture_names: dict | None = None,
+    hyper_params: dict[str, np.ndarray],
+    shared_params: dict[str, np.ndarray],
+    mixture_names: dict[str, Sequence[str]] | None = None,
     color: str = "#822621",
     num_cols: int = 2,
     title_fontsize: int = 16,
     tick_fontsize: int = 12,
-):
+) -> plt.Figure:
     """
     Plot time-invariant parameter distributions.
 
@@ -222,16 +224,16 @@ def plot_time_invariant_prior(
 
 
 def plot_joint_prior(
-    local_params: dict,
-    hyper_params: dict,
-    shared_params: dict,
-    param_bounds: dict | None = None,
-    mixture_names: dict | None = None,
+    local_params: dict[str, np.ndarray],
+    hyper_params: dict[str, np.ndarray],
+    shared_params: dict[str, np.ndarray],
+    param_bounds: dict[str, tuple[float, float]] | None = None,
+    mixture_names: dict[str, Sequence[str]] | None = None,
     color: str = "#822621",
-    title_fontsize: int = 18,
+    title_fontsize: int = 16,
     tick_fontsize: int = 12,
     alpha: float = 0.5,
-):
+) -> plt.Figure:
     """
     Plot joint prior diagnostics combining hyperparameter distributions,
     shared parameter histograms, and time-varying trajectories.
@@ -253,7 +255,7 @@ def plot_joint_prior(
         weight parameters.
     color : str, default "#822621"
         Base plotting color for KDEs and trajectories.
-    title_fontsize : int, default 18
+    title_fontsize : int, default 16
     tick_fontsize : int, default 12
     alpha : float, default 0.5
         Transparency for individual trajectories.
