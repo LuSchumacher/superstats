@@ -11,3 +11,4 @@ from .posterior_samples import (
 )
 from .prior_push_forward import plot_push_forward
 from .time_varying_validation import plot_time_varying_validation
+from .posterior_resimulation import plot_posterior_resimulation
