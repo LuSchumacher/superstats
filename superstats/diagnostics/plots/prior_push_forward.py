@@ -1,28 +1,30 @@
-from __future__ import annotations
-
 from collections.abc import Callable
+from typing import Literal
 
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
+import matplotlib.patches as mpatches
 import seaborn as sns
 
 plt.rcParams["axes.axisbelow"] = True
+
+BAND_LABELS = {"std": "±1 SD", "95ci": "95% CI", "mad": "±1.48 MAD", "95hdi": "95% HDI"}
 
 
 def plot_push_forward(
     data: np.ndarray,
     data_dim: int = 0,
-    kind: str = "dist",
-    aggregate_fun: str | Callable | None = None,
-    uncertainty_fun: str | Callable | None = None,
+    kind: Literal["trajectory", "dist"] = "dist",
+    aggregate_fun: Literal["mean", "median"] | Callable | None = None,
+    uncertainty_fun: Literal["std", "95ci", "mad", "95hdi"] | Callable | None = "95ci",
     marginal: bool = True,
     spaghetti: bool = False,
-    n_cols: int = 3,
+    num_cols: int = 3,
     color: str = "#822621",
-    title_fontsize: int = 14,
-    label_fontsize: int = 12,
-    tick_fontsize: int = 10,
+    title_fontsize: int = 16,
+    label_fontsize: int = 14,
+    tick_fontsize: int = 12,
     alpha: float = 0.5,
     max_discrete_values: int = 30,
 ):
@@ -41,19 +43,19 @@ def plot_push_forward(
         Aggregation function over the dataset dimension.
         If None, individual datasets are shown in separate panels.
         If specified, all datasets are aggregated into a single panel.
-    uncertainty_fun : {"ci95", "std", "mad"} | callable | None
+    uncertainty_fun : {"95ci", "std", "mad"} | callable | None
         Uncertainty function. Only used when aggregate_fun is not None.
     spaghetti : bool
         Whether to draw individual trajectories behind the aggregate line.
     marginal : bool
         Whether to draw marginal distributions beside trajectory plots.
-    n_cols : int, default 3
+    num_cols : int, default 3
         Number of columns when rendering individual panels.
     color : str, default "#822621"
         Base color for plotted lines and fills.
-    title_fontsize : int, default 14
-    label_fontsize : int, default 12
-    tick_fontsize : int, default 10
+    title_fontsize : int, default 16
+    label_fontsize : int, default 14
+    tick_fontsize : int, default 12
     alpha : float, default 0.5
         Alpha value for individual dataset traces.
     max_discrete_values : int, default 30
@@ -83,14 +85,14 @@ def plot_push_forward(
         and categories.size <= max_discrete_values
     )
 
-    col_width, row_height = 4.0, 3.0
+    COL_WIDTH, ROW_HEIGHT = 4.0, 3.0
     layout_rect = None
 
     if show_aggregate:
         if kind == "trajectory":
             t = np.arange(steps)
 
-            fig, base_ax = plt.subplots(figsize=(col_width * 2.5, row_height))
+            fig, base_ax = plt.subplots(figsize=(COL_WIDTH * 2.5, ROW_HEIGHT + 0.5))
             if marginal:
                 sub = base_ax.get_subplotspec().subgridspec(
                     1, 2, width_ratios=[4.2, 0.8], wspace=0.0
@@ -114,7 +116,6 @@ def plot_push_forward(
             if show_uncertainty:
                 if callable(uncertainty_fun):
                     result = uncertainty_fun(x)
-
                     if len(result) == 3:
                         center, lower, upper = result
                     elif len(result) == 2:
@@ -125,30 +126,34 @@ def plot_push_forward(
                             "(lower, upper) or "
                             "(center, lower, upper)."
                         )
-
                     center = np.asarray(center)
                     lower = np.asarray(lower)
                     upper = np.asarray(upper)
-
-                elif uncertainty_fun == "ci95":
+                elif uncertainty_fun == "95ci":
                     lower = np.percentile(x, 2.5, axis=0)
                     upper = np.percentile(x, 97.5, axis=0)
-
                 elif uncertainty_fun == "std":
                     sd = x.std(axis=0)
                     lower = center - sd
                     upper = center + sd
-
                 elif uncertainty_fun == "mad":
                     med = np.median(x, axis=0)
                     mad = np.median(np.abs(x - med), axis=0)
                     scaled_mad = 1.4826 * mad
                     lower = center - scaled_mad
                     upper = center + scaled_mad
-
+                elif uncertainty_fun == "95hdi":
+                    lower, upper = np.empty(steps), np.empty(steps)
+                    for i in range(steps):
+                        vals = np.sort(x[:, i])
+                        n = len(vals)
+                        window = int(np.floor(0.95 * n))
+                        widths = vals[window:] - vals[: n - window]
+                        idx = np.argmin(widths)
+                        lower[i], upper[i] = vals[idx], vals[idx + window]
                 else:
                     raise ValueError(
-                        "uncertainty_fun must be " "'ci95', 'std', 'mad', or callable."
+                        "uncertainty_fun must be " "'95ci', 'std', 'mad', or callable."
                     )
 
                 ax.fill_between(
@@ -200,8 +205,22 @@ def plot_push_forward(
                 ax_marg.set_axis_off()
 
             handles = [
-                mlines.Line2D([], [], color="black", linewidth=2.5, label="Average"),
+                mlines.Line2D([], [], color="black", linewidth=2.5, label="Aggregate"),
             ]
+            if show_uncertainty:
+                band_label = (
+                    BAND_LABELS[uncertainty_fun]
+                    if isinstance(uncertainty_fun, str)
+                    else "Uncertainty"
+                )
+                handles.append(
+                    mpatches.Patch(
+                        facecolor=color,
+                        alpha=0.4,
+                        edgecolor="none",
+                        label=band_label,
+                    )
+                )
             if spaghetti:
                 handles.append(
                     mlines.Line2D(
@@ -224,7 +243,7 @@ def plot_push_forward(
             layout_rect = [0, 0.08, 1, 1]
 
         elif kind == "dist":
-            fig, ax = plt.subplots(figsize=(col_width * 2, row_height))
+            fig, ax = plt.subplots(figsize=(COL_WIDTH * 2.0, ROW_HEIGHT + 0.5))
 
             if discrete:
                 counts = np.array(
@@ -281,11 +300,11 @@ def plot_push_forward(
             raise ValueError("kind must be 'dist' or 'trajectory'.")
 
     elif kind == "trajectory":
-        n_rows = int(np.ceil(batch_size / n_cols))
+        n_rows = int(np.ceil(batch_size / num_cols))
         fig, axes = plt.subplots(
             n_rows,
-            n_cols,
-            figsize=(col_width * n_cols, row_height * n_rows),
+            num_cols,
+            figsize=(COL_WIDTH * num_cols, ROW_HEIGHT * n_rows + 0.5),
         )
         axes = np.atleast_1d(axes).ravel()
         t = np.arange(steps)
@@ -303,8 +322,8 @@ def plot_push_forward(
                 ax = base_ax
                 ax_marg = None
 
-            show_xlabel = i // n_cols == n_rows - 1
-            show_ylabel = i % n_cols == 0
+            show_xlabel = i // num_cols == n_rows - 1
+            show_ylabel = i % num_cols == 0
 
             ax.plot(t, x[i], color=color, alpha=alpha, linewidth=1.5)
             ax.set_title(f"Dataset {i}", fontsize=title_fontsize)
@@ -335,11 +354,11 @@ def plot_push_forward(
             axes[j].axis("off")
 
     else:
-        n_rows = int(np.ceil(batch_size / n_cols))
+        n_rows = int(np.ceil(batch_size / num_cols))
         fig, axes = plt.subplots(
             n_rows,
-            n_cols,
-            figsize=(col_width * n_cols, row_height * n_rows),
+            num_cols,
+            figsize=(COL_WIDTH * num_cols, ROW_HEIGHT * n_rows + 0.5),
         )
         axes = np.atleast_1d(axes).ravel()
 
@@ -362,8 +381,8 @@ def plot_push_forward(
                     alpha=1,
                 )
 
-            show_xlabel = i // n_cols == n_rows - 1
-            show_ylabel = i % n_cols == 0
+            show_xlabel = i // num_cols == n_rows - 1
+            show_ylabel = i % num_cols == 0
 
             ax.set_title(f"Dataset {i}", fontsize=title_fontsize)
             ax.set_xlabel("")
