@@ -28,7 +28,43 @@ from superstats.diagnostics.plots.posterior_samples import (
 
 
 class Workflow:
-    """Lightweight amortized Bayesian inference workflow wrapper."""
+    """Lightweight amortized Bayesian inference workflow wrapper.
+
+    Wraps `bf.BasicWorkflow` with sensible defaults for the summary and
+    inference networks, an auto-built adapter when one isn't supplied,
+    and optional checkpoint/history restoration.
+
+    Parameters
+    ----------
+    simulator            : GenerativeModel or None, optional, default: None
+        The simulator used for training and, when `adapter` is not
+        provided, for building a default adapter. Required in that case.
+    adapter              : Adapter or None, optional, default: None
+        Data adapter for the workflow. If None, a default adapter is
+        built from `simulator.local_keys`, `simulator.hyper_keys`, and
+        `simulator.shared_keys` (which requires `simulator` to be set).
+    summary_network      : {"recurrent"} or SummaryNetwork or None, optional, default: "recurrent"
+        "recurrent" builds a `RecurrentNet` using
+        `DEFAULT_SUMMARY_NETWORK`; otherwise, the given network (or
+        None) is used directly.
+    inference_network    : {"consistency"} or InferenceNetwork, optional, default: "consistency"
+        "consistency" builds a `bf.networks.StableConsistencyModel`
+        using `DEFAULT_INFERENCE_NETWORK`; otherwise, the given network
+        is used directly.
+    checkpoint_filepath  : str or None, optional, default: None
+        Directory for saving/restoring the approximator and training
+        history.
+    restore_approximator : bool, optional, default: True
+        If True and a checkpoint directory exists at
+        `checkpoint_filepath`, restore the approximator from it.
+        Otherwise, a warning is issued and training starts from scratch.
+    restore_history      : bool, optional, default: True
+        If True and a `history.pkl` file exists at
+        `checkpoint_filepath`, restore `self.history` from it.
+        Otherwise, a warning is issued.
+    **kwargs
+        Forwarded to `bf.BasicWorkflow`.
+    """
 
 
     def __init__(
@@ -109,6 +145,11 @@ class Workflow:
 
 
     def _load_history(self) -> None:
+        """Load persisted training history from `checkpoint_filepath`, if present.
+
+        A no-op if `checkpoint_filepath` is None or no `history.pkl`
+        file exists there.
+        """
         if self.checkpoint_filepath is None:
             return
         path = os.path.join(self.checkpoint_filepath, "history.pkl")
@@ -119,6 +160,16 @@ class Workflow:
 
 
     def _save_history(self, new_history: keras.callbacks.History) -> None:
+        """Merge and persist training history to `checkpoint_filepath`.
+
+        A no-op if `checkpoint_filepath` is None.
+
+        Parameters
+        ----------
+        new_history : keras.callbacks.History
+            History from the most recent training run. Merged into any
+            existing `self.workflow.history` before saving.
+        """
         if self.checkpoint_filepath is None:
             return
         existing = self.workflow.history
@@ -141,6 +192,30 @@ class Workflow:
         save_history: bool = True,
         **kwargs
     ) -> keras.callbacks.History:
+        """Train the approximator on a fixed, pre-simulated dataset.
+
+        Parameters
+        ----------
+        data            : Any
+            Training data, in the format expected by
+            `bf.BasicWorkflow.fit_offline`.
+        validation_data : Any
+            Validation data, in the same format as `data`.
+        epochs          : int, optional, default: 100
+            Number of training epochs.
+        batch_size      : int, optional, default: 32
+            Training batch size.
+        save_history    : bool, optional, default: True
+            If True, merge this run's history into `self.history` and
+            persist it to `checkpoint_filepath` (if set).
+        **kwargs
+            Forwarded to `bf.BasicWorkflow.fit_offline`.
+
+        Returns
+        -------
+        history : keras.callbacks.History - the training history for
+            this run
+        """
         history = self.workflow.fit_offline(
             data=data,
             epochs=epochs,
@@ -164,6 +239,35 @@ class Workflow:
         save_history: bool = True,
         **kwargs
     ) -> keras.callbacks.History:
+        """Train the approximator by simulating data on the fly.
+
+        Temporarily binds `self.simulator.sample` to always draw
+        trajectories of length `num_steps` with `tile_to_steps=True`,
+        then restores the original method afterward (even if training
+        raises).
+
+        Parameters
+        ----------
+        num_steps             : int
+            Number of time steps per simulated trajectory during
+            training.
+        epochs                : int, optional, default: 100
+            Number of training epochs.
+        num_batches_per_epoch : int, optional, default: 100
+            Number of simulated batches per epoch.
+        batch_size            : int, optional, default: 32
+            Training batch size.
+        save_history          : bool, optional, default: True
+            If True, merge this run's history into `self.history` and
+            persist it to `checkpoint_filepath` (if set).
+        **kwargs
+            Forwarded to `bf.BasicWorkflow.fit_online`.
+
+        Returns
+        -------
+        history : keras.callbacks.History - the training history for
+            this run
+        """
         original_sample = self.simulator.sample
         self.simulator.sample = functools.partial(
             original_sample, num_steps=num_steps, tile_to_steps=True
@@ -186,10 +290,12 @@ class Workflow:
 
     @property
     def history(self):
+        """keras.callbacks.History or None - the workflow's training history."""
         return self.workflow.history
 
     @property
     def approximator(self):
+        """The underlying trained bf approximator object."""
         return self.workflow.approximator
 
 
@@ -200,22 +306,24 @@ class Workflow:
         inference_batch_size: int = 5,
         **kwargs,
     ) -> dict[str, np.ndarray]:
-        """
-        Run inference on observed data.
+        """Run inference on observed data.
 
         Parameters
         ----------
-        data : np.ndarray, shape (num_datasets, num_steps, data_dims)
-        num_samples : int
+        data                 : np.ndarray of shape (num_datasets, num_steps, data_dims)
+            Observed data to condition on.
+        num_samples          : int, optional, default: 1000
             Number of posterior samples per dataset.
-        inference_batch_size : int
-            Datasets per GPU batch to avoid OOM.
+        inference_batch_size : int, optional, default: 5
+            Datasets per GPU batch, to avoid out-of-memory errors.
+        **kwargs
+            Forwarded to `self.approximator.sample`.
 
         Returns
         -------
-        dict of {param_name: np.ndarray}
+        samples : dict of {param_name: np.ndarray} - posterior samples
+            per parameter
         """
-
         samples = self.approximator.sample(
             conditions={"data": data},
             num_samples=num_samples,
@@ -234,18 +342,29 @@ class Workflow:
 
         Parameters
         ----------
-        posterior_samples : dict[str, np.ndarray]
-            Posterior samples returned by ``self.sample``.
-            Each array should have shape ``(batch_size, num_samples, num_steps, dim)``.
-        num_sims : int, optional
-            Number of posterior predictive trajectories to simulate per dataset.
-        rng : None, int, or np.random.Generator, optional
+        posterior_samples : dict of np.ndarray
+            Posterior samples returned by `self.sample`. Each array
+            should have shape (batch_size, num_samples, num_steps, dim)
+            or (batch_size, num_samples, num_steps).
+        num_sims          : int, optional, default: 10
+            Number of posterior predictive trajectories to simulate
+            per dataset.
+        rng               : int or np.random.Generator or None, optional, default: None
             Random seed or generator for sampling posterior indices.
 
         Returns
         -------
-        np.ndarray
-            Simulated data of shape ``(batch_size, num_sims, num_steps, data_dim)``.
+        sim_data : np.ndarray of shape (batch_size, num_sims,
+            num_steps, data_dim) - simulated data
+
+        Raises
+        ------
+        ValueError
+            If `posterior_samples` is empty, if a posterior array has
+            fewer than 3 dimensions, if a parameter's batch size
+            doesn't match the others, if a parameter has an unsupported
+            number of dimensions, or if a parameter's shape can't be
+            reshaped to collapse the sample axis into the batch axis.
         """
         rng = np.random.default_rng(rng)
 
@@ -322,6 +441,18 @@ class Workflow:
         return raw_sim.reshape(batch_size, num_sims, num_steps, *raw_sim.shape[2:])
 
     def plot_history(self, history):
+        """Plot training loss curves.
+
+        Parameters
+        ----------
+        history : keras.callbacks.History
+            Training history, e.g. from `fit_offline`, `fit_online`, or
+            `self.history`.
+
+        Returns
+        -------
+        fig : plt.Figure - the loss curve figure
+        """
         return bf.diagnostics.plots.loss(history, train_color="#822621")
 
     def validate_time_varying(
@@ -333,20 +464,33 @@ class Workflow:
         param_names: list | None = None,
         **plot_kwargs,
     ):
-        """
-        Simulate, run inference, and plot time-varying parameter recovery.
+        """Simulate, run inference, and plot time-varying parameter recovery.
 
         Parameters
         ----------
-        num_steps : int
-        num_sims : int
-        num_samples : int
-        inference_batch_size : int
-        bootstrap_calibration : bool
-        n_bootstrap : int
-        param_names : list of str, optional
+        true_params           : dict
+            Ground-truth local parameter trajectories, keyed by
+            parameter name; each value has shape
+            (batch_size, num_steps, 1).
+        samples               : dict
+            Posterior samples for the same parameters, keyed by name;
+            each value has shape
+            (batch_size, num_post_samples, num_steps, 1).
+        bootstrap_calibration : bool, optional, default: False
+            If True, show a bootstrap uncertainty band for the
+            calibration error.
+        num_bootstrap         : int, optional, default: 1000
+            Number of bootstrap resamples. Only used when
+            `bootstrap_calibration=True`.
+        param_names           : list of str or None, optional, default: None
+            Column labels. Defaults to `self.simulator.local_keys` when
+            not supplied.
         **plot_kwargs
-            Passed to plot_time_varying_validation.
+            Forwarded to `plot_time_varying_validation`.
+
+        Returns
+        -------
+        fig : plt.Figure - the figure instance for optional saving
         """
         local_keys = self.simulator.local_keys
 
@@ -385,20 +529,47 @@ class Workflow:
         tick_fontsize: int = 16,
         color: str = "#822621"
     ):
-        """
-        Plot time-invariant parameter recovery and calibration.
+        """Plot time-invariant parameter recovery and calibration.
 
         Parameters
         ----------
-        true_params : dict
-            {param_name: np.ndarray of shape (num_sims, dim)}
-        samples : dict
-            {param_name: np.ndarray of shape (num_sims, num_samples, steps, dim)}
-        param_names : list of str, optional
-        num_out : int, optional
-            Number of aggregated samples per simulation. Defaults to num_samples.
-        rng : optional
-            Seed or numpy Generator for reproducibility.
+        true_params     : dict
+            Mapping from parameter name to an np.ndarray of shape
+            (num_sims, dim).
+        samples         : dict
+            Mapping from parameter name to an np.ndarray of shape
+            (num_sims, num_samples, steps, dim).
+        param_names     : list of str or None, optional, default: None
+            Names for each (expanded, per-component) column. Defaults
+            to the hyper/shared keys, expanded per mixture component
+            where applicable.
+        num_out         : int or None, optional, default: None
+            Number of aggregated samples per simulation. Defaults to
+            `num_samples` (no subsampling) when not supplied.
+        rng             : int or np.random.Generator or None, optional, default: None
+            Seed or generator for reproducible pooling.
+        title_fontsize  : int, optional, default: 22
+            The font size of the panel titles.
+        label_fontsize  : int, optional, default: 18
+            The font size of the axis label texts.
+        metric_fontsize : int, optional, default: 18
+            The font size of the displayed recovery/calibration metric
+            text.
+        tick_fontsize   : int, optional, default: 16
+            The font size of the axis tick labels.
+        color           : str, optional, default: "#822621"
+            Base plotting color for both figures.
+
+        Returns
+        -------
+        figs : tuple - `(fig_recovery, fig_calibration)`, the recovery
+            and calibration diagnostic figures
+
+        Raises
+        ------
+        ValueError
+            If no time-invariant parameters (`hyper_keys` +
+            `shared_keys`) are found on `self.simulator`.
         """
         rng = np.random.default_rng(rng)
 
@@ -480,7 +651,11 @@ class Workflow:
         samples : dict
             Posterior sample dictionary.
         **kwargs
-            Forwarded to ``plot_time_varying_posterior``.
+            Forwarded to `plot_time_varying_posterior`.
+
+        Returns
+        -------
+        fig : plt.Figure - the figure instance for optional saving
         """
         return plot_time_varying_posterior(
             samples=samples,
@@ -500,7 +675,11 @@ class Workflow:
         samples : dict
             Posterior sample dictionary.
         **kwargs
-            Forwarded to ``plot_time_invariant_posterior``.
+            Forwarded to `plot_time_invariant_posterior`.
+
+        Returns
+        -------
+        fig : plt.Figure - the figure instance for optional saving
         """
         return plot_time_invariant_posterior(
             samples=samples,

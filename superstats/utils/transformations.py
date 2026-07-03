@@ -7,15 +7,15 @@ def scaled_sigmoid(
     lower_bound: float | np.ndarray,
     upper_bound: float | np.ndarray
 ) -> float | np.ndarray:
-    """
-    Apply a sigmoid transformation and rescale to a bounded interval.
+    """Apply a sigmoid transformation and rescale to a bounded interval.
 
-    This function maps input values to a specified range using a scaled sigmoid.
-    The transformation is: lower_bound + (upper_bound - lower_bound) / (1 + exp(-x))
+    This function maps input values to a specified range using a scaled
+    sigmoid. The transformation is:
+    lower_bound + (upper_bound - lower_bound) / (1 + exp(-x))
 
     Parameters
     ----------
-    x : float or np.ndarray
+    x           : float or np.ndarray
         Input value(s) to transform.
     lower_bound : float or np.ndarray
         Lower bound of the output range.
@@ -24,7 +24,7 @@ def scaled_sigmoid(
 
     Returns
     -------
-    float or np.ndarray
-        Transformed value(s) in the range [lower_bound, upper_bound].
+    y : float or np.ndarray - transformed value(s) in
+        [lower_bound, upper_bound]
     """
     return lower_bound + (upper_bound - lower_bound) / (1.0 + np.exp(-x))

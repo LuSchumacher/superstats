@@ -31,14 +31,26 @@ def _summarize(
     estimator: str,
     uncertainty: str,
 ):
-    """
-    Summarize (num_sim, num_trials) -> center, lower, upper per trial.
+    """Summarize (num_sim, num_trials) values into center, lower, upper per trial.
 
     Parameters
     ----------
-    values : np.ndarray, shape (num_sim, num_trials)
-    estimator : "median" | "mean"
-    uncertainty : "ci" | "std" | "mad"
+    values      : np.ndarray of shape (num_sim, num_trials)
+        Values to summarize across the simulation axis.
+    estimator   : {"median", "mean"}
+        Center statistic to compute per trial.
+    uncertainty : {"ci", "std", "mad"}
+        Band type to compute around the center per trial.
+
+    Returns
+    -------
+    result : tuple - `(center, lower, upper)`, each an np.ndarray of
+        shape (num_trials,)
+
+    Raises
+    ------
+    ValueError
+        If `uncertainty` is not "ci", "std", or "mad".
     """
     if estimator == "median":
         center = np.median(values, axis=0)
@@ -74,25 +86,38 @@ def plot_time_varying_validation(
     label_fontsize: int = 13,
     tick_fontsize: int = 11,
 ):
-    """
-    Plot recovery diagnostics over trials for time-varying parameters.
+    """Plot recovery diagnostics over trials for time-varying parameters.
 
     Parameters
     ----------
-    true : np.ndarray, shape (num_sim, num_trials, num_params)
+    true                  : np.ndarray of shape (num_sim, num_trials, num_params)
         Ground-truth parameter trajectories.
-    estimated : np.ndarray, shape (num_sim, num_trials, num_post_samples, num_params)
+    estimated              : np.ndarray of shape (num_sim, num_trials, num_post_samples, num_params)
         Posterior samples per simulation and trial.
-    param_names : list of str, optional
-        Column labels. Defaults to param_0, param_1, ...
-    estimator : "median" | "mean"
-        Used for contraction and calibration (which retain sim axis).
-    uncertainty : "ci" | "std" | "mad"
-        Used for contraction and calibration CI bands.
-    bootstrap_calibration : bool
-        If True, show CI band for calibration error via bootstrap.
-    n_bootstrap : int
-        Bootstrap samples for calibration CI.
+    param_names            : list of str or None, optional, default: None
+        Column labels. Defaults to `param_0`, `param_1`, ... when not
+        supplied.
+    estimator              : {"median", "mean"}, optional, default: "median"
+        Used for the contraction and calibration center lines (which
+        retain the simulation axis).
+    uncertainty            : {"ci", "std", "mad"}, optional, default: "ci"
+        Used for the contraction and calibration uncertainty bands.
+    bootstrap_calibration   : bool, optional, default: False
+        If True, show an uncertainty band for the calibration error,
+        computed via bootstrap.
+    n_bootstrap             : int, optional, default: 1000
+        Number of bootstrap resamples. Only used when
+        `bootstrap_calibration=True`.
+    title_fontsize          : int, optional, default: 16
+        The font size of the column titles (parameter names).
+    label_fontsize          : int, optional, default: 13
+        The font size of the axis label texts and row labels.
+    tick_fontsize           : int, optional, default: 11
+        The font size of the axis tick labels.
+
+    Returns
+    -------
+    fig : plt.Figure - the figure instance for optional saving
     """
     num_sim, num_trials, num_params = true.shape
 

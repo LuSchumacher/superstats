@@ -28,43 +28,53 @@ def plot_push_forward(
     alpha: float = 0.5,
     max_discrete_values: int = 30,
 ):
-    """
-    Plot prior push-forward for a single data dimension.
+    """Plot prior push-forward for a single data dimension.
 
     Parameters
     ----------
-    data : np.ndarray, shape (batch_size, steps, data_dims)
+    data                : np.ndarray of shape (batch_size, steps, data_dims)
         Simulation data from the generative model.
-    data_dim : int
+    data_dim            : int, optional, default: 0
         Which data dimension to plot.
-    kind : {"dist", "trajectory"}
-        Plot type: distribution of summary statistics or time-series trajectories.
-    aggregate_fun : {"mean", "median"} | callable | None
+    kind                : {"dist", "trajectory"}, optional, default: "dist"
+        Plot type: distribution of summary statistics or time-series
+        trajectories.
+    aggregate_fun       : {"mean", "median"} or callable or None, optional, default: None
         Aggregation function over the dataset dimension.
         If None, individual datasets are shown in separate panels.
         If specified, all datasets are aggregated into a single panel.
-    uncertainty_fun : {"95ci", "std", "mad"} | callable | None
-        Uncertainty function. Only used when aggregate_fun is not None.
-    spaghetti : bool
-        Whether to draw individual trajectories behind the aggregate line.
-    marginal : bool
+    uncertainty_fun     : {"std", "95ci", "mad", "95hdi"} or callable or None, optional, default: "95ci"
+        Uncertainty function. Only used when `aggregate_fun` is not None.
+    marginal            : bool, optional, default: True
         Whether to draw marginal distributions beside trajectory plots.
-    num_cols : int, default 3
+    spaghetti           : bool, optional, default: False
+        Whether to draw individual trajectories behind the aggregate line.
+    num_cols            : int, optional, default: 3
         Number of columns when rendering individual panels.
-    color : str, default "#822621"
+    color               : str, optional, default: "#822621"
         Base color for plotted lines and fills.
-    title_fontsize : int, default 16
-    label_fontsize : int, default 14
-    tick_fontsize : int, default 12
-    alpha : float, default 0.5
+    title_fontsize      : int, optional, default: 16
+        The font size of the panel titles.
+    label_fontsize      : int, optional, default: 14
+        The font size of the axis label texts.
+    tick_fontsize       : int, optional, default: 12
+        The font size of the axis tick labels.
+    alpha               : float in [0, 1], optional, default: 0.5
         Alpha value for individual dataset traces.
-    max_discrete_values : int, default 30
+    max_discrete_values : int, optional, default: 30
         Maximum number of discrete categories to treat the data as discrete.
 
     Returns
     -------
-    matplotlib.figure.Figure
-        Figure containing the requested push-forward visualization.
+    fig : plt.Figure - the figure instance for optional saving
+
+    Raises
+    ------
+    ValueError
+        If `kind` is not "dist" or "trajectory", if `uncertainty_fun`
+        is given without `aggregate_fun`, or if `aggregate_fun` or
+        `uncertainty_fun` (when given as a string) is not one of the
+        recognized values.
     """
     if kind not in {"dist", "trajectory"}:
         raise ValueError("kind must be 'dist' or 'trajectory'.")
@@ -153,7 +163,8 @@ def plot_push_forward(
                         lower[i], upper[i] = vals[idx], vals[idx + window]
                 else:
                     raise ValueError(
-                        "uncertainty_fun must be " "'95ci', 'std', 'mad', or callable."
+                        "uncertainty_fun must be "
+                        "'std', '95ci', 'mad', '95hdi', or callable."
                     )
 
                 ax.fill_between(

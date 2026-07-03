@@ -4,16 +4,20 @@ from numba import njit, prange
 
 @njit(parallel=True, fastmath=True)
 def r2_score_per_step(true: np.ndarray, estimated: np.ndarray) -> np.ndarray:
-    """
+    """Coefficient of determination (R2) between true and estimated values, per trial and parameter.
+
     Parameters
     ----------
-    true : np.ndarray, shape (num_sim, num_trials, num_params)
-    estimated : np.ndarray, shape (num_sim, num_trials, num_params)
-        Posterior medians — compute before calling this function.
+    true      : np.ndarray of shape (num_sim, num_trials, num_params)
+        Ground-truth parameter values.
+    estimated : np.ndarray of shape (num_sim, num_trials, num_params)
+        Point estimates (e.g. posterior medians) - compute before
+        calling this function.
 
     Returns
     -------
-    np.ndarray, shape (num_trials, num_params)
+    r2 : np.ndarray of shape (num_trials, num_params) - R2 per trial
+        and parameter
     """
     num_sim, num_trials, num_params = true.shape
     r2_scores = np.zeros((num_trials, num_params))
@@ -29,16 +33,19 @@ def r2_score_per_step(true: np.ndarray, estimated: np.ndarray) -> np.ndarray:
 
 @njit(parallel=True, fastmath=True)
 def nrmse_per_step(true: np.ndarray, estimated: np.ndarray) -> np.ndarray:
-    """
+    """Normalized RMSE between true and estimated values, per trial and parameter.
+
     Parameters
     ----------
-    true : np.ndarray, shape (num_sim, num_trials, num_params)
-    estimated : np.ndarray, shape (num_sim, num_trials, num_params)
-        Posterior medians.
+    true      : np.ndarray of shape (num_sim, num_trials, num_params)
+        Ground-truth parameter values.
+    estimated : np.ndarray of shape (num_sim, num_trials, num_params)
+        Point estimates (e.g. posterior medians).
 
     Returns
     -------
-    np.ndarray, shape (num_trials, num_params)
+    nrmse : np.ndarray of shape (num_trials, num_params) - RMSE
+        normalized by the true value range, per trial and parameter
     """
     num_sim, num_trials, num_params = true.shape
     nrmse = np.zeros((num_trials, num_params))
@@ -58,18 +65,23 @@ def posterior_contraction_per_step(
     estimated: np.ndarray,
     eps: float = 1e-12,
 ) -> np.ndarray:
-    """
-    Posterior contraction per simulation, trial and parameter.
+    """Posterior contraction per simulation, trial and parameter.
 
     Parameters
     ----------
-    true : np.ndarray, shape (num_sim, num_trials, num_params)
-    estimated : np.ndarray, shape (num_sim, num_trials, num_post_samples, num_params)
-    eps : float
+    true      : np.ndarray of shape (num_sim, num_trials, num_params)
+        Ground-truth parameter values, used to estimate the prior
+        variance per trial and parameter.
+    estimated : np.ndarray of shape (num_sim, num_trials, num_post_samples, num_params)
+        Posterior samples.
+    eps       : float, optional, default: 1e-12
+        Numerical floor added to the prior variance denominator.
 
     Returns
     -------
-    np.ndarray, shape (num_sim, num_trials, num_params)
+    contraction : np.ndarray of shape (num_sim, num_trials, num_params)
+        - 1 minus the ratio of posterior to prior variance, per
+        simulation, trial, and parameter
     """
     num_sim, num_trials, num_params = true.shape
     contraction = np.zeros((num_sim, num_trials, num_params))
@@ -89,9 +101,22 @@ def _calibration_error_per_step_core(
     targets: np.ndarray,
     resolution: int,
 ) -> np.ndarray:
-    """
-    Core calibration error computation returning (num_sim, num_trials, num_params).
-    Each sim's calibration is computed using all sims for coverage estimation.
+    """Per-simulation calibration error, using all simulations for coverage estimation.
+
+    Parameters
+    ----------
+    estimates  : np.ndarray of shape (num_sim, num_trials, num_post_samples, num_params)
+        Posterior samples.
+    targets    : np.ndarray of shape (num_sim, num_trials, num_params)
+        Ground-truth parameter values.
+    resolution : int
+        Number of credible interval levels to evaluate.
+
+    Returns
+    -------
+    calibration_error : np.ndarray of shape (num_sim, num_trials, num_params)
+        - median absolute calibration error across credible interval
+        levels, per simulation, trial, and parameter
     """
     num_sim, num_trials, num_post_samples, num_params = estimates.shape
     calibration_error = np.zeros((num_sim, num_trials, num_params))
@@ -124,7 +149,23 @@ def _calibration_error_aggregated(
     targets: np.ndarray,
     resolution: int,
 ) -> np.ndarray:
-    """Aggregated calibration error returning (num_trials, num_params)."""
+    """Calibration error aggregated over simulations.
+
+    Parameters
+    ----------
+    estimates  : np.ndarray of shape (num_sim, num_trials, num_post_samples, num_params)
+        Posterior samples.
+    targets    : np.ndarray of shape (num_sim, num_trials, num_params)
+        Ground-truth parameter values.
+    resolution : int
+        Number of credible interval levels to evaluate.
+
+    Returns
+    -------
+    calibration_error : np.ndarray of shape (num_trials, num_params) -
+        median absolute calibration error across credible interval
+        levels, per trial and parameter
+    """
     num_sim, num_trials, num_post_samples, num_params = estimates.shape
     calibration_error = np.zeros((num_trials, num_params))
 
@@ -156,26 +197,28 @@ def calibration_error_per_step(
     bootstrap: bool = False,
     n_bootstrap: int = 1000,
 ) -> np.ndarray:
-    """
-    Calibration error per trial and parameter.
+    """Calibration error per trial and parameter.
 
     Parameters
     ----------
-    estimates : np.ndarray, shape (num_sim, num_trials, num_post_samples, num_params)
-    targets   : np.ndarray, shape (num_sim, num_trials, num_params)
-    resolution : int
+    estimates   : np.ndarray of shape (num_sim, num_trials, num_post_samples, num_params)
+        Posterior samples.
+    targets     : np.ndarray of shape (num_sim, num_trials, num_params)
+        Ground-truth parameter values.
+    resolution  : int, optional, default: 20
         Number of credible interval levels.
-    bootstrap : bool
-        If False (default), returns aggregated (num_trials, num_params).
-        If True, returns bootstrap distribution (n_bootstrap, num_trials, num_params).
-    n_bootstrap : int
-        Number of bootstrap samples. Only used when bootstrap=True.
+    bootstrap   : bool, optional, default: False
+        If False, returns the error aggregated over simulations. If
+        True, returns a bootstrap distribution of the per-simulation
+        error resampled over simulations.
+    n_bootstrap : int, optional, default: 1000
+        Number of bootstrap resamples. Only used when `bootstrap=True`.
 
     Returns
     -------
-    np.ndarray
-        Shape (num_trials, num_params) if bootstrap=False,
-        (n_bootstrap, num_trials, num_params) if bootstrap=True.
+    result : np.ndarray - calibration error of shape (num_trials,
+        num_params) if `bootstrap=False`, or (n_bootstrap, num_trials,
+        num_params) if `bootstrap=True`
     """
     estimates = np.ascontiguousarray(estimates, dtype=np.float64)
     targets   = np.ascontiguousarray(targets,   dtype=np.float64)

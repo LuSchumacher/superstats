@@ -9,8 +9,7 @@ from superstats.diagnostics.plots.prior_push_forward import plot_push_forward
 
 
 class GenerativeModel:
-    """
-    A generative model that combines a joint prior with a simulation function.
+    """A generative model that combines a joint prior with a simulation function.
 
     This class facilitates sampling parameters from a joint prior distribution
     and generating simulated data using a user-provided model function. It handles
@@ -20,11 +19,17 @@ class GenerativeModel:
     Parameters
     ----------
     prior : JointPrior
-        The joint prior distribution over model parameters, which may include
-        both time-varying transitions and time-invariant priors.
+        The joint prior distribution over model parameters, which may
+        include both time-varying transitions and time-invariant priors.
     model : Callable
-        The simulation function that takes parameter values and returns simulated data.
-        The function signature determines the expected parameter names and order.
+        The simulation function that takes parameter values and returns
+        simulated data. The function signature determines the expected
+        parameter names and order.
+
+    Raises
+    ------
+    TypeError
+        If `model` is not callable.
     """
 
     def __init__(
@@ -32,16 +37,6 @@ class GenerativeModel:
         prior: JointPrior,
         model: Callable
     ):
-        """
-        Initialize the generative model.
-
-        Parameters
-        ----------
-        prior : JointPrior
-            The joint prior distribution for model parameters.
-        model : Callable
-            The simulation function to generate data from parameters.
-        """
         self.prior = prior
         self.model = model
 
@@ -65,7 +60,43 @@ class GenerativeModel:
         batch_size: int,
         num_steps: int,
     ) -> Dict[str, np.ndarray]:
-        """Broadcast and flatten parameters for vectorized simulation."""
+        """Broadcast and flatten parameters for vectorized simulation.
+
+        Each entry in `combined_params` is broadcast to (batch_size,
+        num_steps[, dim]) and flattened along the first two axes, so the
+        simulator can be called once with 1D (or 2D, if `dim > 1`) inputs
+        instead of being looped over trials and steps.
+
+        Parameters
+        ----------
+        combined_params : dict of np.ndarray
+            Mapping from model parameter name to a value of ndim 0, 1,
+            2, or 3:
+            - ndim 0 (scalar): broadcast to every trial and step.
+            - ndim 1: shape (batch_size,), broadcast across steps.
+            - ndim 2: shape (batch_size, num_steps), or
+              (batch_size, dim) broadcast across steps.
+            - ndim 3: shape (batch_size, num_steps, dim).
+            Keys not present in `combined_params` are skipped if the
+            model parameter has a default value.
+        batch_size      : int
+            Number of independent simulation batches.
+        num_steps       : int
+            Number of time steps per trajectory.
+
+        Returns
+        -------
+        flat_params : dict of np.ndarray - mapping from parameter name
+            to a flattened array of shape (batch_size * num_steps,) or
+            (batch_size * num_steps, dim), ready to pass to `self.model`
+
+        Raises
+        ------
+        ValueError
+            If a required parameter (no default in the model signature)
+            is missing from `combined_params`, or if a parameter's
+            shape doesn't match any of the supported ndim-0/1/2/3 cases.
+        """
         flat_params: Dict[str, np.ndarray] = {}
 
         for name in self.param_order:
@@ -125,7 +156,16 @@ class GenerativeModel:
         return flat_params
 
     def get_fixed_params(self) -> Dict[str, np.ndarray]:
-        """Return deterministic fixed parameters from the prior for model simulation."""
+        """Return deterministic fixed parameters from the prior for model simulation.
+
+        Draws a single pilot sample from `self.prior` and keeps only the
+        fixed-parameter entries that the model actually consumes.
+
+        Returns
+        -------
+        fixed_params : dict of np.ndarray - mapping from parameter name
+            to its fixed value, restricted to names in `self.param_order`
+        """
         prior_draws = self.prior.sample(batch_size=1, num_steps=1)
         fixed_params = prior_draws.get("fixed_params", {})
         return {
@@ -140,7 +180,30 @@ class GenerativeModel:
         batch_size: int,
         num_steps: int,
     ) -> np.ndarray:
-        """Simulate model outputs for given parameter values."""
+        """Simulate model outputs for given parameter values.
+
+        Parameters
+        ----------
+        params     : dict of np.ndarray
+            Parameter values to simulate from, keyed by model parameter
+            name. See `_prepare_flat_params` for the accepted shapes.
+        batch_size : int
+            Number of independent simulation batches.
+        num_steps  : int
+            Number of time steps per trajectory.
+
+        Returns
+        -------
+        sim_data : np.ndarray of shape (batch_size, num_steps, ...) -
+            simulated data reshaped to trajectory format, where any
+            trailing dimensions match `self.model`'s own output shape
+
+        Raises
+        ------
+        ValueError
+            If a required parameter is missing from `params` and has no
+            default in the model signature, or has an unsupported shape.
+        """
         combined_params = dict(params)
 
         flat_params = self._prepare_flat_params(
@@ -174,7 +237,29 @@ class GenerativeModel:
         batch_size: int,
         num_steps: int,
     ) -> Optional[Dict[str, np.ndarray]]:
-        """Validate and normalize local (time-varying) parameters."""
+        """Validate and normalize local (time-varying) parameters.
+
+        Parameters
+        ----------
+        params     : dict of np.ndarray
+            Mapping from parameter name to an array of shape
+            (batch_size, num_steps).
+        batch_size : int
+            Expected first-axis size for every parameter.
+        num_steps  : int
+            Expected second-axis size for every parameter.
+
+        Returns
+        -------
+        normalized : dict of np.ndarray or None - each array reshaped
+            to (batch_size, num_steps, 1); None if `params` is empty
+
+        Raises
+        ------
+        ValueError
+            If any parameter's shape is not exactly
+            (batch_size, num_steps).
+        """
         if not params:
             return None
 
@@ -193,7 +278,27 @@ class GenerativeModel:
         params: Dict[str, np.ndarray],
         batch_size: int,
     ) -> Optional[Dict[str, np.ndarray]]:
-        """Validate and normalize batch-level parameters."""
+        """Validate and normalize batch-level (non-time-varying) parameters.
+
+        Parameters
+        ----------
+        params     : dict of np.ndarray
+            Mapping from parameter name to a scalar, or an array of
+            ndim 1 or 2.
+        batch_size : int
+            Expected first-axis size for 1D/2D parameters, and the
+            number of copies to broadcast a scalar to.
+
+        Returns
+        -------
+        normalized : dict of np.ndarray or None - each array reshaped
+            or broadcast to (batch_size, dim); None if `params` is empty
+
+        Raises
+        ------
+        ValueError
+            If any parameter has ndim greater than 2.
+        """
         if not params:
             return None
 
@@ -224,8 +329,7 @@ class GenerativeModel:
         include_fixed: bool = False,
         tile_to_steps: bool = False,
     ) -> Dict[str, np.ndarray]:
-        """
-        Sample parameters from the prior and generate simulated data.
+        """Sample parameters from the prior and generate simulated data.
 
         This method performs a complete generative process:
         1. Samples parameters from the joint prior distribution
@@ -235,37 +339,37 @@ class GenerativeModel:
 
         Parameters
         ----------
-        batch_size : int
+        batch_size    : int
             Number of independent simulation batches to generate.
-        num_steps : int
+        num_steps     : int
             Number of time steps per trajectory.
-        include_fixed : bool, optional
-            If True, include ``fixed_params`` in the returned dictionary.
-            Default is False.
-        tile_to_steps : bool, optional
-            If True, tile ``hyper_params`` and ``shared_params`` from shape
-            (batch_size, 1) to (batch_size, num_steps, 1), aligning them with
-            the time axis of local parameters. Default is False.
+        include_fixed : bool, optional, default: False
+            If True, include `fixed_params` in the returned dictionary.
+        tile_to_steps : bool, optional, default: False
+            If True, tile `hyper_params` and `shared_params` from shape
+            (batch_size, 1) to (batch_size, num_steps, 1), aligning
+            them with the time axis of local parameters.
 
         Returns
         -------
-        dict
-            Flat dictionary with ``'data'`` plus one entry per sampled parameter.
-            Local (time-varying) params have shape ``(batch_size, num_steps, 1)``;
-            hyper and shared params have shape ``(batch_size, 1)``, or
-            ``(batch_size, num_steps, 1)`` when ``tile_to_steps`` is True.
-            Fixed params are included only when ``include_fixed`` is True.
+        result : dict - flat dictionary with `'data'` plus one entry
+            per sampled parameter.
+            Local (time-varying) params have shape
+            (batch_size, num_steps, 1); hyper and shared params have
+            shape (batch_size, 1), or (batch_size, num_steps, 1) when
+            `tile_to_steps` is True.
+            Fixed params are included only when `include_fixed` is True.
 
-            The instance attributes ``local_keys``, ``hyper_keys``,
-            ``shared_keys``, and ``fixed_keys`` are updated each call to
+            The instance attributes `local_keys`, `hyper_keys`,
+            `shared_keys`, and `fixed_keys` are updated each call to
             record which keys belong to which parameter group.
 
         Raises
         ------
         ValueError
-            If required parameters are missing from the prior or have invalid shapes.
+            If required parameters are missing from the prior or have
+            invalid shapes.
         """
-
         # Sample parameters
         prior_draws = self.prior.sample(batch_size=batch_size, num_steps=num_steps)
         local_params = prior_draws["local_params"]
@@ -356,29 +460,30 @@ class GenerativeModel:
 
         Parameters
         ----------
-        num_sim : int, optional
+        num_sim         : int, optional, default: 20
             Number of simulated datasets to generate.
-        num_steps : int, optional
+        num_steps       : int, optional, default: 200
             Number of time steps per simulation.
-        data_dim : int, optional
+        data_dim        : int, optional, default: 0
             Data dimension to plot.
-        kind : {"dist", "trajectory"}, optional
+        kind            : {"dist", "trajectory"}, optional, default: "dist"
             Plot type.
-        aggregate_fun : {"mean", "median"} | callable | None, optional
+        aggregate_fun   : {"mean", "median"} or callable or None, optional, default: None
             Aggregation function over simulations.
-        uncertainty_fun : {"ci95", "std", "mad"} | callable | None, optional
-            Uncertainty function for aggregate trajectory plots.
-        spaghetti : bool, optional
+        uncertainty_fun : {"std", "95ci", "mad", "95hdi"} or callable or None, optional, default: None
+            Uncertainty function for aggregate trajectory plots. Forwarded
+            directly to `plot_push_forward`, so the accepted values must
+            match that function's own supported set.
+        spaghetti       : bool, optional, default: True
             If True, include individual trajectories.
-        marginal : bool, optional
+        marginal        : bool, optional, default: True
             If True, include marginal distributions beside trajectories.
         **kwargs
-            Forwarded to ``plot_push_forward``.
+            Forwarded to `plot_push_forward`.
 
         Returns
         -------
-        matplotlib.figure.Figure
-            Figure containing the plot.
+        fig : plt.Figure - the figure containing the requested plot
         """
         data = self.sample(batch_size=num_sim, num_steps=num_steps)["data"]
         return plot_push_forward(

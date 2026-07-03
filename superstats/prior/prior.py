@@ -1,17 +1,30 @@
 import numpy as np
-from typing import Literal, Optional, Sequence
+from typing import Literal, Sequence
 
 
 class Prior:
-    """
-    Simple generative prior distribution.
+    """Simple generative prior distribution.
 
-    Supported distributions:
-    - normal
-    - uniform
-    - beta
-    - halfnormal
-    - dirichlet
+    Parameters
+    ----------
+    dist  : {"normal", "uniform", "beta", "halfnormal", "dirichlet"}
+        Distribution type.
+    loc   : float, optional, default: 0.0
+        Mean for `normal`.
+    scale : float, optional, default: 1.0
+        Standard deviation for `normal` / `halfnormal`.
+    low   : float, optional, default: 0.0
+        Lower bound for `uniform`.
+    high  : float, optional, default: 1.0
+        Upper bound for `uniform`.
+    a     : float, optional, default: 1.0
+        Alpha (first shape parameter) for `beta`.
+    b     : float, optional, default: 1.0
+        Beta (second shape parameter) for `beta`.
+    alpha : sequence of float or None, optional, default: None
+        Concentration parameters for `dirichlet`. Required when
+        `dist="dirichlet"` (e.g. [1, 1, 1] for a uniform simplex over
+        3 categories).
     """
 
     def __init__(
@@ -23,28 +36,8 @@ class Prior:
         high: float = 1.0,
         a: float = 1.0,
         b: float = 1.0,
-        alpha: Sequence[float] = None,
+        alpha: Sequence[float] | None = None,
     ):
-        """
-        Parameters
-        ----------
-        dist : str
-            Distribution type.
-        loc : float
-            Mean for normal.
-        scale : float
-            Std for normal/halfnormal.
-        low : float
-            Lower bound for uniform.
-        high : float
-            Upper bound for uniform.
-        a : float
-            Alpha for beta.
-        b : float
-            Beta for beta.
-        alpha : sequence of float, optional
-            Dirichlet concentration parameters.
-        """
         self.dist = dist
         self.loc = loc
         self.scale = scale
@@ -55,15 +48,25 @@ class Prior:
         self.alpha = alpha
 
     def sample(self, batch_size: int) -> np.ndarray:
-        """
-        Draw samples from the prior.
+        """Draw samples from the prior.
+
+        Parameters
+        ----------
+        batch_size : int
+            Number of samples to draw.
 
         Returns
         -------
-        np.ndarray
-            Shape (batch_size,) or (batch_size, K) for Dirichlet.
-        """
+        samples : np.ndarray - shape (batch_size,), or (batch_size, K)
+            for `dirichlet` where K is the number of categories
 
+        Raises
+        ------
+        ValueError
+            If `dist="dirichlet"` and `alpha` is None or not a
+            vector-like sequence, or if `dist` is not one of the
+            supported distributions.
+        """
         if self.dist == "normal":
             samples = np.random.normal(self.loc, self.scale, size=batch_size)
 

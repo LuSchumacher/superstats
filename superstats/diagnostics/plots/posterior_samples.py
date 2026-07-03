@@ -32,30 +32,60 @@ def plot_time_varying_posterior(
     label_fontsize: int = 14,
     tick_fontsize: int = 12,
 ) -> plt.Figure:
-    """
-    Plot time-varying parameter posteriors.
+    """Plot time-varying parameter posteriors.
 
     Parameters
     ----------
-    samples : dict
-        Each value has shape (num_datasets, num_post_samples, num_steps, 1).
-    local_keys : list of str
-    aggregate_fun : {"mean", "median"} | callable | None
+    samples            : dict
+        Each value has shape (num_datasets, num_post_samples,
+        num_steps, 1).
+    local_keys         : list of str
+        Which keys of `samples` to plot.
+    aggregate_fun      : {"mean", "median"} or callable or None, optional, default: None
         None: one panel per (param, dataset).
-        "mean"/"median"/callable: one panel per param, aggregated across datasets.
-        Callable receives (N, T) trajectories and must return (T,) center.
-    aggregate_strategy : {"full_uncertainty", "no_epistemic"}
-        Only used when aggregate_fun is not None.
-        "full_uncertainty": flatten datasets and posterior samples, then summarize.
-        "no_epistemic": median across posterior samples per dataset first, then aggregate.
-    uncertainty_fun : {"std", "95ci", "mad", "95hdi"} | callable | None
-        Callable receives (N, T) trajectories and must return (lo, hi) each of shape (T,).
-    smoothing : {"sma", "ema"} | None
-        Applied to each trajectory before computing center, uncertainty, and marginal.
-    smoothing_window : int
-    marginal : bool
-        Attach a marginal KDE panel to the right of each trajectory axis.
-        KDE is computed on the same array used for uncertainty.
+        "mean"/"median"/callable: one panel per param, aggregated
+        across datasets. A callable receives (N, T) trajectories and
+        must return a (T,) center.
+    aggregate_strategy : {"full_uncertainty", "no_epistemic"}, optional, default: "full_uncertainty"
+        Only used when `aggregate_fun` is not None.
+        "full_uncertainty": flatten datasets and posterior samples,
+        then summarize.
+        "no_epistemic": median across posterior samples per dataset
+        first, then aggregate.
+    uncertainty_fun    : {"std", "95ci", "mad", "95hdi"} or callable or None, optional, default: "95ci"
+        Band drawn around the center line. A callable receives (N, T)
+        trajectories and must return `(lo, hi)`, each of shape (T,).
+    smoothing          : {"sma", "ema"} or None, optional, default: None
+        Applied to each trajectory before computing the center,
+        uncertainty, and marginal.
+    smoothing_window   : int, optional, default: 5
+        Window size for `sma`, or span parameter for `ema`.
+    marginal           : bool, optional, default: True
+        Attach a marginal KDE panel to the right of each trajectory
+        axis. The KDE is computed on the same array used for the
+        uncertainty band.
+    n_cols             : int, optional, default: 2
+        Number of subplot columns when `aggregate_fun` is not None.
+    color              : str, optional, default: "#822621"
+        Line and band color.
+    alpha              : float in [0, 1], optional, default: 0.5
+        Alpha for the uncertainty band.
+    title_fontsize     : int, optional, default: 16
+        The font size of the panel titles.
+    label_fontsize     : int, optional, default: 14
+        The font size of the axis label texts.
+    tick_fontsize      : int, optional, default: 12
+        The font size of the axis tick labels.
+
+    Returns
+    -------
+    fig : plt.Figure - the figure instance for optional saving
+
+    Raises
+    ------
+    ValueError
+        If `aggregate_strategy`, or `uncertainty_fun` when given as a
+        string, is not one of the recognized values.
     """
     D, S, T, _ = next(iter(samples.values())).shape
     P = len(local_keys)
@@ -208,30 +238,40 @@ def plot_time_invariant_posterior(
     title_fontsize: int = 16,
     tick_fontsize: int = 12,
 ) -> plt.Figure:
-    """
-    Plot time-invariant parameter posteriors.
+    """Plot time-invariant parameter posteriors.
 
     Parameters
     ----------
-    samples : dict
-        Each value has shape (num_datasets, num_post_samples, num_steps, num_components).
-    keys : list of str
+    samples        : dict
+        Each value has shape (num_datasets, num_post_samples,
+        num_steps, num_components).
+    keys           : list of str
         Parameter names to plot (hyper_keys + shared_keys).
-    aggregate : bool
-        False: rows=params, cols=datasets, param name as row label, dataset index as col title.
+    aggregate      : bool, optional, default: False
+        False: rows=params, cols=datasets, param name as row label,
+        dataset index as column title.
         True: one panel per param in a grid.
-    mixture_names : dict, optional
+    mixture_names  : dict or None, optional, default: None
         Mapping from parameter name to a list of component names.
         Defaults to "component 0", "component 1", ... when not supplied.
-    num_out : int | None
-        Number of samples to draw after pooling S and T. Defaults to num_post_samples.
-    rng : np.random.Generator | None
-    n_cols : int
-        Number of columns when aggregate=True.
-    color : str
+    num_out        : int or None, optional, default: None
+        Number of samples to draw after pooling S and T. Defaults to
+        `num_post_samples` when not supplied.
+    rng            : np.random.Generator or None, optional, default: None
+        Random generator used for pooling. A fresh default generator
+        is created if not supplied.
+    n_cols         : int, optional, default: 2
+        Number of subplot columns when `aggregate=True`.
+    color          : str, optional, default: "#822621"
         Base color for non-mixture parameters.
-    title_fontsize : int
-    tick_fontsize : int
+    title_fontsize : int, optional, default: 16
+        The font size of the panel titles.
+    tick_fontsize  : int, optional, default: 12
+        The font size of the axis tick labels.
+
+    Returns
+    -------
+    fig : plt.Figure - the figure instance for optional saving
     """
     rng = np.random.default_rng(rng)
     mixture_names = mixture_names or {}

@@ -13,7 +13,28 @@ BAND_LABELS = {"std": "±1 SD", "95ci": "95% CI", "mad": "±1.48 MAD", "95hdi": 
 
 
 def _smooth_trajectory(arr: np.ndarray, smoothing: str, window: int) -> np.ndarray:
-    """Causal (past-only) smoothing along the last axis."""
+    """Causal (past-only) smoothing along the last axis.
+
+    Parameters
+    ----------
+    arr       : np.ndarray
+        Array to smooth; smoothing is applied along the last axis only.
+    smoothing : {"sma", "ema"}
+        "sma": simple moving average over `window` past steps (including
+        the current one). "ema": exponential moving average with
+        alpha = 2 / (window + 1).
+    window    : int
+        Window size for `sma`, or span parameter for `ema`.
+
+    Returns
+    -------
+    smoothed : np.ndarray - same shape as `arr`, smoothed along the last axis
+
+    Raises
+    ------
+    ValueError
+        If `smoothing` is not "sma" or "ema".
+    """
     out = arr.copy()
     if smoothing == "sma":
         for i in range(arr.shape[-1]):
@@ -34,7 +55,27 @@ def _aggregate_center(
         aggregate_fun: str | Callable,
         axis: int = 0
 ) -> np.ndarray:
-    """Reduce x along `axis` using aggregate_fun."""
+    """Reduce x along `axis` using aggregate_fun.
+
+    Parameters
+    ----------
+    x             : np.ndarray
+        Array to reduce.
+    aggregate_fun : {"mean", "median"} or callable
+        Reduction to apply. A callable receives `x` and must return the
+        reduced array.
+    axis          : int, optional, default: 0
+        Axis to reduce over.
+
+    Returns
+    -------
+    center : np.ndarray - `x` reduced along `axis`
+
+    Raises
+    ------
+    ValueError
+        If `aggregate_fun` is not "mean", "median", or callable.
+    """
     if callable(aggregate_fun):
         return np.asarray(aggregate_fun(x))
     if aggregate_fun == "mean":
@@ -45,7 +86,19 @@ def _aggregate_center(
 
 
 def _aggregate_label(aggregate_fun: str | Callable | None) -> str:
-    """Human-readable label for whatever aggregate_fun resolves to."""
+    """Human-readable label for whatever aggregate_fun resolves to.
+
+    Parameters
+    ----------
+    aggregate_fun : {"mean", "median"} or callable or None
+        None resolves to "Median" (the fixed per-dataset default); a
+        callable resolves to its `__name__`.
+
+    Returns
+    -------
+    label : str - "Median", "Mean", or a capitalized version of the
+        callable's name
+    """
     if aggregate_fun is None:
         return "Median"
     if callable(aggregate_fun):
@@ -58,7 +111,28 @@ def _compute_uncertainty(
     uncertainty_fun: str | Callable,
     center: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
-    """x: (N, T) -> (lo, hi), each (T,). Reduces across axis 0."""
+    """Compute an uncertainty band around `center`, reducing across axis 0.
+
+    Parameters
+    ----------
+    x               : np.ndarray of shape (N, T)
+        Samples to compute the band from.
+    uncertainty_fun : {"std", "95ci", "mad", "95hdi"} or callable
+        Band type. A callable receives `x` and must return
+        `(lower, upper)`.
+    center          : np.ndarray of shape (T,)
+        Center line used to anchor `std`/`mad` bands.
+
+    Returns
+    -------
+    band : tuple - `(lower, upper)`, each an np.ndarray of shape (T,)
+
+    Raises
+    ------
+    ValueError
+        If `uncertainty_fun` is an unrecognized string, or if a
+        callable `uncertainty_fun` does not return a 2-tuple.
+    """
     if callable(uncertainty_fun):
         result = uncertainty_fun(x)
         if len(result) != 2:
@@ -91,6 +165,23 @@ def _compute_uncertainty(
 
 
 def _is_discrete(values: np.ndarray, max_discrete_values: int) -> tuple[np.ndarray, bool]:
+    """Decide whether pooled values should be treated as a discrete variable.
+
+    Parameters
+    ----------
+    values              : np.ndarray
+        Values to inspect (any shape; flattened internally).
+    max_discrete_values : int
+        Maximum number of unique integer-like categories to still call
+        the variable discrete.
+
+    Returns
+    -------
+    result : tuple - `(categories, discrete)`, where `categories` is
+        the sorted array of unique finite values and `discrete` is
+        True if all values are integer-like and there are at most
+        `max_discrete_values` unique categories
+    """
     flat = values.reshape(-1)
     flat = flat[np.isfinite(flat)]
     categories = np.unique(flat)
@@ -122,65 +213,79 @@ def plot_posterior_resimulation(
     tick_fontsize: int = 12,
     max_discrete_values: int = 30,
 ) -> plt.Figure:
-    """
-    Plot posterior predictive resimulations against the observed data.
+    """Plot posterior predictive resimulations against the observed data.
 
     Parameters
     ----------
-    pred_data : np.ndarray, shape (num_datasets, num_resims, num_steps, data_dims)
+    pred_data           : np.ndarray of shape (num_datasets, num_resims, num_steps, data_dims)
         Posterior resimulated data.
-    real_data : np.ndarray, shape (num_datasets, num_steps, data_dims)
+    real_data           : np.ndarray of shape (num_datasets, num_steps, data_dims)
         Observed data.
-    data_dim : int
+    data_dim            : int, optional, default: 0
         Which data dimension to plot.
-    kind : {"trajectory", "dist"}
+    kind                : {"trajectory", "dist"}, optional, default: "trajectory"
         "trajectory": band/center over steps.
         "dist": distribution across steps.
-    aggregate_fun : {"mean", "median"} | callable | None
+    aggregate_fun       : {"mean", "median"} or callable or None, optional, default: None
         None: one panel per dataset.
         "mean"/"median"/callable: a single panel aggregated across datasets.
-        Also used (instead of a hardcoded median) to collapse resims into a
-        per-dataset representative when aggregate_strategy="no_epistemic".
-    aggregate_strategy : {"full_uncertainty", "no_epistemic"}
-        Only used when aggregate_fun is not None.
-        "full_uncertainty": flatten datasets and posterior resims together,
-        then summarize. Captures both epistemic and aleatoric uncertainty.
-        "no_epistemic": collapse resims to one representative trajectory per
-        dataset first (via aggregate_fun), then aggregate across datasets.
-        Removes epistemic uncertainty.
-    uncertainty_fun : {"std", "95ci", "mad", "95hdi"} | callable | None
-        "trajectory" mode only. Function to draw band around the resimulated center line.
-    smoothing : {"sma", "ema"} | None
-        "trajectory" mode only. Causal (past-only) smoothing applied to the
-        real trajectories and, for resimulated data, to the trajectories
-        that result *after* aggregate_strategy has pooled resims — i.e.
-        pooling happens on raw data, smoothing is applied afterward, and the
-        center/uncertainty band are computed on the smoothed result.
-    smoothing_window : int
-    marginal : bool
+        Also used (instead of a hardcoded median) to collapse resims into
+        a per-dataset representative when `aggregate_strategy="no_epistemic"`.
+    aggregate_strategy  : {"full_uncertainty", "no_epistemic"}, optional, default: "full_uncertainty"
+        Only used when `aggregate_fun` is not None.
+        "full_uncertainty": flatten datasets and posterior resims
+        together, then summarize. Captures both epistemic and
+        aleatoric uncertainty.
+        "no_epistemic": collapse resims to one representative
+        trajectory per dataset first (via `aggregate_fun`), then
+        aggregate across datasets. Removes epistemic uncertainty.
+    uncertainty_fun     : {"std", "95ci", "mad", "95hdi"} or callable or None, optional, default: "95hdi"
+        "trajectory" mode only. Function to draw a band around the
+        resimulated center line.
+    smoothing           : {"sma", "ema"} or None, optional, default: None
+        "trajectory" mode only. Causal (past-only) smoothing applied to
+        the real trajectories and, for resimulated data, to the
+        trajectories that result *after* `aggregate_strategy` has
+        pooled resims - i.e. pooling happens on raw data, smoothing is
+        applied afterward, and the center/uncertainty band are computed
+        on the smoothed result.
+    smoothing_window    : int, optional, default: 5
+        Window size for `sma`, or span parameter for `ema`.
+    marginal            : bool, optional, default: True
         "trajectory" mode only. Attach a marginal KDE panel of the
         resimulated draws to the right of each trajectory axis.
-    spaghetti : bool
-        "trajectory" mode only. Per-dataset panels: overlay individual resim
-        draws behind the band. Aggregated panel: overlay each dataset's own
-        representative trajectory (via aggregate_fun) behind the aggregate band.
-    num_cols : int
-        Number of columns when aggregate_fun is None (per-dataset grid).
-    color : str
+    spaghetti           : bool, optional, default: False
+        "trajectory" mode only. Per-dataset panels: overlay individual
+        resim draws behind the band. Aggregated panel: overlay each
+        dataset's own representative trajectory (via `aggregate_fun`)
+        behind the aggregate band.
+    num_cols            : int, optional, default: 3
+        Number of columns when `aggregate_fun` is None (per-dataset grid).
+    color               : str, optional, default: "#822621"
         Color for bands / centers / histograms.
-    real_color : str
+    real_color          : str, optional, default: "black"
         Color for the observed data.
-    alpha : float
+    alpha               : float in [0, 1], optional, default: 0.4
         Alpha for spaghetti lines.
-    label_fontsize : int
-    tick_fontsize : int
-    max_discrete_values : int
-        "dist" mode, per-dataset panels only.
-        Maximum number of discrete categories to treat the data as discrete.
+    label_fontsize      : int, optional, default: 14
+        The font size of the axis label texts.
+    tick_fontsize       : int, optional, default: 12
+        The font size of the axis tick labels.
+    max_discrete_values : int, optional, default: 30
+        "dist" mode, per-dataset panels only. Maximum number of
+        discrete categories to treat the data as discrete.
 
     Returns
     -------
-    matplotlib.figure.Figure
+    fig : plt.Figure - the figure instance for optional saving
+
+    Raises
+    ------
+    ValueError
+        If `kind` is not "trajectory" or "dist", if `pred_data` or
+        `real_data` don't have the expected number of dimensions, if
+        their (num_datasets, num_steps) don't match, or if
+        `aggregate_strategy` is not "full_uncertainty" or "no_epistemic".
     """
     if kind not in {"trajectory", "dist"}:
         raise ValueError("kind must be 'trajectory' or 'dist'.")
