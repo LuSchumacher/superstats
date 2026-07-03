@@ -1,4 +1,4 @@
-from typing import Callable, Dict
+from typing import Callable, Dict, Optional
 import inspect
 import numpy as np
 import matplotlib.pyplot as plt
@@ -45,6 +45,9 @@ class GenerativeModel:
         self.prior = prior
         self.model = model
 
+        if not callable(model):
+            raise TypeError("model must be callable")
+
         # Inspect simulator signature
         self.signature = inspect.signature(model)
         self.param_order = list(self.signature.parameters.keys())
@@ -56,9 +59,15 @@ class GenerativeModel:
         self.shared_keys = list(pilot["shared_params"].keys()) if pilot.get("shared_params") else []
         self.fixed_keys = list(pilot["fixed_params"].keys()) if pilot.get("fixed_params") else []
 
-    def _prepare_flat_params(self, combined_params, batch_size, num_steps):
-        # Broadcast and flatten parameters for vectorized simulation.
-        flat_params = {}
+    def _prepare_flat_params(
+        self,
+        combined_params: Dict[str, np.ndarray],
+        batch_size: int,
+        num_steps: int,
+    ) -> Dict[str, np.ndarray]:
+        """Broadcast and flatten parameters for vectorized simulation."""
+        flat_params: Dict[str, np.ndarray] = {}
+
         for name in self.param_order:
             if name not in combined_params:
                 param = self.signature.parameters[name]
@@ -66,68 +75,141 @@ class GenerativeModel:
                     raise ValueError(
                         f"Parameter '{name}' required by model but missing in prior."
                     )
-                else:
-                    # skip parameters with defaults
-                    continue
-            p = combined_params[name]
-            p = np.asarray(p)
-            # shared parameters
+                continue
+
+            p = np.asarray(combined_params[name])
+
+            if p.ndim == 0:
+                p = np.full((batch_size, num_steps), p.item(), dtype=p.dtype)
+                flat_params[name] = p.reshape(batch_size * num_steps)
+                continue
+
             if p.ndim == 1:
+                if p.shape[0] != batch_size:
+                    raise ValueError(
+                        f"Parameter '{name}' must have shape (batch_size,) or (batch_size, num_steps); got {p.shape}"
+                    )
                 p = np.broadcast_to(p[:, None], (batch_size, num_steps))
                 flat_params[name] = p.reshape(batch_size * num_steps)
-            # local parameters
-            elif p.ndim == 2:
-                flat_params[name] = p.reshape(batch_size * num_steps)
-            # fixed parameters
-            elif p.ndim == 0:
-                p = np.full((batch_size, num_steps), p.item(), dtype=np.asarray(p).dtype)
-                flat_params[name] = p.reshape(batch_size * num_steps)
-            else:
-                raise ValueError(
-                    f"Unexpected shape for parameter '{name}': {p.shape}"
-                )
+                continue
+
+            if p.ndim == 2:
+                if p.shape == (batch_size, num_steps):
+                    flat_params[name] = p.reshape(batch_size * num_steps)
+                elif p.shape[0] == batch_size:
+                    flat_params[name] = np.broadcast_to(
+                        p[:, None, ...],
+                        (batch_size, num_steps, p.shape[1])
+                    ).reshape(batch_size * num_steps, p.shape[1])
+                else:
+                    raise ValueError(
+                        f"Parameter '{name}' must have shape (batch_size, num_steps) or (batch_size, dim); got {p.shape}"
+                    )
+                continue
+
+            if p.ndim == 3:
+                if p.shape[0] != batch_size or p.shape[1] != num_steps:
+                    raise ValueError(
+                        f"Parameter '{name}' must have shape (batch_size, num_steps, dim); got {p.shape}"
+                    )
+                if p.shape[2] == 1:
+                    flat_params[name] = p.reshape(batch_size * num_steps)
+                else:
+                    flat_params[name] = p.reshape(batch_size * num_steps, p.shape[2])
+                continue
+
+            raise ValueError(
+                f"Unexpected shape for parameter '{name}': {p.shape}"
+            )
 
         return flat_params
 
-    def _normalize_local_params(self, params, batch_size, num_steps):
+    def get_fixed_params(self) -> Dict[str, np.ndarray]:
+        """Return deterministic fixed parameters from the prior for model simulation."""
+        prior_draws = self.prior.sample(batch_size=1, num_steps=1)
+        fixed_params = prior_draws.get("fixed_params", {})
+        return {
+            name: np.asarray(value)
+            for name, value in fixed_params.items()
+            if name in self.param_order
+        }
+
+    def simulate_from_parameters(
+        self,
+        params: Dict[str, np.ndarray],
+        batch_size: int,
+        num_steps: int,
+    ) -> np.ndarray:
+        """Simulate model outputs for given parameter values."""
+        combined_params = dict(params)
+
+        flat_params = self._prepare_flat_params(
+            combined_params,
+            batch_size=batch_size,
+            num_steps=num_steps,
+        )
+
+        ordered_params = []
+        for name in self.param_order:
+            if name in flat_params:
+                ordered_params.append(flat_params[name])
+                continue
+
+            default = self.signature.parameters[name].default
+            if default is inspect.Parameter.empty:
+                raise ValueError(
+                    f"Parameter '{name}' required by model but missing in params and has no default."
+                )
+            ordered_params.append(default)
+
+        sim_data = self.model(*ordered_params)
+        sim_data = np.asarray(sim_data)
+
+        output_shape = sim_data.shape[1:] if sim_data.ndim > 1 else ()
+        return sim_data.reshape(batch_size, num_steps, *output_shape)
+
+    def _normalize_local_params(
+        self,
+        params: Dict[str, np.ndarray],
+        batch_size: int,
+        num_steps: int,
+    ) -> Optional[Dict[str, np.ndarray]]:
+        """Validate and normalize local (time-varying) parameters."""
         if not params:
             return None
 
-        normalized = {}
+        normalized: Dict[str, np.ndarray] = {}
         for name, value in params.items():
             arr = np.asarray(value)
-            if arr.ndim != 2:
+            if arr.ndim != 2 or arr.shape != (batch_size, num_steps):
                 raise ValueError(
                     f"Local parameter '{name}' must have shape (batch_size, num_steps), got {arr.shape}"
                 )
             normalized[name] = arr.reshape(batch_size, num_steps, 1)
         return normalized
 
-    def _normalize_batch_params(self, params, batch_size):
+    def _normalize_batch_params(
+        self,
+        params: Dict[str, np.ndarray],
+        batch_size: int,
+    ) -> Optional[Dict[str, np.ndarray]]:
+        """Validate and normalize batch-level parameters."""
         if not params:
             return None
 
-        normalized = {}
+        normalized: Dict[str, np.ndarray] = {}
 
         for name, value in params.items():
             arr = np.asarray(value)
 
-            # scalar per batch -> (B,1 )
             if arr.ndim == 1:
                 normalized[name] = arr.reshape(batch_size, 1)
-
-            # already batched scalar parameters -> (B, 1)
             elif arr.ndim == 2 and arr.shape[1] == 1:
                 normalized[name] = arr
-
-            # vector-valued hyperparameter (e.g. mixture weights)
             elif arr.ndim == 2:
-                normalized[name] = arr  # keep (B, K)
-
-            # scalar constant
+                normalized[name] = arr
             elif arr.ndim == 0:
                 normalized[name] = np.full((batch_size, 1), arr.item(), dtype=arr.dtype)
-
             else:
                 raise ValueError(
                     f"Parameter '{name}' has invalid shape {arr.shape}"
@@ -140,8 +222,8 @@ class GenerativeModel:
         batch_size: int,
         num_steps: int,
         include_fixed: bool = False,
-        tile_to_steps: bool = False
-    ):
+        tile_to_steps: bool = False,
+    ) -> Dict[str, np.ndarray]:
         """
         Sample parameters from the prior and generate simulated data.
 
@@ -245,7 +327,7 @@ class GenerativeModel:
                     k: np.tile(v[:, np.newaxis, :], (1, num_steps, 1))
                     for k, v in shared_params.items()
                 }
-    
+
         result = {"data": sim_data}
         if local_params:
             result.update(local_params)
@@ -269,7 +351,35 @@ class GenerativeModel:
         spaghetti: bool = True,
         marginal: bool = True,
         **kwargs,
-    ):
+    ) -> plt.Figure:
+        """Render prior push-forward diagnostics for the generative model.
+
+        Parameters
+        ----------
+        num_sim : int, optional
+            Number of simulated datasets to generate.
+        num_steps : int, optional
+            Number of time steps per simulation.
+        data_dim : int, optional
+            Data dimension to plot.
+        kind : {"dist", "trajectory"}, optional
+            Plot type.
+        aggregate_fun : {"mean", "median"} | callable | None, optional
+            Aggregation function over simulations.
+        uncertainty_fun : {"ci95", "std", "mad"} | callable | None, optional
+            Uncertainty function for aggregate trajectory plots.
+        spaghetti : bool, optional
+            If True, include individual trajectories.
+        marginal : bool, optional
+            If True, include marginal distributions beside trajectories.
+        **kwargs
+            Forwarded to ``plot_push_forward``.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+            Figure containing the plot.
+        """
         data = self.sample(batch_size=num_sim, num_steps=num_steps)["data"]
         return plot_push_forward(
             data=data,
@@ -279,5 +389,5 @@ class GenerativeModel:
             uncertainty_fun=uncertainty_fun,
             spaghetti=spaghetti,
             marginal=marginal,
-            **kwargs
+            **kwargs,
         )

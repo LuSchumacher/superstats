@@ -224,6 +224,103 @@ class Workflow:
         )
         return samples
 
+    def resimulate_posterior(
+        self,
+        posterior_samples: dict[str, np.ndarray],
+        num_sims: int = 10,
+        rng=None,
+    ) -> np.ndarray:
+        """Generate posterior predictive simulations from posterior parameter draws.
+
+        Parameters
+        ----------
+        posterior_samples : dict[str, np.ndarray]
+            Posterior samples returned by ``self.sample``.
+            Each array should have shape ``(batch_size, num_samples, num_steps, dim)``.
+        num_sims : int, optional
+            Number of posterior predictive trajectories to simulate per dataset.
+        rng : None, int, or np.random.Generator, optional
+            Random seed or generator for sampling posterior indices.
+
+        Returns
+        -------
+        np.ndarray
+            Simulated data of shape ``(batch_size, num_sims, num_steps, data_dim)``.
+        """
+        rng = np.random.default_rng(rng)
+
+        if not posterior_samples:
+            raise ValueError("posterior_samples must be a non-empty dict.")
+
+        # Infer shape from one posterior parameter
+        example = next(iter(posterior_samples.values()))
+        if example.ndim < 3:
+            raise ValueError(
+                "Posterior sample arrays must have at least 3 dimensions: "
+                "(batch_size, num_samples, num_steps, ...)."
+            )
+
+        batch_size, num_draws = example.shape[:2]
+        num_steps = example.shape[2]
+
+        sample_idx = rng.integers(num_draws, size=(batch_size, num_sims))
+
+        simulation_params: dict[str, np.ndarray] = {}
+        fixed_params = self.simulator.get_fixed_params()
+
+        for name, arr in posterior_samples.items():
+            arr = np.asarray(arr)
+            if arr.shape[0] != batch_size:
+                raise ValueError(
+                    f"Posterior parameter '{name}' has batch size {arr.shape[0]} "
+                    f"but expected {batch_size}."
+                )
+
+            if arr.ndim == 3:
+                selected = arr[np.arange(batch_size)[:, None], sample_idx, :]
+                simulation_params[name] = selected
+            elif arr.ndim == 4:
+                selected = arr[
+                    np.arange(batch_size)[:, None, None],
+                    sample_idx[:, :, None],
+                    np.arange(num_steps)[None, None, :],
+                    :,
+                ]
+                simulation_params[name] = selected
+            else:
+                raise ValueError(
+                    f"Unexpected posterior shape for '{name}': {arr.shape}. "
+                    "Expected (batch, samples, steps, dim) or (batch, samples, steps)."
+                )
+
+        # Collapse sample axis into batch axis for simulation
+        expanded_params: dict[str, np.ndarray] = {}
+        for name, arr in simulation_params.items():
+            if arr.ndim == 2:
+                expanded_params[name] = arr.reshape(batch_size * num_sims, num_steps)
+            elif arr.ndim == 3:
+                expanded_params[name] = arr.reshape(batch_size * num_sims, num_steps, arr.shape[2])
+            elif arr.ndim == 4:
+                expanded_params[name] = arr.reshape(batch_size * num_sims, num_steps, arr.shape[3])
+            else:
+                raise ValueError(
+                    f"Cannot reshape posterior parameter '{name}' with shape {arr.shape}."
+                )
+
+        for name, value in fixed_params.items():
+            expanded_params[name] = np.broadcast_to(
+                np.asarray(value),
+                (batch_size * num_sims,)
+            )
+
+        raw_sim = self.simulator.simulate_from_parameters(
+            expanded_params,
+            batch_size=batch_size * num_sims,
+            num_steps=num_steps,
+        )
+
+        return raw_sim.reshape(batch_size, num_sims, num_steps, *raw_sim.shape[2:])
+
     def plot_history(self, history):
         return bf.diagnostics.plots.loss(history, train_color="#822621")
 
@@ -376,6 +473,15 @@ class Workflow:
         samples: dict,
         **kwargs,
     ):
+        """Plot time-varying posterior diagnostics.
+
+        Parameters
+        ----------
+        samples : dict
+            Posterior sample dictionary.
+        **kwargs
+            Forwarded to ``plot_time_varying_posterior``.
+        """
         return plot_time_varying_posterior(
             samples=samples,
             local_keys=self.simulator.local_keys,
@@ -387,6 +493,15 @@ class Workflow:
         samples: dict,
         **kwargs,
     ):
+        """Plot time-invariant posterior diagnostics.
+
+        Parameters
+        ----------
+        samples : dict
+            Posterior sample dictionary.
+        **kwargs
+            Forwarded to ``plot_time_invariant_posterior``.
+        """
         return plot_time_invariant_posterior(
             samples=samples,
             hyper_keys=self.simulator.hyper_keys,
@@ -395,16 +510,16 @@ class Workflow:
             **kwargs,
         )
 
-    def plot_joint_posterior(
-        self,
-        samples: dict,
-        **kwargs,
-    ):
-        return plot_joint_posterior(
-            samples=samples,
-            local_keys=self.simulator.local_keys,
-            hyper_keys=self.simulator.hyper_keys,
-            shared_keys=self.simulator.shared_keys,
-            mixture_names=self.simulator.prior._mixture_names(),
-            **kwargs,
-        )
+    # def plot_joint_posterior(
+    #     self,
+    #     samples: dict,
+    #     **kwargs,
+    # ):
+    #     return plot_joint_posterior(
+    #         samples=samples,
+    #         local_keys=self.simulator.local_keys,
+    #         hyper_keys=self.simulator.hyper_keys,
+    #         shared_keys=self.simulator.shared_keys,
+    #         mixture_names=self.simulator.prior._mixture_names(),
+    #         **kwargs,
+    #     )
