@@ -13,7 +13,25 @@ def _sample_jump_process(
     proposals: np.ndarray,
     bounds: np.ndarray,
 ) -> np.ndarray:
+    """Vectorized jump-process rollout across a batch, filled in place.
 
+    Parameters
+    ----------
+    local_params : np.ndarray of shape (batch_size, steps)
+        Pre-allocated trajectory array; `local_params[:, 0]` must already
+        hold the initial state. Overwritten in place with the full rollout.
+    p_jump       : np.ndarray of shape (batch_size,)
+        Per-trajectory probability of jumping at each step.
+    proposals    : np.ndarray of shape (batch_size, steps - 1)
+        Pre-sampled proposal values to jump to, one per step.
+    bounds       : np.ndarray of shape (2,)
+        (lower, upper) bounds passed to `scaled_sigmoid`.
+
+    Returns
+    -------
+    local_params : np.ndarray of shape (batch_size, steps) - the same
+        array, filled with the bounded jump-process rollout
+    """
     batch_size, steps = local_params.shape
     lower, upper = bounds[0], bounds[1]
 
@@ -36,6 +54,21 @@ def _one_step_jump(
     p_jump: float,
     proposal: float,
 ) -> float:
+    """Advance a single jump-process state by one step.
+
+    Parameters
+    ----------
+    x        : float
+        Previous latent state.
+    p_jump   : float
+        Probability of jumping at this step.
+    proposal : float
+        Candidate value to jump to if a jump occurs.
+
+    Returns
+    -------
+    x_next : float - the next latent state (either `x` or `proposal`)
+    """
     if np.random.rand() < p_jump:
         return proposal
     return x
@@ -45,19 +78,20 @@ class Jump(Transition):
 
     Parameters
     ----------
-    bounds : tuple or None
+    bounds         : tuple or None, optional, default: None
         Lower and upper bounds for the latent state.
-    initial_prior : Prior or None
+    initial_prior  : Prior or None, optional, default: None
         Prior for the initial latent state.
-    p_jump : float or Prior
+    p_jump         : float or Prior, optional, default: 1.0
         Probability of jumping at each step (or a Prior to infer per-batch).
-    proposal_prior : Prior or None
-        Prior from which to draw proposal values when a jump occurs.
+    proposal_prior : Prior or None, optional, default: None
+        Prior from which to draw proposal values when a jump occurs. Falls
+        back to a standard normal `Prior` if not provided.
 
     Notes
     -----
     At each step the process either stays at the previous value or jumps
-    to an independent proposal sampled from ``proposal_prior``.
+    to an independent proposal sampled from `proposal_prior`.
     """
 
     def __init__(
@@ -79,21 +113,20 @@ class Jump(Transition):
         self.transition_type = "jump"
 
     def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
-        """
-        Draw `batch_size` jump-process trajectories of length `num_steps`.
+        """Draw `batch_size` jump-process trajectories of length `num_steps`.
 
         Parameters
         ----------
         batch_size : int
-        num_steps : int
+            Number of independent trajectories to draw.
+        num_steps  : int
+            Number of time steps per trajectory.
 
         Returns
         -------
-        dict
-            Dictionary with keys ``local_params``, ``hyper_params``, and
-            ``fixed_params``.
+        result : dict - dictionary with keys `local_params`,
+            `hyper_params`, and `fixed_params`
         """
-
         local_params = np.empty((batch_size, num_steps), dtype=self.dtype)
         local_params[:, 0] = self.initial_prior.sample(batch_size).astype(self.dtype)
 
@@ -123,22 +156,19 @@ class Jump(Transition):
         }
 
     def sample_one_step(self, x: float, params: Dict[str, Any]) -> float:
-        """
-        Take one step of the jump process.
+        """Take one step of the jump process.
 
         Parameters
         ----------
-        x : float
+        x      : float
             Previous latent state.
         params : dict
-            Expect key ``p_jump``.
+            Expected key: `p_jump`.
 
         Returns
         -------
-        float
-            Next latent state.
+        x_next : float - the next latent state
         """
-
         p_jump = float(params["p_jump"])
         proposal = float(self.proposal_prior.sample(1)[0])
         return _one_step_jump(

@@ -26,30 +26,35 @@ def plot_time_varying_prior(
     tick_fontsize: int = 12,
     alpha: float = 0.5,
 ) -> plt.Figure:
-    """
-    Plot time-varying parameter trajectories with marginal KDE.
+    """Plot time-varying parameter trajectories with marginal KDE.
 
     Parameters
     ----------
-    local_params : dict
-        Mapping from parameter name to an array of shape
-        ``(num_trajectories, num_steps)``.
-    param_bounds : dict, optional
-        Mapping from parameter name to ``(lower, upper)`` y-axis limits.
-    color : str, default "#822621"
+    local_params   : dict of np.ndarray, each of shape (num_trajectories, num_steps)
+        Mapping from parameter name to an array of trajectories.
+    param_bounds   : dict or None, optional, default: None
+        Mapping from parameter name to (lower, upper) y-axis limits.
+    color          : str, optional, default: '#822621'
         Line color for individual trajectories and KDE.
-    num_cols : int, default 2
+    num_cols       : int, optional, default: 2
         Number of subplot columns.
-    title_fontsize : int, default 16
-    label_fontsize : int, default 14
-    tick_fontsize : int, default 12
-    alpha : float, default 0.5
-        Transparency for individual trajectories.
+    title_fontsize : int, optional, default: 16
+        The font size of the panel titles (parameter names).
+    label_fontsize : int, optional, default: 14
+        The font size of the axis label texts.
+    tick_fontsize  : int, optional, default: 12
+        The font size of the axis tick labels.
+    alpha          : float in [0, 1], optional, default: 0.5
+        The opacity of individual trajectories.
 
     Returns
     -------
-    matplotlib.figure.Figure
-        Figure containing the plotted trajectories and KDEs.
+    fig : plt.Figure - the figure instance for optional saving
+
+    Raises
+    ------
+    ValueError
+        If local_params is empty.
     """
     if not local_params:
         raise ValueError("No time-varying (local) parameters to plot.")
@@ -129,29 +134,34 @@ def plot_time_invariant_prior(
     title_fontsize: int = 16,
     tick_fontsize: int = 12,
 ) -> plt.Figure:
-    """
-    Plot time-invariant parameter distributions.
+    """Plot time-invariant parameter distributions.
 
     Parameters
     ----------
-    hyper_params : dict
+    hyper_params   : dict of np.ndarray
         Mapping from parameter name to an array of hyperparameter samples.
-    shared_params : dict
+    shared_params  : dict of np.ndarray
         Mapping from parameter name to an array of shared parameter samples.
-    mixture_names : dict, optional
+    mixture_names  : dict or None, optional, default: None
         Mapping from parameter name to a list of component names for
         mixture weight parameters.
-    color : str, default "#822621"
+    color          : str, optional, default: '#822621'
         Base color for non-mixture histograms.
-    num_cols : int, default 2
+    num_cols       : int, optional, default: 2
         Number of subplot columns.
-    title_fontsize : int, default 16
-    tick_fontsize : int, default 12
+    title_fontsize : int, optional, default: 16
+        The font size of the panel titles (parameter names).
+    tick_fontsize  : int, optional, default: 12
+        The font size of the axis tick labels.
 
     Returns
     -------
-    matplotlib.figure.Figure
-        Figure containing the plotted parameter distributions.
+    fig : plt.Figure - the figure instance for optional saving
+
+    Raises
+    ------
+    ValueError
+        If both hyper_params and shared_params are empty.
     """
     if not hyper_params and not shared_params:
         raise ValueError("No time-invariant parameters to plot.")
@@ -234,36 +244,41 @@ def plot_joint_prior(
     tick_fontsize: int = 12,
     alpha: float = 0.5,
 ) -> plt.Figure:
-    """
-    Plot joint prior diagnostics combining hyperparameter distributions,
+    """Plot joint prior diagnostics combining hyperparameter distributions,
     shared parameter histograms, and time-varying trajectories.
 
     Parameters
     ----------
-    local_params : dict
-        Mapping from parameter name to an array of shape
-        ``(num_trajectories, num_steps)``.
-    hyper_params : dict
+    local_params   : dict of np.ndarray, each of shape (num_trajectories, num_steps)
+        Mapping from parameter name to an array of trajectories.
+    hyper_params   : dict of np.ndarray
         Mapping from hyperparameter name to an array of samples. Keys may
         include parameter prefixes followed by component labels.
-    shared_params : dict
+    shared_params  : dict of np.ndarray
         Mapping from parameter name to an array of shared parameter samples.
-    param_bounds : dict, optional
-        Mapping from parameter name to ``(lower, upper)`` y-axis limits.
-    mixture_names : dict, optional
-        Mapping from parameter name to a list of component names for mixture
-        weight parameters.
-    color : str, default "#822621"
+    param_bounds   : dict or None, optional, default: None
+        Mapping from parameter name to (lower, upper) y-axis limits.
+    mixture_names  : dict or None, optional, default: None
+        Mapping from parameter name to a list of component names for
+        mixture weight parameters.
+    color          : str, optional, default: '#822621'
         Base plotting color for KDEs and trajectories.
-    title_fontsize : int, default 16
-    tick_fontsize : int, default 12
-    alpha : float, default 0.5
-        Transparency for individual trajectories.
+    title_fontsize : int, optional, default: 16
+        The font size of the panel titles (parameter names).
+    tick_fontsize  : int, optional, default: 12
+        The font size of the axis tick labels.
+    alpha          : float in [0, 1], optional, default: 0.5
+        The opacity of individual trajectories.
 
     Returns
     -------
-    matplotlib.figure.Figure
-        Figure containing the joint prior diagnostics.
+    fig : plt.Figure - the figure instance for optional saving
+
+    Raises
+    ------
+    ValueError
+        If no plottable parameters are found across local_params,
+        hyper_params, and shared_params.
     """
     all_param_names = list(
         dict.fromkeys(

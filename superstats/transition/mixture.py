@@ -6,6 +6,41 @@ from .transition import Transition, Prior
 from superstats.utils.transformations import scaled_sigmoid
 
 class Mixture(Transition):
+    """Mixture over multiple transitions, switching regimes at each step.
+
+    Parameters
+    ----------
+    transitions     : sequence of Transition
+        The component transitions to mix between. Must contain at least
+        two. Each transition must not define its own `bounds` or
+        `initial_prior` (these are shared with the mixture instead); a
+        `Jump` component must use `p_jump=1` since mixture weights already
+        define the jump probability.
+    mixture_weights : Prior or tuple of float or None, optional, default: None
+        Fixed simplex weights, a `dirichlet` `Prior` to infer them per
+        batch, or None for uniform weights over the components.
+    bounds          : tuple or None, optional, default: None
+        Lower and upper bounds for the latent state, shared across all
+        component transitions.
+    initial_prior   : Prior or None, optional, default: None
+        Prior for the initial latent state, shared across all component
+        transitions. Required at sample time.
+    names           : sequence of str or None, optional, default: None
+        Names for each component, used to prefix hyperparameter keys.
+        Defaults to each component's `transition_type`.
+
+    Raises
+    ------
+    ValueError
+        If fewer than two transitions are given, if any transition
+        defines its own `bounds` or `initial_prior`, if a `Jump`
+        component defines `p_jump`, if `names` doesn't match the number
+        of transitions, or if `mixture_weights` is a list/tuple with the
+        wrong length or negative values.
+    TypeError
+        If `mixture_weights` is a scalar, or not one of
+        tuple/list/`Prior`/None.
+    """
 
     def __init__(
         self,
@@ -128,7 +163,19 @@ class Mixture(Transition):
         self,
         batch_size: int
     ) -> np.ndarray:
+        """Sample per-batch mixture weights.
 
+        Parameters
+        ----------
+        batch_size : int
+            Number of independent weight vectors to draw.
+
+        Returns
+        -------
+        weights : np.ndarray of shape (batch_size, K) - simplex weights
+            per batch element, either drawn from a Dirichlet `Prior`,
+            tiled from fixed weights, or uniform over the `K` components
+        """
         # Dirichlet prior
         if isinstance(self.mixture_weights, Prior):
             w = (
@@ -161,7 +208,21 @@ class Mixture(Transition):
         weights: np.ndarray,
         num_steps: int
     ) -> np.ndarray:
+        """Sample the active component index at each step, per batch element.
 
+        Parameters
+        ----------
+        weights   : np.ndarray of shape (batch_size, K)
+            Per-batch mixture weights, as returned by
+            `_sample_mixture_weights`.
+        num_steps : int
+            Number of time steps to sample regimes for.
+
+        Returns
+        -------
+        regimes : np.ndarray of shape (batch_size, num_steps) - the
+            sampled component index at each step, in [0, K)
+        """
         batch_size = weights.shape[0]
 
         regimes = np.zeros(
@@ -183,7 +244,25 @@ class Mixture(Transition):
         batch_size: int,
         num_steps: int
     ) -> Dict[str, Any]:
+        """Draw `batch_size` mixture trajectories of length `num_steps`.
 
+        Parameters
+        ----------
+        batch_size : int
+            Number of independent trajectories to draw.
+        num_steps  : int
+            Number of time steps per trajectory.
+
+        Returns
+        -------
+        result : dict - dictionary with keys `local_params`, `regimes`,
+            `hyper_params`, and `fixed_params`
+
+        Raises
+        ------
+        ValueError
+            If `initial_prior` was not specified in `Mixture(...)`.
+        """
         if self.initial_prior is None:
 
             raise ValueError(

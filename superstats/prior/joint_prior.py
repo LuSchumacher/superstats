@@ -17,18 +17,18 @@ class JointPrior:
     Parameters
     ----------
     **kwargs : Transition, Prior, float, int
-        Named model parameters. Use ``Transition`` for time-varying
-        parameters with hyperparameters, ``Prior`` for inferred stationary
+        Named model parameters. Use `Transition` for time-varying
+        parameters with hyperparameters, `Prior` for inferred stationary
         parameters, and scalar values for fixed parameters.
 
     Notes
     -----
     Sample outputs are grouped into:
 
-    - ``local_params``: time-varying trajectories.
-    - ``hyper_params``: inferred transition hyperparameters.
-    - ``shared_params``: inferred stationary parameters.
-    - ``fixed_params``: fixed scalar values.
+    - `local_params`: time-varying trajectories.
+    - `hyper_params`: inferred transition hyperparameters.
+    - `shared_params`: inferred stationary parameters.
+    - `fixed_params`: fixed scalar values.
     """
 
     def __init__(self, **kwargs: Transition | Prior | float | int):
@@ -41,14 +41,18 @@ class JointPrior:
         ----------
         batch_size : int
             Number of independent samples to draw.
-        num_steps : int
+        num_steps  : int
             Number of time steps per trajectory.
 
         Returns
         -------
-        dict
-            Sampled parameter groups: ``local_params``, ``hyper_params``,
-            ``shared_params``, and ``fixed_params``.
+        result : dict - sampled parameter groups `local_params`,
+            `hyper_params`, `shared_params`, and `fixed_params`
+
+        Raises
+        ------
+        ValueError
+            If batch_size or num_steps is not a positive integer.
         """
         if batch_size <= 0:
             raise ValueError("batch_size must be a positive integer")
@@ -90,6 +94,13 @@ class JointPrior:
         }
 
     def _param_bounds(self) -> dict:
+        """Collect y-axis bounds declared on the underlying parameter objects.
+
+        Returns
+        -------
+        bounds : dict - mapping from parameter name to its `bounds`
+            attribute, for parameters that define one
+        """
         return {
             name: obj.bounds
             for name, obj in self.params.items()
@@ -97,6 +108,13 @@ class JointPrior:
         }
 
     def _mixture_names(self) -> dict:
+        """Collect mixture component names declared on the underlying parameter objects.
+
+        Returns
+        -------
+        names : dict - mapping from parameter name to its `names`
+            attribute, for parameters that define one
+        """
         return {
             name: obj.names
             for name, obj in self.params.items()
@@ -113,17 +131,17 @@ class JointPrior:
 
         Parameters
         ----------
-        num_steps : int, optional
+        num_steps        : int, optional, default: 200
             Number of time steps to sample per trajectory.
-        num_trajectories : int, optional
+        num_trajectories : int, optional, default: 20
             Number of trajectories to draw.
-        **kwargs
-            Passed through to ``plot_time_varying_prior``.
+        **kwargs         : dict, optional, default: {}
+            Further optional keyword arguments propagated to the
+            underlying `plot_time_varying_prior` plotting function.
 
         Returns
         -------
-        matplotlib.figure.Figure
-            The generated figure.
+        fig : plt.Figure - the generated figure
         """
         samples = self.sample(batch_size=num_trajectories, num_steps=num_steps)
         return plot_time_varying_prior(
@@ -137,16 +155,15 @@ class JointPrior:
 
         Parameters
         ----------
-        num_draws : int, optional
-            Number of draws used to sample ``hyper_params`` and
-            ``shared_params``.
-        **kwargs
-            Passed through to ``plot_time_invariant_prior``.
+        num_draws : int, optional, default: 1000
+            Number of draws used to sample `hyper_params` and `shared_params`.
+        **kwargs  : dict, optional, default: {}
+            Further optional keyword arguments propagated to the
+            underlying `plot_time_invariant_prior` plotting function.
 
         Returns
         -------
-        matplotlib.figure.Figure
-            The generated figure.
+        fig : plt.Figure - the generated figure
         """
         samples = self.sample(batch_size=num_draws, num_steps=1)
         return plot_time_invariant_prior(
@@ -160,26 +177,26 @@ class JointPrior:
         self,
         num_steps: int = 200,
         num_trajectories: int = 20,
-        num_draws: int = 2000,
+        num_draws: int = 1000,
         **kwargs
     ):
         """Plot joint prior diagnostics across local and shared parameters.
 
         Parameters
         ----------
-        num_steps : int, optional
+        num_steps        : int, optional, default: 200
             Number of time steps for local trajectory sampling.
-        num_trajectories : int, optional
+        num_trajectories : int, optional, default: 20
             Number of local trajectories to plot.
-        num_draws : int, optional
+        num_draws        : int, optional, default: 1000
             Number of draws used for time-invariant parameter sampling.
-        **kwargs
-            Passed through to ``plot_joint_prior``.
+        **kwargs         : dict, optional, default: {}
+            Further optional keyword arguments propagated to the
+            underlying `plot_joint_prior` plotting function.
 
         Returns
         -------
-        matplotlib.figure.Figure
-            The generated figure.
+        fig : plt.Figure - the generated figure
         """
         samples = self.sample(batch_size=num_draws, num_steps=num_steps)
         local_params = {

@@ -14,7 +14,27 @@ def _sample_ou(
     sigma: np.ndarray,
     bounds: np.ndarray,
 ) -> np.ndarray:
+    """Vectorized Ornstein-Uhlenbeck rollout across a batch, filled in place.
 
+    Parameters
+    ----------
+    local_params : np.ndarray of shape (batch_size, steps)
+        Pre-allocated trajectory array; `local_params[:, 0]` must already
+        hold the initial state. Overwritten in place with the full rollout.
+    mu           : np.ndarray of shape (batch_size,)
+        Long-run mean to revert towards, per trajectory.
+    theta        : np.ndarray of shape (batch_size,)
+        Mean-reversion speed, per trajectory.
+    sigma        : np.ndarray of shape (batch_size,)
+        Diffusion scale, per trajectory.
+    bounds       : np.ndarray of shape (2,)
+        (lower, upper) bounds passed to `scaled_sigmoid`.
+
+    Returns
+    -------
+    local_params : np.ndarray of shape (batch_size, steps) - the same
+        array, filled with the bounded OU rollout
+    """
     batch_size, steps = local_params.shape
     lower, upper = bounds[0], bounds[1]
 
@@ -43,6 +63,23 @@ def _one_step_ou(
     theta: float,
     sigma: float,
 ) -> float:
+    """Advance a single Ornstein-Uhlenbeck state by one step (scalar, JIT-compiled).
+
+    Parameters
+    ----------
+    x     : float
+        Previous latent state.
+    mu    : float
+        Long-run mean to revert towards.
+    theta : float
+        Mean-reversion speed.
+    sigma : float
+        Diffusion scale.
+
+    Returns
+    -------
+    x_next : float - the next latent state
+    """
     noise = np.random.randn()
     return x + theta * (mu - x) + sigma * noise
 
@@ -52,16 +89,21 @@ class OrnsteinUhlenbeck(Transition):
 
     Parameters
     ----------
-    bounds : tuple or None
+    bounds        : tuple or None, optional, default: None
         Lower and upper bounds for the latent state.
-    initial_prior : Prior or None
+    initial_prior : Prior or None, optional, default: None
         Prior for the initial latent state.
-    sigma : float or Prior or None
+    sigma         : float or Prior or None, optional, default: None
         Diffusion scale.
-    mu : float or Prior or None
+    mu            : float or Prior or None, optional, default: None
         Long-run mean to revert towards.
-    theta : float or Prior or None
+    theta         : float or Prior or None, optional, default: None
         Mean-reversion speed.
+
+    Notes
+    -----
+    Implements an OU process:
+    x_t = x_{t-1} + theta * (mu - x_{t-1}) + sigma * eps_t.
     """
 
     def __init__(
@@ -83,21 +125,20 @@ class OrnsteinUhlenbeck(Transition):
         self.transition_type = "ou"
 
     def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
-        """
-        Draw `batch_size` Ornstein-Uhlenbeck trajectories of length `num_steps`.
+        """Draw `batch_size` Ornstein-Uhlenbeck trajectories of length `num_steps`.
 
         Parameters
         ----------
         batch_size : int
-        num_steps : int
+            Number of independent trajectories to draw.
+        num_steps  : int
+            Number of time steps per trajectory.
 
         Returns
         -------
-        dict
-            Dictionary with keys ``local_params``, ``hyper_params``,
-            and ``fixed_params``.
+        result : dict - dictionary with keys `local_params`,
+            `hyper_params`, and `fixed_params`
         """
-
         local_params = np.empty((batch_size, num_steps), dtype=self.dtype)
         local_params[:, 0] = self.initial_prior.sample(batch_size).astype(self.dtype)
 
@@ -133,22 +174,19 @@ class OrnsteinUhlenbeck(Transition):
         }
 
     def sample_one_step(self, x: float, params: Dict[str, Any]) -> float:
-        """
-        Advance a single OU step.
+        """Advance a single OU step.
 
         Parameters
         ----------
-        x : float
+        x      : float
             Previous latent state.
         params : dict
-            Expect keys ``mu``, ``theta``, ``sigma``.
+            Expected keys: `mu`, `theta`, `sigma`.
 
         Returns
         -------
-        float
-            Next latent state.
+        x_next : float - the next latent state
         """
-
         mu = float(params["mu"])
         theta = float(params["theta"])
         sigma = float(params["sigma"])

@@ -13,7 +13,25 @@ def _sample_random_walk(
     delta: np.ndarray,
     bounds: np.ndarray,
 ) -> np.ndarray:
+    """Vectorized random-walk rollout across a batch, filled in place.
 
+    Parameters
+    ----------
+    local_params : np.ndarray of shape (batch_size, steps)
+        Pre-allocated trajectory array; `local_params[:, 0]` must already
+        hold the initial state. Overwritten in place with the full rollout.
+    sigma        : np.ndarray of shape (batch_size,)
+        Standard deviation of the Gaussian increments, per trajectory.
+    delta        : np.ndarray of shape (batch_size,)
+        Additive drift term, per trajectory.
+    bounds       : np.ndarray of shape (2,)
+        (lower, upper) bounds passed to `scaled_sigmoid`.
+
+    Returns
+    -------
+    local_params : np.ndarray of shape (batch_size, steps) - the same
+        array, filled with the bounded random-walk rollout
+    """
     batch_size, steps = local_params.shape
     lower, upper = bounds[0], bounds[1]
 
@@ -33,6 +51,21 @@ def _one_step_random_walk(
     sigma: float,
     delta: float,
 ) -> float:
+    """Advance a single random-walk state by one step (scalar, JIT-compiled).
+
+    Parameters
+    ----------
+    x     : float
+        Previous latent state.
+    sigma : float
+        Standard deviation of the Gaussian increment.
+    delta : float
+        Additive drift term.
+
+    Returns
+    -------
+    x_next : float - the next latent state
+    """
     noise = np.random.randn()
     return x + delta + sigma * noise
 
@@ -42,21 +75,20 @@ class RandomWalk(Transition):
 
     Parameters
     ----------
-    bounds : tuple or None
-        Lower and upper bounds applied to latent state (default uses
-        package-wide defaults).
-    initial_prior : Prior or None
+    bounds        : tuple or None, optional, default: None
+        Lower and upper bounds for the latent state.
+    initial_prior : Prior or None, optional, default: None
         Prior for the initial latent state.
-    sigma : float or Prior or None
+    sigma         : float or Prior or None, optional, default: None
         Standard deviation of the Gaussian increments.
-    delta : float or Prior, optional
-        Additive drift term (default 0.0).
+    delta         : float or Prior, optional, default: 0.0
+        Additive drift term.
 
     Notes
     -----
-    The `sample` method returns a dict with keys ``local_params``,
-    ``hyper_params`` and ``fixed_params``. Use `sample_one_step` to
-    advance a single time-step given numeric params.
+    The `sample` method returns a dict with keys `local_params`,
+    `hyper_params` and `fixed_params`. Use `sample_one_step` to advance
+    a single time-step given numeric params.
     """
 
     def __init__(
@@ -76,24 +108,20 @@ class RandomWalk(Transition):
         self.transition_type = "rw"
 
     def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
-        """
-        Draw `batch_size` random-walk trajectories of length `num_steps`.
+        """Draw `batch_size` random-walk trajectories of length `num_steps`.
 
         Parameters
         ----------
         batch_size : int
-            Number of trajectories to draw.
-        num_steps : int
-            Number of time points (including initial state).
+            Number of independent trajectories to draw.
+        num_steps  : int
+            Number of time steps per trajectory.
 
         Returns
         -------
-        dict
-            Contains ``local_params`` (ndarray of shape ``(batch_size, num_steps)``),
-            ``hyper_params`` (sampled per-batch hyperparameters) and
-            ``fixed_params`` (fixed scalar hyperparameters).
+        result : dict - dictionary with keys `local_params`,
+            `hyper_params`, and `fixed_params`
         """
-
         local_params = np.empty((batch_size, num_steps), dtype=self.dtype)
         local_params[:, 0] = self.initial_prior.sample(batch_size).astype(self.dtype)
 
@@ -123,23 +151,19 @@ class RandomWalk(Transition):
         }
 
     def sample_one_step(self, x: float, params: Dict[str, Any]) -> float:
-        """
-        Advance a single step of the random walk.
+        """Advance a single step of the random walk.
 
         Parameters
         ----------
-        x : float
+        x      : float
             Previous latent state.
         params : dict
-            Mapping of parameter names to numeric values (expects
-            ``sigma`` and ``delta``).
+            Expected keys: `sigma`, `delta`.
 
         Returns
         -------
-        float
-            Next latent state.
+        x_next : float - the next latent state
         """
-
         sigma = float(params["sigma"])
         delta = float(params["delta"])
         return _one_step_random_walk(

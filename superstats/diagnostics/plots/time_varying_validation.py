@@ -180,7 +180,7 @@ def plot_time_varying_validation(
 
             ax.plot(trials, center, color=color, linewidth=1.8)
             if not np.array_equal(lower, upper):
-                ax.fill_between(trials, lower, upper, color=color, alpha=0.25)
+                ax.fill_between(trials, lower, upper, color=color, alpha=0.25, edgecolor="none")
 
             ax.set_ylim(y_lim)
             ax.grid(alpha=0.3)

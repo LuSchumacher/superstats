@@ -14,7 +14,27 @@ def _sample_ar1(
     delta: np.ndarray,
     bounds: np.ndarray,
 ) -> np.ndarray:
+    """Vectorized AR(1) rollout across a batch, filled in place.
 
+    Parameters
+    ----------
+    local_params : np.ndarray of shape (batch_size, steps)
+        Pre-allocated trajectory array; `local_params[:, 0]` must already
+        hold the initial state. Overwritten in place with the full rollout.
+    sigma        : np.ndarray of shape (batch_size,)
+        Noise standard deviation.
+    phi          : np.ndarray of shape (batch_size,)
+        Autoregressive coefficient.
+    delta        : np.ndarray of shape (batch_size,)
+        Additive drift term.
+    bounds       : np.ndarray of shape (2,)
+        (lower, upper) bounds passed to `scaled_sigmoid`.
+
+    Returns
+    -------
+    local_params : np.ndarray of shape (batch_size, steps) - the same
+        array, filled with the bounded AR(1) rollout
+    """
     batch_size, steps = local_params.shape
     lower, upper = bounds[0], bounds[1]
 
@@ -39,6 +59,23 @@ def _one_step_ar1(
     phi: float,
     delta: float,
 ) -> float:
+    """Advance a single AR(1) state by one step.
+
+    Parameters
+    ----------
+    x     : float
+        Previous latent state.
+    sigma : float
+        Noise standard deviation.
+    phi   : float
+        Autoregressive coefficient.
+    delta : float
+        Additive drift term.
+
+    Returns
+    -------
+    x_next : float - the next latent state
+    """
     noise = np.random.randn()
     return phi * x + delta + sigma * noise
 
@@ -48,16 +85,16 @@ class AutoRegression(Transition):
 
     Parameters
     ----------
-    bounds : tuple or None
+    bounds        : tuple or None, optional, default: None
         Lower and upper bounds for the latent state.
-    initial_prior : Prior or None
+    initial_prior : Prior or None, optional, default: None
         Prior for the initial latent state.
-    sigma : float or Prior or None
-        Standard deviation of the innovation noise.
-    phi : float or Prior or None
+    sigma         : float or Prior or None, optional, default: None
+        Standard deviation of the noise.
+    phi           : float or Prior or None, optional, default: None
         Autoregressive coefficient.
-    delta : float or Prior, optional
-        Additive drift term (default 0.0).
+    delta         : float or Prior, optional, default: 0.0
+        Additive drift term.
 
     Notes
     -----
@@ -83,29 +120,24 @@ class AutoRegression(Transition):
         self.transition_type = "ar1"
 
     def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
-        """
-        Draw `batch_size` AR(1) trajectories of length `num_steps`.
+        """Draw `batch_size` AR(1) trajectories of length `num_steps`.
 
         Parameters
         ----------
         batch_size : int
-        num_steps : int
+            Number of independent trajectories to draw.
+        num_steps  : int
+            Number of time steps per trajectory.
 
         Returns
         -------
-        dict
-            Dictionary with keys ``local_params``, ``hyper_params``,
-            and ``fixed_params``.
+        result : dict - dictionary with keys `local_params`,
+            `hyper_params`, and `fixed_params`
         """
-
         local_params = np.empty((batch_size, num_steps), dtype=self.dtype)
         local_params[:, 0] = self.initial_prior.sample(batch_size).astype(self.dtype)
 
         hyper, fixed = self._resolve_hyperparams(batch_size)
-
-        # -------------------------
-        # SAFE parameter resolution
-        # -------------------------
 
         if "sigma" in hyper:
             sigma = hyper["sigma"]
@@ -137,22 +169,19 @@ class AutoRegression(Transition):
         }
 
     def sample_one_step(self, x: float, params: Dict[str, Any]) -> float:
-        """
-        Advance a single AR(1) step.
+        """Advance a single AR(1) step.
 
         Parameters
         ----------
-        x : float
+        x      : float
             Previous latent state.
         params : dict
-            Expect keys ``sigma``, ``phi``, ``delta``.
+            Expected keys: `sigma`, `phi`, `delta`.
 
         Returns
         -------
-        float
-            Next latent state.
+        x_next : float - the next latent state
         """
-
         sigma = float(params["sigma"])
         phi = float(params["phi"])
         delta = float(params["delta"])
