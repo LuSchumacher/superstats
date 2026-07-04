@@ -1,68 +1,51 @@
-from collections.abc import Callable
-from typing import Literal
+from typing import Sequence
 
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
 import matplotlib.lines as mlines
-import matplotlib.patches as mpatches
 import seaborn as sns
 
 plt.rcParams["axes.axisbelow"] = True
 
-BAND_LABELS = {"std": "±1 SD", "95ci": "95% CI", "mad": "±1.48 MAD", "95hdi": "95% HDI"}
+PALETTE = [
+    "#822621",
+    "#C1440E",
+    "#E8871A",
+    "#D4A843",
+]
 
 
-def plot_push_forward(
-    data: np.ndarray,
-    data_dim: int = 0,
-    kind: Literal["trajectory", "dist"] = "dist",
-    aggregate_fun: Literal["mean", "median"] | Callable | None = None,
-    uncertainty_fun: Literal["std", "95ci", "mad", "95hdi"] | Callable | None = "95ci",
-    marginal: bool = True,
-    spaghetti: bool = False,
-    num_cols: int = 3,
+def plot_time_varying_prior(
+    local_params: dict[str, np.ndarray],
+    param_bounds: dict[str, tuple[float, float]] | None = None,
     color: str = "#822621",
+    num_cols: int = 2,
     title_fontsize: int = 16,
     label_fontsize: int = 14,
     tick_fontsize: int = 12,
     alpha: float = 0.5,
-    max_discrete_values: int = 30,
-):
-    """Plot prior push-forward for a single data dimension.
+) -> plt.Figure:
+    """Plot time-varying parameter trajectories with marginal KDE.
 
     Parameters
     ----------
-    data                : np.ndarray of shape (batch_size, steps, data_dims)
-        Simulation data from the generative model.
-    data_dim            : int, optional, default: 0
-        Which data dimension to plot.
-    kind                : {"dist", "trajectory"}, optional, default: "dist"
-        Plot type: distribution of summary statistics or time-series
-        trajectories.
-    aggregate_fun       : {"mean", "median"} or callable or None, optional, default: None
-        Aggregation function over the dataset dimension.
-        If None, individual datasets are shown in separate panels.
-        If specified, all datasets are aggregated into a single panel.
-    uncertainty_fun     : {"std", "95ci", "mad", "95hdi"} or callable or None, optional, default: "95ci"
-        Uncertainty function. Only used when `aggregate_fun` is not None.
-    marginal            : bool, optional, default: True
-        Whether to draw marginal distributions beside trajectory plots.
-    spaghetti           : bool, optional, default: False
-        Whether to draw individual trajectories behind the aggregate line.
-    num_cols            : int, optional, default: 3
-        Number of columns when rendering individual panels.
-    color               : str, optional, default: "#822621"
-        Base color for plotted lines and fills.
-    title_fontsize      : int, optional, default: 16
-        The font size of the panel titles.
-    label_fontsize      : int, optional, default: 14
+    local_params   : dict of np.ndarray, each of shape (num_trajectories, num_steps)
+        Mapping from parameter name to an array of trajectories.
+    param_bounds   : dict or None, optional, default: None
+        Mapping from parameter name to (lower, upper) y-axis limits.
+    color          : str, optional, default: '#822621'
+        Line color for individual trajectories and KDE.
+    num_cols       : int, optional, default: 2
+        Number of subplot columns.
+    title_fontsize : int, optional, default: 16
+        The font size of the panel titles (parameter names).
+    label_fontsize : int, optional, default: 14
         The font size of the axis label texts.
-    tick_fontsize       : int, optional, default: 12
+    tick_fontsize  : int, optional, default: 12
         The font size of the axis tick labels.
-    alpha               : float in [0, 1], optional, default: 0.5
-        Alpha value for individual dataset traces.
-    max_discrete_values : int, optional, default: 30
-        Maximum number of discrete categories to treat the data as discrete.
+    alpha          : float in [0, 1], optional, default: 0.5
+        The opacity of individual trajectories.
 
     Returns
     -------
@@ -71,347 +54,412 @@ def plot_push_forward(
     Raises
     ------
     ValueError
-        If `kind` is not "dist" or "trajectory", if `uncertainty_fun`
-        is given without `aggregate_fun`, or if `aggregate_fun` or
-        `uncertainty_fun` (when given as a string) is not one of the
-        recognized values.
+        If local_params is empty.
     """
-    if kind not in {"dist", "trajectory"}:
-        raise ValueError("kind must be 'dist' or 'trajectory'.")
+    if not local_params:
+        raise ValueError("No time-varying (local) parameters to plot.")
 
-    x = np.asarray(data)[:, :, data_dim]
-    show_aggregate = aggregate_fun is not None
-    show_uncertainty = uncertainty_fun is not None
+    COL_WIDTH, ROW_HEIGHT = 6.0, 3.0
+    n = len(local_params)
+    n_rows = int(np.ceil(n / num_cols))
 
-    if show_uncertainty and not show_aggregate:
-        raise ValueError("uncertainty_fun requires aggregate_fun to be specified.")
-    batch_size, steps = x.shape
-    flat = x.reshape(-1)
-    flat = flat[np.isfinite(flat)]
-    categories = np.unique(flat)
-    discrete = (
-        flat.size > 0
-        and np.all(np.isclose(categories, np.round(categories)))
-        and categories.size <= max_discrete_values
+    fig, axes = plt.subplots(
+        n_rows,
+        num_cols,
+        figsize=(COL_WIDTH * num_cols, ROW_HEIGHT * n_rows + 0.5),
+    )
+    axes = np.atleast_1d(axes).ravel()
+
+    for i, (name, values) in enumerate(local_params.items()):
+        ax = axes[i]
+        values_plot = np.asarray(values)
+        n_plot = values_plot.shape[0]
+
+        sub = ax.get_subplotspec().subgridspec(
+            1, 2, width_ratios=[4.2, 0.8], wspace=0.0
+        )
+        ax_traj = fig.add_subplot(sub[0])
+        ax_kde = fig.add_subplot(sub[1])
+
+        if param_bounds and name in param_bounds:
+            ax_traj.set_ylim(param_bounds[name])
+
+        for j in range(n_plot):
+            ax_traj.plot(values_plot[j], alpha=alpha, color=color, linewidth=1.5)
+
+        mean_traj = values_plot.mean(axis=0)
+        ax_traj.plot(mean_traj, color="black", linewidth=2.5, alpha=1.0)
+
+        ax_traj.set_title(name, fontsize=title_fontsize, pad=10)
+        ax_traj.set_xlabel("Step", fontsize=label_fontsize, labelpad=10)
+        ax_traj.grid(alpha=0.3)
+        ax_traj.tick_params(labelsize=tick_fontsize)
+
+        sns.kdeplot(
+            y=values_plot.reshape(-1), ax=ax_kde, color=color, fill=True, alpha=1
+        )
+
+        ax_kde.set_ylim(ax_traj.get_ylim())
+        ax_kde.set_axis_off()
+        ax.axis("off")
+
+    for j in range(len(local_params), len(axes)):
+        axes[j].axis("off")
+
+    legend_handles = [
+        mlines.Line2D([], [], color="black", linewidth=2.5, label="Average"),
+        mlines.Line2D([], [], color=color, linewidth=1.5, alpha=1, label="Individual"),
+    ]
+    fig.legend(
+        handles=legend_handles,
+        loc="lower center",
+        ncol=2,
+        fontsize=label_fontsize,
+        framealpha=0.0,
+        bbox_to_anchor=(0.5, -0.05),
     )
 
-    COL_WIDTH, ROW_HEIGHT = 4.0, 3.0
-    layout_rect = None
+    sns.despine()
+    plt.tight_layout(rect=[0, 0.04, 1, 1])
 
-    if show_aggregate:
-        if kind == "trajectory":
-            t = np.arange(steps)
+    return fig
 
-            fig, base_ax = plt.subplots(figsize=(COL_WIDTH * 2.5, ROW_HEIGHT + 0.5))
-            if marginal:
-                sub = base_ax.get_subplotspec().subgridspec(
-                    1, 2, width_ratios=[4.2, 0.8], wspace=0.0
-                )
-                ax = fig.add_subplot(sub[0])
-                ax_marg = fig.add_subplot(sub[1])
-                base_ax.axis("off")
-            else:
-                ax = base_ax
-                ax_marg = None
 
-            if callable(aggregate_fun):
-                center = np.asarray(aggregate_fun(x))
-            elif aggregate_fun == "mean":
-                center = x.mean(axis=0)
-            elif aggregate_fun == "median":
-                center = np.median(x, axis=0)
-            else:
-                raise ValueError("aggregate_fun must be 'mean', 'median', or callable.")
+def plot_time_invariant_prior(
+    hyper_params: dict[str, np.ndarray],
+    shared_params: dict[str, np.ndarray],
+    mixture_names: dict[str, Sequence[str]] | None = None,
+    color: str = "#822621",
+    num_cols: int = 2,
+    title_fontsize: int = 16,
+    tick_fontsize: int = 12,
+) -> plt.Figure:
+    """Plot time-invariant parameter distributions.
 
-            if show_uncertainty:
-                if callable(uncertainty_fun):
-                    result = uncertainty_fun(x)
-                    if len(result) == 3:
-                        center, lower, upper = result
-                    elif len(result) == 2:
-                        lower, upper = result
-                    else:
-                        raise ValueError(
-                            "Custom uncertainty_fun must return "
-                            "(lower, upper) or "
-                            "(center, lower, upper)."
-                        )
-                    center = np.asarray(center)
-                    lower = np.asarray(lower)
-                    upper = np.asarray(upper)
-                elif uncertainty_fun == "95ci":
-                    lower = np.percentile(x, 2.5, axis=0)
-                    upper = np.percentile(x, 97.5, axis=0)
-                elif uncertainty_fun == "std":
-                    sd = x.std(axis=0)
-                    lower = center - sd
-                    upper = center + sd
-                elif uncertainty_fun == "mad":
-                    med = np.median(x, axis=0)
-                    mad = np.median(np.abs(x - med), axis=0)
-                    scaled_mad = 1.4826 * mad
-                    lower = center - scaled_mad
-                    upper = center + scaled_mad
-                elif uncertainty_fun == "95hdi":
-                    lower, upper = np.empty(steps), np.empty(steps)
-                    for i in range(steps):
-                        vals = np.sort(x[:, i])
-                        n = len(vals)
-                        window = int(np.floor(0.95 * n))
-                        widths = vals[window:] - vals[: n - window]
-                        idx = np.argmin(widths)
-                        lower[i], upper[i] = vals[idx], vals[idx + window]
-                else:
-                    raise ValueError(
-                        "uncertainty_fun must be "
-                        "'std', '95ci', 'mad', '95hdi', or callable."
-                    )
+    Parameters
+    ----------
+    hyper_params   : dict of np.ndarray
+        Mapping from parameter name to an array of hyperparameter samples.
+    shared_params  : dict of np.ndarray
+        Mapping from parameter name to an array of shared parameter samples.
+    mixture_names  : dict or None, optional, default: None
+        Mapping from parameter name to a list of component names for
+        mixture weight parameters.
+    color          : str, optional, default: '#822621'
+        Base color for non-mixture histograms.
+    num_cols       : int, optional, default: 2
+        Number of subplot columns.
+    title_fontsize : int, optional, default: 16
+        The font size of the panel titles (parameter names).
+    tick_fontsize  : int, optional, default: 12
+        The font size of the axis tick labels.
 
-                ax.fill_between(
-                    t,
-                    lower,
-                    upper,
-                    color=color,
-                    alpha=0.4,
-                    edgecolor="none",
-                    zorder=1,
-                )
+    Returns
+    -------
+    fig : plt.Figure - the figure instance for optional saving
 
-            if spaghetti:
-                for i in range(batch_size):
-                    ax.plot(
-                        t,
-                        x[i],
-                        color=color,
-                        alpha=alpha,
-                        linewidth=1.0,
-                        zorder=2,
-                    )
+    Raises
+    ------
+    ValueError
+        If both hyper_params and shared_params are empty.
+    """
+    if not hyper_params and not shared_params:
+        raise ValueError("No time-invariant parameters to plot.")
 
-            ax.plot(
-                t,
-                center,
-                color="black",
-                linewidth=2.5,
-                zorder=3,
-            )
-            ax.set_xlabel("Step", fontsize=label_fontsize)
-            ax.grid(alpha=0.3)
-            ax.tick_params(labelsize=tick_fontsize)
-            if discrete:
-                ax.set_yticks(categories)
+    labeled_params = {}
+    for name, values in hyper_params.items():
+        labeled_params[f"{name}  [hyper]"] = values
+    for name, values in shared_params.items():
+        labeled_params[f"{name}  [shared]"] = values
 
-            if ax_marg is not None:
-                values = x.reshape(-1)
-                if discrete:
-                    counts = np.array(
-                        [np.sum(values == category) for category in categories]
-                    )
-                    density = counts / counts.sum()
-                    ax_marg.barh(categories, density, color=color, alpha=1)
-                    ax_marg.set_yticks(categories)
-                else:
-                    sns.kdeplot(y=values, ax=ax_marg, color=color, fill=True, alpha=1)
-                ax_marg.set_ylim(ax.get_ylim())
-                ax_marg.set_axis_off()
+    COL_WIDTH, ROW_HEIGHT = 5.0, 3.0
+    n = len(labeled_params)
+    n_rows = int(np.ceil(n / num_cols))
 
-            handles = [
-                mlines.Line2D([], [], color="black", linewidth=2.5, label="Aggregate"),
-            ]
-            if show_uncertainty:
-                band_label = (
-                    BAND_LABELS[uncertainty_fun]
-                    if isinstance(uncertainty_fun, str)
-                    else "Uncertainty"
-                )
-                handles.append(
-                    mpatches.Patch(
-                        facecolor=color,
-                        alpha=0.4,
-                        edgecolor="none",
-                        label=band_label,
-                    )
-                )
-            if spaghetti:
-                handles.append(
-                    mlines.Line2D(
-                        [],
-                        [],
-                        color=color,
-                        linewidth=1.5,
-                        alpha=1,
-                        label="Individual",
-                    )
-                )
-            fig.legend(
-                handles=handles,
-                loc="lower center",
-                ncol=len(handles),
-                fontsize=label_fontsize,
-                framealpha=0.0,
-                bbox_to_anchor=(0.5, -0.02),
-            )
-            layout_rect = [0, 0.08, 1, 1]
+    fig, axes = plt.subplots(
+        n_rows,
+        num_cols,
+        figsize=(COL_WIDTH * num_cols, ROW_HEIGHT * n_rows),
+    )
+    axes = np.atleast_1d(axes).ravel()
 
-        elif kind == "dist":
-            fig, ax = plt.subplots(figsize=(COL_WIDTH * 2.0, ROW_HEIGHT + 0.5))
+    for i, (label, values) in enumerate(labeled_params.items()):
+        ax = axes[i]
+        arr = np.asarray(values)
 
-            if discrete:
-                counts = np.array(
-                    [
-                        [
-                            np.mean(row.reshape(-1) == category)
-                            for category in categories
-                        ]
-                        for row in x
-                    ]
-                )
-                if callable(aggregate_fun):
-                    heights = np.asarray(aggregate_fun(counts)).reshape(-1)
-                elif aggregate_fun == "mean":
-                    heights = counts.mean(axis=0)
-                elif aggregate_fun == "median":
-                    heights = np.median(counts, axis=0)
-                else:
-                    raise ValueError(
-                        "aggregate_fun must be 'mean', 'median', or callable."
-                    )
+        if arr.ndim == 2 and arr.shape[1] > 1:
+            param_name = label.split("_mixture_weights")[0].strip()
+            component_names = (
+                mixture_names.get(param_name) if mixture_names else None
+            ) or [f"component {k}" for k in range(arr.shape[1])]
 
-                ax.bar(categories, heights, color=color, alpha=1)
-                ax.set_xticks(categories)
-            else:
-                if callable(aggregate_fun):
-                    stats = np.asarray(aggregate_fun(x)).reshape(-1)
-                elif aggregate_fun == "mean":
-                    stats = x.mean(axis=-1)
-                elif aggregate_fun == "median":
-                    stats = np.median(x, axis=-1)
-                else:
-                    raise ValueError(
-                        "aggregate_fun must be 'mean', 'median', or callable."
-                    )
-
+            for k in range(arr.shape[1]):
                 sns.histplot(
-                    stats,
+                    arr[:, k],
                     bins=30,
                     stat="density",
                     kde=True,
-                    line_kws={"linewidth": 2.0},
+                    line_kws={"linewidth": 3.0},
                     ax=ax,
-                    color=color,
+                    color=PALETTE[k % len(PALETTE)],
                     alpha=1,
+                    label=component_names[k],
                 )
-
-            ax.set_xlabel("")
-            ax.set_ylabel("")
-            ax.grid(alpha=0.3)
-            ax.tick_params(labelsize=tick_fontsize)
-
+            ax.legend(fontsize=tick_fontsize, framealpha=0.0)
         else:
-            raise ValueError("kind must be 'dist' or 'trajectory'.")
-
-    elif kind == "trajectory":
-        n_rows = int(np.ceil(batch_size / num_cols))
-        fig, axes = plt.subplots(
-            n_rows,
-            num_cols,
-            figsize=(COL_WIDTH * num_cols, ROW_HEIGHT * n_rows + 0.5),
-        )
-        axes = np.atleast_1d(axes).ravel()
-        t = np.arange(steps)
-
-        for i in range(batch_size):
-            base_ax = axes[i]
-            if marginal:
-                sub = base_ax.get_subplotspec().subgridspec(
-                    1, 2, width_ratios=[4.2, 0.8], wspace=0.0
-                )
-                ax = fig.add_subplot(sub[0])
-                ax_marg = fig.add_subplot(sub[1])
-                base_ax.axis("off")
-            else:
-                ax = base_ax
-                ax_marg = None
-
-            show_xlabel = i // num_cols == n_rows - 1
-            show_ylabel = i % num_cols == 0
-
-            ax.plot(t, x[i], color=color, alpha=alpha, linewidth=1.5)
-            ax.set_title(f"Dataset {i}", fontsize=title_fontsize)
-            ax.set_xlabel("Step" if show_xlabel else "", fontsize=label_fontsize)
-            ax.grid(alpha=0.3)
-            ax.tick_params(
-                labelsize=tick_fontsize,
-                labelbottom=show_xlabel,
-                labelleft=show_ylabel,
-            )
-            if discrete:
-                ax.set_yticks(categories)
-
-            if ax_marg is not None:
-                if discrete:
-                    counts = np.array(
-                        [np.sum(x[i] == category) for category in categories]
-                    )
-                    density = counts / counts.sum()
-                    ax_marg.barh(categories, density, color=color, alpha=1)
-                    ax_marg.set_yticks(categories)
-                else:
-                    sns.kdeplot(y=x[i], ax=ax_marg, color=color, fill=True, alpha=1)
-                ax_marg.set_ylim(ax.get_ylim())
-                ax_marg.set_axis_off()
-
-        for j in range(batch_size, len(axes)):
-            axes[j].axis("off")
-
-    else:
-        n_rows = int(np.ceil(batch_size / num_cols))
-        fig, axes = plt.subplots(
-            n_rows,
-            num_cols,
-            figsize=(COL_WIDTH * num_cols, ROW_HEIGHT * n_rows + 0.5),
-        )
-        axes = np.atleast_1d(axes).ravel()
-
-        for i in range(batch_size):
-            ax = axes[i]
-            if discrete:
-                counts = np.array([np.sum(x[i] == category) for category in categories])
-                density = counts / counts.sum()
-                ax.bar(categories, density, color=color, alpha=1)
-                ax.set_xticks(categories)
-            else:
-                sns.histplot(
-                    x[i],
-                    bins=30,
-                    stat="density",
-                    kde=True,
-                    line_kws={"linewidth": 2.0},
-                    ax=ax,
-                    color=color,
-                    alpha=1,
-                )
-
-            show_xlabel = i // num_cols == n_rows - 1
-            show_ylabel = i % num_cols == 0
-
-            ax.set_title(f"Dataset {i}", fontsize=title_fontsize)
-            ax.set_xlabel("")
-            ax.set_ylabel("")
-            ax.grid(alpha=0.3)
-            ax.tick_params(
-                labelsize=tick_fontsize,
-                labelbottom=show_xlabel,
-                labelleft=show_ylabel,
+            sns.histplot(
+                arr.reshape(-1),
+                bins=30,
+                stat="density",
+                kde=True,
+                line_kws={"linewidth": 3.0},
+                ax=ax,
+                color=color,
+                alpha=1,
             )
 
-        for j in range(batch_size, len(axes)):
-            axes[j].axis("off")
+        ax.set_title(label, fontsize=title_fontsize, pad=10)
+        ax.set_xlabel("")
+        ax.set_ylabel("")
+        ax.grid(alpha=0.3)
+        ax.tick_params(labelsize=tick_fontsize)
+
+    for j in range(len(labeled_params), len(axes)):
+        axes[j].axis("off")
 
     sns.despine()
-    if layout_rect is None:
-        plt.tight_layout()
-    else:
-        plt.tight_layout(rect=layout_rect)
+    plt.tight_layout()
+
+    return fig
+
+
+def plot_joint_prior(
+    local_params: dict[str, np.ndarray],
+    hyper_params: dict[str, np.ndarray],
+    shared_params: dict[str, np.ndarray],
+    param_bounds: dict[str, tuple[float, float]] | None = None,
+    mixture_names: dict[str, Sequence[str]] | None = None,
+    color: str = "#822621",
+    title_fontsize: int = 16,
+    tick_fontsize: int = 12,
+    alpha: float = 0.5,
+) -> plt.Figure:
+    """Plot joint prior diagnostics combining hyperparameter distributions,
+    shared parameter histograms, and time-varying trajectories.
+
+    Parameters
+    ----------
+    local_params   : dict of np.ndarray, each of shape (num_trajectories, num_steps)
+        Mapping from parameter name to an array of trajectories.
+    hyper_params   : dict of np.ndarray
+        Mapping from hyperparameter name to an array of samples. Keys may
+        include parameter prefixes followed by component labels.
+    shared_params  : dict of np.ndarray
+        Mapping from parameter name to an array of shared parameter samples.
+    param_bounds   : dict or None, optional, default: None
+        Mapping from parameter name to (lower, upper) y-axis limits.
+    mixture_names  : dict or None, optional, default: None
+        Mapping from parameter name to a list of component names for
+        mixture weight parameters.
+    color          : str, optional, default: '#822621'
+        Base plotting color for KDEs and trajectories.
+    title_fontsize : int, optional, default: 16
+        The font size of the panel titles (parameter names).
+    tick_fontsize  : int, optional, default: 12
+        The font size of the axis tick labels.
+    alpha          : float in [0, 1], optional, default: 0.5
+        The opacity of individual trajectories.
+
+    Returns
+    -------
+    fig : plt.Figure - the figure instance for optional saving
+
+    Raises
+    ------
+    ValueError
+        If no plottable parameters are found across local_params,
+        hyper_params, and shared_params.
+    """
+    all_param_names = list(
+        dict.fromkeys(
+            list(local_params.keys())
+            + list(shared_params.keys())
+            + [k.split("_")[0] for k in hyper_params.keys()]
+        )
+    )
+
+    row_specs = []
+    for param_name in all_param_names:
+        hyper_cols = [
+            (k, np.asarray(v))
+            for k, v in hyper_params.items()
+            if k.startswith(param_name + "_")
+        ]
+        local_arr = (
+            np.asarray(local_params[param_name]) if param_name in local_params else None
+        )
+        shared_arr = (
+            np.asarray(shared_params[param_name])
+            if param_name in shared_params
+            else None
+        )
+
+        row_specs.append(
+            {
+                "name": param_name,
+                "hyper_cols": hyper_cols,
+                "local": local_arr,
+                "shared": shared_arr,
+            }
+        )
+
+    if not row_specs:
+        raise ValueError("No plottable parameters found.")
+
+    max_hyper = max(len(r["hyper_cols"]) for r in row_specs)
+    n_cols = max_hyper + 1
+    n_rows = len(row_specs)
+
+    COL_WIDTH, ROW_HEIGHT = 4.0, 3.0
+    fig = plt.figure(figsize=(COL_WIDTH * n_cols, ROW_HEIGHT * n_rows + 0.5))
+
+    col_widths = [1.0] * (n_cols - 1) + [2.0]
+    gs = gridspec.GridSpec(n_rows, n_cols, width_ratios=col_widths, figure=fig)
+    axes = np.array(
+        [[fig.add_subplot(gs[r, c]) for c in range(n_cols)] for r in range(n_rows)]
+    )
+
+    for row_i, spec in enumerate(row_specs):
+        param_name = spec["name"]
+        hyper_cols = spec["hyper_cols"]
+        local_arr = spec["local"]
+        shared_arr = spec["shared"]
+
+        for col_i, (label, values) in enumerate(hyper_cols):
+            ax = axes[row_i, col_i]
+            arr = np.asarray(values)
+
+            if arr.ndim == 2 and arr.shape[1] > 1:
+                component_names = (
+                    mixture_names.get(param_name) if mixture_names else None
+                ) or [f"component {k}" for k in range(arr.shape[1])]
+
+                for k in range(arr.shape[1]):
+                    sns.histplot(
+                        arr[:, k],
+                        bins=30,
+                        stat="density",
+                        kde=True,
+                        line_kws={"linewidth": 2.0},
+                        ax=ax,
+                        color=PALETTE[k % len(PALETTE)],
+                        alpha=1,
+                        label=component_names[k],
+                    )
+                ax.legend(fontsize=tick_fontsize, framealpha=0.3)
+            else:
+                sns.histplot(
+                    arr.reshape(-1),
+                    bins=30,
+                    stat="density",
+                    kde=True,
+                    line_kws={"linewidth": 2.0},
+                    ax=ax,
+                    color=color,
+                    alpha=1,
+                )
+
+            short_label = "_".join(label.split("_")[1:])
+            ax.set_title(short_label, fontsize=title_fontsize, pad=15)
+            ax.set_xlabel("")
+            ax.set_ylabel("")
+            ax.grid(alpha=0.3)
+            ax.tick_params(labelsize=tick_fontsize)
+
+        if shared_arr is not None:
+            ax = axes[row_i, 0]
+            sns.histplot(
+                shared_arr.reshape(-1),
+                bins=30,
+                stat="density",
+                kde=True,
+                line_kws={"linewidth": 2.0},
+                ax=ax,
+                color=color,
+                alpha=1,
+            )
+            ax.set_xlabel("")
+            ax.set_ylabel("")
+            ax.grid(alpha=0.3)
+            ax.tick_params(labelsize=tick_fontsize)
+
+        ax_cell = axes[row_i, n_cols - 1]
+        sub = ax_cell.get_subplotspec().subgridspec(
+            1, 2, width_ratios=[4.2, 0.8], wspace=0.0
+        )
+        ax_traj = fig.add_subplot(sub[0])
+        ax_kde = fig.add_subplot(sub[1])
+        ax_cell.axis("off")
+
+        if local_arr is not None:
+            n_plot = local_arr.shape[0]
+            for j in range(n_plot):
+                ax_traj.plot(local_arr[j], alpha=alpha, color=color, linewidth=2)
+
+            mean_traj = local_arr.mean(axis=0)
+            ax_traj.plot(mean_traj, color="black", linewidth=2.5, alpha=1.0)
+
+            if param_bounds and param_name in param_bounds:
+                ax_traj.set_ylim(param_bounds[param_name])
+
+            ax_traj.set_title("Trajectory", fontsize=title_fontsize, pad=15)
+            ax_traj.set_xlabel("")
+            ax_traj.grid(alpha=0.3)
+            ax_traj.tick_params(labelsize=tick_fontsize)
+
+            sns.kdeplot(
+                y=local_arr.reshape(-1), ax=ax_kde, color=color, fill=True, alpha=1
+            )
+            ax_kde.set_ylim(ax_traj.get_ylim())
+            ax_kde.set_axis_off()
+        else:
+            ax_traj.axis("off")
+            ax_kde.axis("off")
+
+        for col_i in range(len(hyper_cols), n_cols - 1):
+            if shared_arr is None or col_i > 0:
+                axes[row_i, col_i].axis("off")
+
+    legend_handles = [
+        mlines.Line2D([], [], color="black", linewidth=2.5, label="Average"),
+        mlines.Line2D([], [], color=color, linewidth=2.0, alpha=1, label="Individual"),
+    ]
+    fig.legend(
+        handles=legend_handles,
+        loc="lower center",
+        ncol=2,
+        fontsize=title_fontsize - 2,
+        framealpha=0.0,
+        bbox_to_anchor=(0.5, -0.05),
+    )
+
+    plt.tight_layout(rect=[0, 0.04, 1, 1])
+    plt.draw()
+
+    for row_i, spec in enumerate(row_specs):
+        ax0 = axes[row_i, 0]
+        bbox = ax0.get_position()
+        fig.text(
+            0.01,
+            bbox.y0 + bbox.height / 2,
+            spec["name"],
+            ha="center",
+            va="center",
+            fontsize=title_fontsize,
+            rotation=0,
+        )
+
+    fig.subplots_adjust(left=0.06, bottom=0.06)
+    sns.despine()
 
     return fig
