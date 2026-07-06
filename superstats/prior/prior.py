@@ -7,7 +7,7 @@ class Prior:
 
     Parameters
     ----------
-    dist  : {"normal", "uniform", "beta", "halfnormal", "dirichlet"}
+    dist  : {"normal", "uniform", "beta", "halfnormal", "dirichlet", "logistic"}
         Distribution type.
     loc   : float, optional, default: 0.0
         Mean for `normal`.
@@ -28,24 +28,24 @@ class Prior:
     """
 
     def __init__(
-        self,
-        dist: Literal["normal", "uniform", "beta", "halfnormal", "dirichlet"],
-        loc: float = 0.0,
-        scale: float = 1.0,
-        low: float = 0.0,
-        high: float = 1.0,
-        a: float = 1.0,
-        b: float = 1.0,
-        alpha: Sequence[float] | None = None,
-    ):
-        self.dist = dist
-        self.loc = loc
-        self.scale = scale
-        self.low = low
-        self.high = high
-        self.a = a
-        self.b = b
-        self.alpha = alpha
+            self,
+            dist: Literal["normal", "uniform", "beta", "halfnormal", "dirichlet", "logistic"],
+            loc: float = 0.0,
+            scale: float = 1.0,
+            low: float = 0.0,
+            high: float = 1.0,
+            a: float = 1.0,
+            b: float = 1.0,
+            alpha: Sequence[float] | None = None,
+        ):
+            self.dist = dist
+            self.loc = loc
+            self.scale = scale
+            self.low = low
+            self.high = high
+            self.a = a
+            self.b = b
+            self.alpha = alpha
 
     def sample(self, batch_size: int) -> np.ndarray:
         """Draw samples from the prior.
@@ -80,6 +80,9 @@ class Prior:
 
         elif self.dist == "beta":
             samples = np.random.beta(self.a, self.b, size=batch_size)
+
+        elif self.dist == "logistic":
+            samples = np.random.logistic(self.loc, self.scale, size=batch_size)
 
         elif self.dist == "dirichlet":
             if self.alpha is None:
