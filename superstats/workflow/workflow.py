@@ -160,8 +160,8 @@ class Workflow:
 
 
     def _save_history(self, new_history: keras.callbacks.History) -> None:
-        """Merge and persist training history to `checkpoint_filepath`.
-
+        """Merge and persist training history to `checkpoint_filepath`, if present.
+        
         A no-op if `checkpoint_filepath` is None.
 
         Parameters
@@ -173,7 +173,7 @@ class Workflow:
         if self.checkpoint_filepath is None:
             return
         existing = self.workflow.history
-        if existing is not None:
+        if existing is not None and existing is not new_history:
             for key, values in new_history.history.items():
                 existing.history.setdefault(key, []).extend(values)
             new_history = existing
