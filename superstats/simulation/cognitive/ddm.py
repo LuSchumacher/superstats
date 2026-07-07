@@ -1,6 +1,7 @@
 import numpy as np
 from numba import njit, prange
 
+
 @njit(parallel=True, fastmath=True)
 def sample_ddm(
     v: np.ndarray,

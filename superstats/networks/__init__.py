@@ -1,6 +1,4 @@
 from .recurrent import RecurrentNet
 
 
-__all__ = [
-    "RecurrentNet"
-]
+__all__ = ["RecurrentNet"]

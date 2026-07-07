@@ -1,11 +1,10 @@
 import numpy as np
 from numba import njit
 
+
 @njit
 def scaled_sigmoid(
-    x: float | np.ndarray,
-    lower_bound: float | np.ndarray,
-    upper_bound: float | np.ndarray
+    x: float | np.ndarray, lower_bound: float | np.ndarray, upper_bound: float | np.ndarray
 ) -> float | np.ndarray:
     """Apply a sigmoid transformation and rescale to a bounded interval.
 

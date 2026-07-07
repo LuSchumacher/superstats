@@ -51,16 +51,10 @@ class Transition(ABC):
         self._user_defined_initial_prior = initial_prior is not None
 
         self.bounds = (
-            np.asarray(bounds, dtype=self.dtype)
-            if bounds is not None
-            else np.asarray(DEFAULT_BOUNDS, dtype=self.dtype)
+            np.asarray(bounds, dtype=self.dtype) if bounds is not None else np.asarray(DEFAULT_BOUNDS, dtype=self.dtype)
         )
 
-        self.initial_prior = (
-            initial_prior
-            if initial_prior is not None
-            else DEFAULT_INITIAL_PRIOR
-        )
+        self.initial_prior = initial_prior if initial_prior is not None else DEFAULT_INITIAL_PRIOR
         self.hyper_specs: Dict[str, ParamSpec] = {}
 
     def _resolve(self, name: str, spec: ParamSpec) -> tuple[Prior | float, bool]:
@@ -93,9 +87,7 @@ class Transition(ABC):
         if spec is None:
             default = DEFAULT_HYPER_PRIORS.get(name)
             if default is None:
-                raise KeyError(
-                    f"No default hyperprior found for '{name}'"
-                )
+                raise KeyError(f"No default hyperprior found for '{name}'")
             return default, True
 
         if isinstance(spec, Prior):
@@ -145,10 +137,7 @@ class Transition(ABC):
             return np.full(batch_size, x, dtype=self.dtype)
         return np.asarray(x, dtype=self.dtype)
 
-    def _resolve_hyperparams(
-        self,
-        batch_size: int
-    ) -> tuple[Dict[str, np.ndarray], Dict[str, float]]:
+    def _resolve_hyperparams(self, batch_size: int) -> tuple[Dict[str, np.ndarray], Dict[str, float]]:
         """Resolve every entry in `hyper_specs` into sampled and fixed groups.
 
         Parameters
@@ -178,11 +167,7 @@ class Transition(ABC):
         return hyper_params, fixed_params
 
     @abstractmethod
-    def sample(
-        self,
-        batch_size: int,
-        num_steps: int
-    ) -> Dict[str, Any]:
+    def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
         """Generate `batch_size` latent trajectories of length `num_steps`.
 
         Parameters

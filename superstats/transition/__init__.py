@@ -5,11 +5,4 @@ from .jump import Jump
 from .mixture import Mixture
 from .transition import Transition
 
-__all__ = [
-    "RandomWalk",
-    "AutoRegression",
-    "OrnsteinUhlenbeck",
-    "Jump",
-    "Mixture",
-    "Transition"
-]
+__all__ = ["RandomWalk", "AutoRegression", "OrnsteinUhlenbeck", "Jump", "Mixture", "Transition"]

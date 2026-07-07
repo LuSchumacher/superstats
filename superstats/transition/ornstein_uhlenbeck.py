@@ -44,11 +44,7 @@ def _sample_ou(
         x_prev = local_params[b, 0]
 
         for t in range(1, steps):
-            x_prev = (
-                x_prev
-                + theta[b] * (mu[b] - x_prev)
-                + sigma[b] * noise[b, t - 1]
-            )
+            x_prev = x_prev + theta[b] * (mu[b] - x_prev) + sigma[b] * noise[b, t - 1]
             local_params[b, t] = x_prev
 
         local_params[b, :] = scaled_sigmoid(local_params[b, :], lower, upper)

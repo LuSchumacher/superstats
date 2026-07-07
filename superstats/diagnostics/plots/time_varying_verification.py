@@ -12,15 +12,15 @@ from superstats.diagnostics.metrics import (
 )
 
 METRIC_COLORS = {
-    "r2":          "#822621",
-    "nrmse":       "#C1440E",
+    "r2": "#822621",
+    "nrmse": "#C1440E",
     "contraction": "#E8871A",
     "calibration": "#D4A843",
 }
 
 METRIC_LABELS = {
-    "r2":          "R²",
-    "nrmse":       "NRMSE",
+    "r2": "R²",
+    "nrmse": "NRMSE",
     "contraction": "Posterior\nContraction",
     "calibration": "Calibration\nError",
 }
@@ -58,14 +58,14 @@ def _summarize(
         center = np.mean(values, axis=0)
 
     if uncertainty == "ci":
-        lower = np.percentile(values, 2.5,  axis=0)
+        lower = np.percentile(values, 2.5, axis=0)
         upper = np.percentile(values, 97.5, axis=0)
     elif uncertainty == "std":
-        std   = np.std(values, axis=0)
+        std = np.std(values, axis=0)
         lower = center - std
         upper = center + std
     elif uncertainty == "mad":
-        mad   = np.median(np.abs(values - np.median(values, axis=0)), axis=0)
+        mad = np.median(np.abs(values - np.median(values, axis=0)), axis=0)
         lower = center - mad
         upper = center + mad
     else:
@@ -130,7 +130,8 @@ def plot_time_varying_verification(
 
     # calibration: aggregated across sims -> (num_steps, num_params)
     calibration = calibration_error_per_step(
-        estimates, targets,
+        estimates,
+        targets,
         aggregation=np.median if estimator == "median" else np.mean,
     )
 
@@ -146,11 +147,8 @@ def plot_time_varying_verification(
 
     COL_WIDTH, ROW_HEIGHT = 4.0, 2.8
     fig = plt.figure(figsize=(COL_WIDTH * n_cols, ROW_HEIGHT * n_rows))
-    gs  = gridspec.GridSpec(n_rows, n_cols, hspace=0.4, wspace=0.3, figure=fig)
-    axes = np.array([
-        [fig.add_subplot(gs[r, c]) for c in range(n_cols)]
-        for r in range(n_rows)
-    ])
+    gs = gridspec.GridSpec(n_rows, n_cols, hspace=0.4, wspace=0.3, figure=fig)
+    axes = np.array([[fig.add_subplot(gs[r, c]) for c in range(n_cols)] for r in range(n_rows)])
 
     for row_i, key in enumerate(metric_keys):
         color = METRIC_COLORS[key]
@@ -162,37 +160,33 @@ def plot_time_varying_verification(
             if key == "r2":
                 # (num_steps,) — no CI band
                 center = r2[:, p]
-                lower  = center
-                upper  = center
+                lower = center
+                upper = center
 
             elif key == "nrmse":
                 # (num_sim, num_steps) — has CI band
-                center, lower, upper = _summarize(
-                    nrmse[:, :, p], estimator, uncertainty
-                )
+                center, lower, upper = _summarize(nrmse[:, :, p], estimator, uncertainty)
 
             elif key == "contraction":
                 # (num_sim, num_steps) — has CI band
-                center, lower, upper = _summarize(
-                    contraction[:, :, p], estimator, uncertainty
-                )
+                center, lower, upper = _summarize(contraction[:, :, p], estimator, uncertainty)
 
             elif key == "calibration":
                 # (num_steps,) — no CI band
                 center = calibration[:, p]
-                lower  = center
-                upper  = center
+                lower = center
+                upper = center
 
             if key in BOUNDED_UNIT_INTERVAL:
                 center = np.clip(center, 0.0, 1.0)
-                lower  = np.clip(lower, 0.0, 1.0)
-                upper  = np.clip(upper, 0.0, 1.0)
+                lower = np.clip(lower, 0.0, 1.0)
+                upper = np.clip(upper, 0.0, 1.0)
 
             summaries.append((center, lower, upper))
             y_min = min(y_min, lower.min())
             y_max = max(y_max, upper.max())
 
-        pad   = (y_max - y_min) * 0.1 or 0.05
+        pad = (y_max - y_min) * 0.1 or 0.05
         y_lim = (y_min - pad, y_max + pad)
 
         for col_i, (center, lower, upper) in enumerate(summaries):
@@ -217,13 +211,14 @@ def plot_time_varying_verification(
     plt.draw()
 
     for row_i, key in enumerate(metric_keys):
-        ax0  = axes[row_i, 0]
+        ax0 = axes[row_i, 0]
         bbox = ax0.get_position()
         fig.text(
             0.01,
             bbox.y0 + bbox.height / 2,
             METRIC_LABELS[key],
-            ha="center", va="center",
+            ha="center",
+            va="center",
             fontsize=label_fontsize,
             rotation=90,
         )

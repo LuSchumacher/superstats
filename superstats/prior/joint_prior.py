@@ -82,9 +82,7 @@ class JointPrior:
                 fixed_params[name] = int(param) if isinstance(param, int) else float(param)
 
             else:
-                raise TypeError(
-                    f"Unknown parameter type for '{name}': {type(param).__name__}"
-                )
+                raise TypeError(f"Unknown parameter type for '{name}': {type(param).__name__}")
 
         return {
             "local_params": local_params,
@@ -102,9 +100,7 @@ class JointPrior:
             attribute, for parameters that define one
         """
         return {
-            name: obj.bounds
-            for name, obj in self.params.items()
-            if hasattr(obj, "bounds") and obj.bounds is not None
+            name: obj.bounds for name, obj in self.params.items() if hasattr(obj, "bounds") and obj.bounds is not None
         }
 
     def _mixture_names(self) -> dict:
@@ -115,18 +111,9 @@ class JointPrior:
         names : dict - mapping from parameter name to its `names`
             attribute, for parameters that define one
         """
-        return {
-            name: obj.names
-            for name, obj in self.params.items()
-            if hasattr(obj, "names")
-        }
+        return {name: obj.names for name, obj in self.params.items() if hasattr(obj, "names")}
 
-    def plot_time_varying_prior(
-        self,
-        num_steps: int = 200,
-        num_trajectories: int = 20,
-        **kwargs
-    ):
+    def plot_time_varying_prior(self, num_steps: int = 200, num_trajectories: int = 20, **kwargs):
         """Plot sampled time-varying prior trajectories.
 
         Parameters
@@ -173,13 +160,7 @@ class JointPrior:
             **kwargs,
         )
 
-    def plot_joint_prior(
-        self,
-        num_steps: int = 200,
-        num_trajectories: int = 20,
-        num_draws: int = 1000,
-        **kwargs
-    ):
+    def plot_joint_prior(self, num_steps: int = 200, num_trajectories: int = 20, num_draws: int = 1000, **kwargs):
         """Plot joint prior diagnostics across local and shared parameters.
 
         Parameters
@@ -199,10 +180,7 @@ class JointPrior:
         fig : plt.Figure - the generated figure
         """
         samples = self.sample(batch_size=num_draws, num_steps=num_steps)
-        local_params = {
-            k: v[:num_trajectories]
-            for k, v in samples["local_params"].items()
-        }
+        local_params = {k: v[:num_trajectories] for k, v in samples["local_params"].items()}
         return plot_joint_prior(
             local_params=local_params,
             hyper_params=samples["hyper_params"],

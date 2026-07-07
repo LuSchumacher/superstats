@@ -2,7 +2,6 @@ from typing import Callable, Dict, Optional
 import inspect
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
 
 from superstats.prior.joint_prior import JointPrior
 from superstats.diagnostics.plots.prior_push_forward import plot_push_forward
@@ -32,11 +31,7 @@ class GenerativeModel:
         If `model` is not callable.
     """
 
-    def __init__(
-        self,
-        prior: JointPrior,
-        model: Callable
-    ):
+    def __init__(self, prior: JointPrior, model: Callable):
         self.prior = prior
         self.model = model
 
@@ -103,9 +98,7 @@ class GenerativeModel:
             if name not in combined_params:
                 param = self.signature.parameters[name]
                 if param.default is inspect.Parameter.empty:
-                    raise ValueError(
-                        f"Parameter '{name}' required by model but missing in prior."
-                    )
+                    raise ValueError(f"Parameter '{name}' required by model but missing in prior.")
                 continue
 
             p = np.asarray(combined_params[name])
@@ -128,30 +121,26 @@ class GenerativeModel:
                 if p.shape == (batch_size, num_steps):
                     flat_params[name] = p.reshape(batch_size * num_steps)
                 elif p.shape[0] == batch_size:
-                    flat_params[name] = np.broadcast_to(
-                        p[:, None, ...],
-                        (batch_size, num_steps, p.shape[1])
-                    ).reshape(batch_size * num_steps, p.shape[1])
+                    flat_params[name] = np.broadcast_to(p[:, None, ...], (batch_size, num_steps, p.shape[1])).reshape(
+                        batch_size * num_steps, p.shape[1]
+                    )
                 else:
                     raise ValueError(
-                        f"Parameter '{name}' must have shape (batch_size, num_steps) or (batch_size, dim); got {p.shape}"
+                        f"Parameter '{name}' must have shape (batch_size, num_steps) or "
+                        f"(batch_size, dim); got {p.shape}"
                     )
                 continue
 
             if p.ndim == 3:
                 if p.shape[0] != batch_size or p.shape[1] != num_steps:
-                    raise ValueError(
-                        f"Parameter '{name}' must have shape (batch_size, num_steps, dim); got {p.shape}"
-                    )
+                    raise ValueError(f"Parameter '{name}' must have shape (batch_size, num_steps, dim); got {p.shape}")
                 if p.shape[2] == 1:
                     flat_params[name] = p.reshape(batch_size * num_steps)
                 else:
                     flat_params[name] = p.reshape(batch_size * num_steps, p.shape[2])
                 continue
 
-            raise ValueError(
-                f"Unexpected shape for parameter '{name}': {p.shape}"
-            )
+            raise ValueError(f"Unexpected shape for parameter '{name}': {p.shape}")
 
         return flat_params
 
@@ -168,11 +157,7 @@ class GenerativeModel:
         """
         prior_draws = self.prior.sample(batch_size=1, num_steps=1)
         fixed_params = prior_draws.get("fixed_params", {})
-        return {
-            name: np.asarray(value)
-            for name, value in fixed_params.items()
-            if name in self.param_order
-        }
+        return {name: np.asarray(value) for name, value in fixed_params.items() if name in self.param_order}
 
     def simulate_from_parameters(
         self,
@@ -220,9 +205,7 @@ class GenerativeModel:
 
             default = self.signature.parameters[name].default
             if default is inspect.Parameter.empty:
-                raise ValueError(
-                    f"Parameter '{name}' required by model but missing in params and has no default."
-                )
+                raise ValueError(f"Parameter '{name}' required by model but missing in params and has no default.")
             ordered_params.append(default)
 
         sim_data = self.model(*ordered_params)
@@ -267,9 +250,7 @@ class GenerativeModel:
         for name, value in params.items():
             arr = np.asarray(value)
             if arr.ndim != 2 or arr.shape != (batch_size, num_steps):
-                raise ValueError(
-                    f"Local parameter '{name}' must have shape (batch_size, num_steps), got {arr.shape}"
-                )
+                raise ValueError(f"Local parameter '{name}' must have shape (batch_size, num_steps), got {arr.shape}")
             normalized[name] = arr.reshape(batch_size, num_steps, 1)
         return normalized
 
@@ -316,9 +297,7 @@ class GenerativeModel:
             elif arr.ndim == 0:
                 normalized[name] = np.full((batch_size, 1), arr.item(), dtype=arr.dtype)
             else:
-                raise ValueError(
-                    f"Parameter '{name}' has invalid shape {arr.shape}"
-                )
+                raise ValueError(f"Parameter '{name}' has invalid shape {arr.shape}")
 
         return normalized
 
@@ -385,9 +364,7 @@ class GenerativeModel:
                 combined_params[name] = fixed_params[name]
 
         # Broadcast + flatten params
-        flat_params = self._prepare_flat_params(
-            combined_params, batch_size, num_steps
-        )
+        flat_params = self._prepare_flat_params(combined_params, batch_size, num_steps)
 
         # Order parameters according to model signature
         ordered_params = []
@@ -398,9 +375,7 @@ class GenerativeModel:
                 # fallback to default value from function signature
                 default = self.signature.parameters[name].default
                 if default is inspect.Parameter.empty:
-                    raise ValueError(
-                        f"Parameter '{name}' required by model but missing in prior and has no default."
-                    )
+                    raise ValueError(f"Parameter '{name}' required by model but missing in prior and has no default.")
                 ordered_params.append(default)
 
         # Run simulator
@@ -410,11 +385,7 @@ class GenerativeModel:
         # Reshape back to trajectories
         output_shape = sim_data.shape[1:] if sim_data.ndim > 1 else ()
 
-        sim_data = sim_data.reshape(
-            batch_size,
-            num_steps,
-            *output_shape
-        )
+        sim_data = sim_data.reshape(batch_size, num_steps, *output_shape)
 
         local_params = self._normalize_local_params(local_params, batch_size, num_steps)
         hyper_params = self._normalize_batch_params(prior_draws.get("hyper_params", {}), batch_size)
@@ -422,15 +393,9 @@ class GenerativeModel:
 
         if tile_to_steps:
             if hyper_params is not None:
-                hyper_params = {
-                    k: np.tile(v[:, np.newaxis, :], (1, num_steps, 1))
-                    for k, v in hyper_params.items()
-                }
+                hyper_params = {k: np.tile(v[:, np.newaxis, :], (1, num_steps, 1)) for k, v in hyper_params.items()}
             if shared_params is not None:
-                shared_params = {
-                    k: np.tile(v[:, np.newaxis, :], (1, num_steps, 1))
-                    for k, v in shared_params.items()
-                }
+                shared_params = {k: np.tile(v[:, np.newaxis, :], (1, num_steps, 1)) for k, v in shared_params.items()}
 
         result = {"data": sim_data}
         if local_params:
