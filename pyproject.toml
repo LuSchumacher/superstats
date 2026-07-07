@@ -39,7 +39,6 @@ all = [
     "nbconvert",
     "pre-commit",
     "ruff",
-    "tox",
     # docs
     "myst-nb ~= 1.2",
     "numpydoc ~= 1.8",
@@ -61,7 +60,6 @@ dev = [
     "line-profiler",
     "pre-commit",
     "ruff",
-    "tox",
 ]
 docs = [
     "myst-nb ~= 1.2",
@@ -102,7 +100,6 @@ exclude = [
     ".pytype",
     ".ruff_cache",
     ".svn",
-    ".tox",
     ".venv",
     ".vscode",
     "__pypackages__",

@@ -11,6 +11,9 @@
 
 # Automatically run before every commit via once running `pre-commit install`
 
+# Skip notebooks entirely - they are not checked by any hook below.
+exclude: '\.ipynb$'
+
 repos:
 - repo: https://github.com/astral-sh/ruff-pre-commit
   # Ruff version.
@@ -21,12 +24,6 @@ repos:
       args: [ --fix ]
     # Run the formatter.
     - id: ruff-format
-#- repo: https://github.com/nbQA-dev/nbQA
-#  rev: 1.6.3
-#  hooks:
-#    # Run ruff for jupyter notebooks.
-#    - id: nbqa-ruff
-#      args: [--ignore=E402]  # E402: module level import not at top of file
 - repo: https://github.com/pre-commit/pre-commit-hooks
   rev: v6.0.0
   hooks:
