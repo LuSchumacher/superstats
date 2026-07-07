@@ -17,13 +17,12 @@ from superstats.defaults.network_defaults import (
     DEFAULT_SUMMARY_NETWORK,
     DEFAULT_INFERENCE_NETWORK,
 )
-from superstats.diagnostics.plots.time_varying_validation import (
-    plot_time_varying_validation,
+from superstats.diagnostics.plots.time_varying_verification import (
+    plot_time_varying_verification,
 )
 from superstats.diagnostics.plots.posterior_samples import (
     plot_time_varying_posterior,
     plot_time_invariant_posterior,
-    # plot_joint_posterior,
 )
 
 
@@ -161,7 +160,7 @@ class Workflow:
 
     def _save_history(self, new_history: keras.callbacks.History) -> None:
         """Merge and persist training history to `checkpoint_filepath`, if present.
-        
+
         A no-op if `checkpoint_filepath` is None.
 
         Parameters
@@ -455,12 +454,10 @@ class Workflow:
         """
         return bf.diagnostics.plots.loss(history, train_color="#822621")
 
-    def validate_time_varying(
+    def verify_time_varying(
         self,
-        true_params: dict,
+        targets: dict,
         samples: dict,
-        bootstrap_calibration: bool = False,
-        num_bootstrap: int = 1000,
         param_names: list | None = None,
         **plot_kwargs,
     ):
@@ -468,25 +465,19 @@ class Workflow:
 
         Parameters
         ----------
-        true_params           : dict
+        targets      : dict
             Ground-truth local parameter trajectories, keyed by
             parameter name; each value has shape
             (batch_size, num_steps, 1).
-        samples               : dict
+        samples      : dict
             Posterior samples for the same parameters, keyed by name;
             each value has shape
             (batch_size, num_post_samples, num_steps, 1).
-        bootstrap_calibration : bool, optional, default: False
-            If True, show a bootstrap uncertainty band for the
-            calibration error.
-        num_bootstrap         : int, optional, default: 1000
-            Number of bootstrap resamples. Only used when
-            `bootstrap_calibration=True`.
-        param_names           : list of str or None, optional, default: None
+        param_names  : list of str or None, optional, default: None
             Column labels. Defaults to `self.simulator.local_keys` when
             not supplied.
         **plot_kwargs
-            Forwarded to `plot_time_varying_validation`.
+            Forwarded to `plot_time_varying_verification`.
 
         Returns
         -------
@@ -494,31 +485,29 @@ class Workflow:
         """
         local_keys = self.simulator.local_keys
 
-        true = np.stack(
-            [true_params[k][..., 0] for k in local_keys],
+        target_arr = np.stack(
+            [targets[k][..., 0] for k in local_keys],
             axis=-1,
-        )
-        estimated = np.concatenate(
+        )  # (batch_size, num_steps, num_params)
+
+        estimate_arr = np.concatenate(
             [samples[k] for k in local_keys],
             axis=-1,
-        )
-        estimated = estimated.transpose(0, 2, 1, 3)
+        )  # (batch_size, num_post_samples, num_steps, num_params)
 
         if param_names is None:
             param_names = local_keys
 
-        return plot_time_varying_validation(
-            true=true,
-            estimated=estimated,
+        return plot_time_varying_verification(
+            estimates=estimate_arr,
+            targets=target_arr,
             param_names=param_names,
-            bootstrap_calibration=bootstrap_calibration,
-            n_bootstrap=num_bootstrap,
             **plot_kwargs,
         )
 
-    def validate_time_invariant(
+    def verify_time_invariant(
         self,
-        true_params,
+        targets,
         samples,
         param_names: list | None = None,
         num_out: int | None = None,
@@ -533,7 +522,7 @@ class Workflow:
 
         Parameters
         ----------
-        true_params     : dict
+        targets         : dict
             Mapping from parameter name to an np.ndarray of shape
             (num_sims, dim).
         samples         : dict
@@ -582,7 +571,7 @@ class Workflow:
         expanded_names = []
 
         for k in keys:
-            t_arr = true_params[k]
+            t_arr = targets[k]
             e_arr = samples[k]
             B, S, T, dim = e_arr.shape
 
@@ -608,15 +597,15 @@ class Workflow:
                 estimate_list.append(e_agg)
                 expanded_names.append(k)
 
-        targets   = np.concatenate(target_list,   axis=-1)
-        estimates = np.concatenate(estimate_list, axis=-1)
+        target_arr   = np.concatenate(target_list,   axis=-1)
+        estimate_arr = np.concatenate(estimate_list, axis=-1)
 
         if param_names is None:
             param_names = expanded_names
 
         fig_recovery = bf.diagnostics.plots.recovery(
-            estimates=estimates,
-            targets=targets,
+            estimates=estimate_arr,
+            targets=target_arr,
             variable_names=param_names,
             label_fontsize=label_fontsize,
             title_fontsize=title_fontsize,
@@ -626,8 +615,8 @@ class Workflow:
         )
 
         fig_calibration = bf.diagnostics.plots.calibration_ecdf(
-            estimates=estimates,
-            targets=targets,
+            estimates=estimate_arr,
+            targets=target_arr,
             variable_names=param_names,
             label_fontsize=label_fontsize,
             title_fontsize=title_fontsize,
@@ -688,17 +677,3 @@ class Workflow:
             mixture_names=self.simulator.prior._mixture_names(),
             **kwargs,
         )
-
-    # def plot_joint_posterior(
-    #     self,
-    #     samples: dict,
-    #     **kwargs,
-    # ):
-    #     return plot_joint_posterior(
-    #         samples=samples,
-    #         local_keys=self.simulator.local_keys,
-    #         hyper_keys=self.simulator.hyper_keys,
-    #         shared_keys=self.simulator.shared_keys,
-    #         mixture_names=self.simulator.prior._mixture_names(),
-    #         **kwargs,
-    #     )

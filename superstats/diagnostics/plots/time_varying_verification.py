@@ -31,21 +31,21 @@ def _summarize(
     estimator: str,
     uncertainty: str,
 ):
-    """Summarize (num_sim, num_trials) values into center, lower, upper per trial.
+    """Summarize (num_sim, num_steps) values into center, lower, upper per step.
 
     Parameters
     ----------
-    values      : np.ndarray of shape (num_sim, num_trials)
+    values      : np.ndarray of shape (num_sim, num_steps)
         Values to summarize across the simulation axis.
     estimator   : {"median", "mean"}
-        Center statistic to compute per trial.
+        Center statistic to compute per step.
     uncertainty : {"ci", "std", "mad"}
-        Band type to compute around the center per trial.
+        Band type to compute around the center per step.
 
     Returns
     -------
     result : tuple - `(center, lower, upper)`, each an np.ndarray of
-        shape (num_trials,)
+        shape (num_steps,)
 
     Raises
     ------
@@ -74,79 +74,70 @@ def _summarize(
     return center, lower, upper
 
 
-def plot_time_varying_validation(
-    true: np.ndarray,
-    estimated: np.ndarray,
+def plot_time_varying_verification(
+    estimates: np.ndarray,
+    targets: np.ndarray,
     param_names: Sequence[str] | None = None,
     estimator: str = "median",
     uncertainty: str = "ci",
-    bootstrap_calibration: bool = False,
-    n_bootstrap: int = 1000,
     title_fontsize: int = 16,
     label_fontsize: int = 13,
     tick_fontsize: int = 11,
 ):
-    """Plot recovery diagnostics over trials for time-varying parameters.
+    """Plot recovery diagnostics over steps for time-varying parameters.
 
     Parameters
     ----------
-    true                  : np.ndarray of shape (num_sim, num_trials, num_params)
+    estimates       : np.ndarray of shape (num_sim, num_samples, num_steps, num_params)
+        Posterior samples per simulation and step.
+    targets         : np.ndarray of shape (num_sim, num_steps, num_params)
         Ground-truth parameter trajectories.
-    estimated              : np.ndarray of shape (num_sim, num_trials, num_post_samples, num_params)
-        Posterior samples per simulation and trial.
-    param_names            : list of str or None, optional, default: None
+    param_names     : list of str or None, optional, default: None
         Column labels. Defaults to `param_0`, `param_1`, ... when not
         supplied.
-    estimator              : {"median", "mean"}, optional, default: "median"
-        Used for the contraction and calibration center lines (which
-        retain the simulation axis).
-    uncertainty            : {"ci", "std", "mad"}, optional, default: "ci"
-        Used for the contraction and calibration uncertainty bands.
-    bootstrap_calibration   : bool, optional, default: False
-        If True, show an uncertainty band for the calibration error,
-        computed via bootstrap.
-    n_bootstrap             : int, optional, default: 1000
-        Number of bootstrap resamples. Only used when
-        `bootstrap_calibration=True`.
-    title_fontsize          : int, optional, default: 16
+    estimator       : {"median", "mean"}, optional, default: "median"
+        Used for the nrmse and contraction center lines (which retain
+        the simulation axis).
+    uncertainty     : {"ci", "std", "mad"}, optional, default: "ci"
+        Used for the nrmse and contraction uncertainty bands.
+    title_fontsize  : int, optional, default: 16
         The font size of the column titles (parameter names).
-    label_fontsize          : int, optional, default: 13
+    label_fontsize  : int, optional, default: 13
         The font size of the axis label texts and row labels.
-    tick_fontsize           : int, optional, default: 11
+    tick_fontsize   : int, optional, default: 11
         The font size of the axis tick labels.
 
     Returns
     -------
     fig : plt.Figure - the figure instance for optional saving
     """
-    num_sim, num_trials, num_params = true.shape
+    num_sim, num_samples, num_steps, num_params = estimates.shape
 
     if param_names is None:
         param_names = [f"param_{p}" for p in range(num_params)]
 
-    # -- point estimates: posterior median per sim per trial --
-    point_est = np.median(estimated, axis=2)  # (num_sim, num_trials, num_params)
+    # -- point estimates: posterior median per sim per step --
+    point_est = np.median(estimates, axis=1)  # (num_sim, num_steps, num_params)
 
-    # r2 and nrmse: already aggregated across sims -> (num_trials, num_params)
-    r2    = r2_score_per_step(true, point_est)
-    nrmse = nrmse_per_step(true, point_est)
+    # r2: already aggregated across sims -> (num_steps, num_params)
+    r2 = r2_score_per_step(point_est, targets)
 
-    # contraction: per sim -> (num_sim, num_trials, num_params)
-    contraction = posterior_contraction_per_step(true, estimated)
+    # nrmse: per sim -> (num_sim, num_steps, num_params)
+    nrmse = nrmse_per_step(estimates, targets, aggregation=np.median if estimator == "median" else np.mean)
 
-    # calibration: (num_trials, num_params) or (n_bootstrap, num_trials, num_params)
+    # contraction: per sim -> (num_sim, num_steps, num_params)
+    contraction = posterior_contraction_per_step(estimates, targets)
+
+    # calibration: aggregated across sims -> (num_steps, num_params)
     calibration = calibration_error_per_step(
-        estimated, true,
-        bootstrap=bootstrap_calibration,
-        n_bootstrap=n_bootstrap,
+        estimates, targets,
+        aggregation=np.median if estimator == "median" else np.mean,
     )
-
-    calibration_has_ci = bootstrap_calibration
 
     metric_keys = ["r2", "nrmse", "contraction", "calibration"]
     n_rows = len(metric_keys)
     n_cols = num_params
-    trials = np.arange(1, num_trials + 1)
+    steps = np.arange(1, num_steps + 1)
 
     COL_WIDTH, ROW_HEIGHT = 4.0, 2.8
     fig = plt.figure(figsize=(COL_WIDTH * n_cols, ROW_HEIGHT * n_rows))
@@ -164,34 +155,28 @@ def plot_time_varying_validation(
 
         for p in range(num_params):
             if key == "r2":
-                # (num_trials,) — no CI band
+                # (num_steps,) — no CI band
                 center = r2[:, p]
                 lower  = center
                 upper  = center
 
             elif key == "nrmse":
-                # (num_trials,) — no CI band
-                center = nrmse[:, p]
-                lower  = center
-                upper  = center
+                # (num_sim, num_steps) — has CI band
+                center, lower, upper = _summarize(
+                    nrmse[:, :, p], estimator, uncertainty
+                )
 
             elif key == "contraction":
-                # (num_sim, num_trials) — has CI band
+                # (num_sim, num_steps) — has CI band
                 center, lower, upper = _summarize(
                     contraction[:, :, p], estimator, uncertainty
                 )
 
             elif key == "calibration":
-                if calibration_has_ci:
-                    # (n_bootstrap, num_trials) — has CI band
-                    center, lower, upper = _summarize(
-                        calibration[:, :, p], estimator, uncertainty
-                    )
-                else:
-                    # (num_trials,) — no CI band
-                    center = calibration[:, p]
-                    lower  = center
-                    upper  = center
+                # (num_steps,) — no CI band
+                center = calibration[:, p]
+                lower  = center
+                upper  = center
 
             summaries.append((center, lower, upper))
             y_min = min(y_min, lower.min())
@@ -203,9 +188,9 @@ def plot_time_varying_validation(
         for col_i, (center, lower, upper) in enumerate(summaries):
             ax = axes[row_i, col_i]
 
-            ax.plot(trials, center, color=color, linewidth=1.8)
+            ax.plot(steps, center, color=color, linewidth=1.8)
             if not np.array_equal(lower, upper):
-                ax.fill_between(trials, lower, upper, color=color, alpha=0.25, edgecolor="none")
+                ax.fill_between(steps, lower, upper, color=color, alpha=0.25, edgecolor="none")
 
             ax.set_ylim(y_lim)
             ax.grid(alpha=0.3)
