@@ -107,7 +107,6 @@ def plot_time_varying_posterior(
     for name in local_keys:
         datasets = range(D) if aggregate_fun is None else [None]
         for d in datasets:
-
             # prepare trajectories (N, T)
             if aggregate_fun is None:
                 trajectories = samples[name][d, :, :, 0]
@@ -151,21 +150,21 @@ def plot_time_varying_posterior(
                 lo, hi = uncertainty_fun(trajectories)
                 lo, hi = np.asarray(lo), np.asarray(hi)
             elif uncertainty_fun == "std":
-                sd     = trajectories.std(axis=0)
+                sd = trajectories.std(axis=0)
                 lo, hi = center - sd, center + sd
             elif uncertainty_fun == "95ci":
                 lo, hi = np.percentile(trajectories, 2.5, axis=0), np.percentile(trajectories, 97.5, axis=0)
             elif uncertainty_fun == "mad":
-                mad    = np.median(np.abs(trajectories - center), axis=0)
+                mad = np.median(np.abs(trajectories - center), axis=0)
                 lo, hi = center - 1.4826 * mad, center + 1.4826 * mad
             elif uncertainty_fun == "95hdi":
                 lo, hi = np.empty(T), np.empty(T)
                 for i in range(T):
-                    vals   = np.sort(trajectories[:, i])
-                    n      = len(vals)
+                    vals = np.sort(trajectories[:, i])
+                    n = len(vals)
                     window = int(np.floor(0.95 * n))
-                    widths = vals[window:] - vals[:n - window]
-                    idx    = np.argmin(widths)
+                    widths = vals[window:] - vals[: n - window]
+                    idx = np.argmin(widths)
                     lo[i], hi[i] = vals[idx], vals[idx + window]
             elif uncertainty_fun is not None:
                 raise ValueError(f"Unknown uncertainty_fun: {uncertainty_fun!r}")
@@ -173,12 +172,12 @@ def plot_time_varying_posterior(
             # axes setup
             ax_base = axes_flat[panel]
             if marginal:
-                sub    = ax_base.get_subplotspec().subgridspec(1, 2, width_ratios=[4.2, 0.8], wspace=0.0)
-                ax     = fig.add_subplot(sub[0])
+                sub = ax_base.get_subplotspec().subgridspec(1, 2, width_ratios=[4.2, 0.8], wspace=0.0)
+                ax = fig.add_subplot(sub[0])
                 ax_kde = fig.add_subplot(sub[1])
                 ax_base.axis("off")
             else:
-                ax     = ax_base
+                ax = ax_base
                 ax_kde = None
 
             # plot
@@ -218,8 +217,12 @@ def plot_time_varying_posterior(
         handles.append(mpatches.Patch(color=color, alpha=alpha, label=band_label))
 
     fig.legend(
-        handles=handles, loc="lower center", ncol=len(handles),
-        fontsize=label_fontsize, framealpha=0.0, bbox_to_anchor=(0.5, -0.02)
+        handles=handles,
+        loc="lower center",
+        ncol=len(handles),
+        fontsize=label_fontsize,
+        framealpha=0.0,
+        bbox_to_anchor=(0.5, -0.02),
     )
     sns.despine()
     plt.tight_layout(rect=[0, 0.06, 1, 1])
@@ -282,9 +285,7 @@ def plot_time_invariant_posterior(
     for name in keys:
         n_components = samples[name].shape[-1]
         if n_components > 1:
-            comp_names = mixture_names.get(
-                name, [f"component {i}" for i in range(n_components)]
-            )
+            comp_names = mixture_names.get(name, [f"component {i}" for i in range(n_components)])
             panels_meta.append((name, list(range(n_components)), comp_names, True))
         else:
             panels_meta.append((name, [0], [name], False))
@@ -299,7 +300,7 @@ def plot_time_invariant_posterior(
         n = num_out if num_out is not None else S
         for c in range(C):
             flat = arr[:, :, :, c].reshape(B, S * T)
-            idx  = rng.integers(0, S * T, size=(B, n))
+            idx = rng.integers(0, S * T, size=(B, n))
             pooled[(name, c)] = flat[np.arange(B)[:, None], idx]
 
     # layout
@@ -322,11 +323,23 @@ def plot_time_invariant_posterior(
             for ci, (c, label) in enumerate(zip(comp_indices, comp_labels)):
                 c_color = PALETTE[ci % len(PALETTE)] if is_mixture else color
                 if not aggregate:
-                    sns.kdeplot(x=pooled[(param_name, c)][d], ax=ax, color=c_color,
-                                fill=True, alpha=1, label=label if is_mixture else None)
+                    sns.kdeplot(
+                        x=pooled[(param_name, c)][d],
+                        ax=ax,
+                        color=c_color,
+                        fill=True,
+                        alpha=1,
+                        label=label if is_mixture else None,
+                    )
                 else:
-                    sns.kdeplot(x=pooled[(param_name, c)].ravel(), ax=ax, color=c_color,
-                                fill=True, alpha=1, label=label if is_mixture else None)
+                    sns.kdeplot(
+                        x=pooled[(param_name, c)].ravel(),
+                        ax=ax,
+                        color=c_color,
+                        fill=True,
+                        alpha=1,
+                        label=label if is_mixture else None,
+                    )
 
             if not aggregate:
                 if p == 0:

@@ -1,6 +1,7 @@
 name: superstats
 dependencies:
-  - python >= 3.10, < 3.13
+  - python >= 3.11, < 3.14
   - pip:
-      - bayesflow >= 2.0.7
+      - bayesflow >= 2.0.12
       - numba >= 0.63.1
+      - jax >= 0.10.2

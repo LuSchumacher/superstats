@@ -104,9 +104,7 @@ def plot_push_forward(
 
             fig, base_ax = plt.subplots(figsize=(COL_WIDTH * 2.5, ROW_HEIGHT + 0.5))
             if marginal:
-                sub = base_ax.get_subplotspec().subgridspec(
-                    1, 2, width_ratios=[4.2, 0.8], wspace=0.0
-                )
+                sub = base_ax.get_subplotspec().subgridspec(1, 2, width_ratios=[4.2, 0.8], wspace=0.0)
                 ax = fig.add_subplot(sub[0])
                 ax_marg = fig.add_subplot(sub[1])
                 base_ax.axis("off")
@@ -131,11 +129,7 @@ def plot_push_forward(
                     elif len(result) == 2:
                         lower, upper = result
                     else:
-                        raise ValueError(
-                            "Custom uncertainty_fun must return "
-                            "(lower, upper) or "
-                            "(center, lower, upper)."
-                        )
+                        raise ValueError("Custom uncertainty_fun must return (lower, upper) or (center, lower, upper).")
                     center = np.asarray(center)
                     lower = np.asarray(lower)
                     upper = np.asarray(upper)
@@ -162,10 +156,7 @@ def plot_push_forward(
                         idx = np.argmin(widths)
                         lower[i], upper[i] = vals[idx], vals[idx + window]
                 else:
-                    raise ValueError(
-                        "uncertainty_fun must be "
-                        "'std', '95ci', 'mad', '95hdi', or callable."
-                    )
+                    raise ValueError("uncertainty_fun must be 'std', '95ci', 'mad', '95hdi', or callable.")
 
                 ax.fill_between(
                     t,
@@ -204,9 +195,7 @@ def plot_push_forward(
             if ax_marg is not None:
                 values = x.reshape(-1)
                 if discrete:
-                    counts = np.array(
-                        [np.sum(values == category) for category in categories]
-                    )
+                    counts = np.array([np.sum(values == category) for category in categories])
                     density = counts / counts.sum()
                     ax_marg.barh(categories, density, color=color, alpha=1)
                     ax_marg.set_yticks(categories)
@@ -219,11 +208,7 @@ def plot_push_forward(
                 mlines.Line2D([], [], color="black", linewidth=2.5, label="Aggregate"),
             ]
             if show_uncertainty:
-                band_label = (
-                    BAND_LABELS[uncertainty_fun]
-                    if isinstance(uncertainty_fun, str)
-                    else "Uncertainty"
-                )
+                band_label = BAND_LABELS[uncertainty_fun] if isinstance(uncertainty_fun, str) else "Uncertainty"
                 handles.append(
                     mpatches.Patch(
                         facecolor=color,
@@ -257,15 +242,7 @@ def plot_push_forward(
             fig, ax = plt.subplots(figsize=(COL_WIDTH * 2.0, ROW_HEIGHT + 0.5))
 
             if discrete:
-                counts = np.array(
-                    [
-                        [
-                            np.mean(row.reshape(-1) == category)
-                            for category in categories
-                        ]
-                        for row in x
-                    ]
-                )
+                counts = np.array([[np.mean(row.reshape(-1) == category) for category in categories] for row in x])
                 if callable(aggregate_fun):
                     heights = np.asarray(aggregate_fun(counts)).reshape(-1)
                 elif aggregate_fun == "mean":
@@ -273,9 +250,7 @@ def plot_push_forward(
                 elif aggregate_fun == "median":
                     heights = np.median(counts, axis=0)
                 else:
-                    raise ValueError(
-                        "aggregate_fun must be 'mean', 'median', or callable."
-                    )
+                    raise ValueError("aggregate_fun must be 'mean', 'median', or callable.")
 
                 ax.bar(categories, heights, color=color, alpha=1)
                 ax.set_xticks(categories)
@@ -287,9 +262,7 @@ def plot_push_forward(
                 elif aggregate_fun == "median":
                     stats = np.median(x, axis=-1)
                 else:
-                    raise ValueError(
-                        "aggregate_fun must be 'mean', 'median', or callable."
-                    )
+                    raise ValueError("aggregate_fun must be 'mean', 'median', or callable.")
 
                 sns.histplot(
                     stats,
@@ -323,9 +296,7 @@ def plot_push_forward(
         for i in range(batch_size):
             base_ax = axes[i]
             if marginal:
-                sub = base_ax.get_subplotspec().subgridspec(
-                    1, 2, width_ratios=[4.2, 0.8], wspace=0.0
-                )
+                sub = base_ax.get_subplotspec().subgridspec(1, 2, width_ratios=[4.2, 0.8], wspace=0.0)
                 ax = fig.add_subplot(sub[0])
                 ax_marg = fig.add_subplot(sub[1])
                 base_ax.axis("off")
@@ -350,9 +321,7 @@ def plot_push_forward(
 
             if ax_marg is not None:
                 if discrete:
-                    counts = np.array(
-                        [np.sum(x[i] == category) for category in categories]
-                    )
+                    counts = np.array([np.sum(x[i] == category) for category in categories])
                     density = counts / counts.sum()
                     ax_marg.barh(categories, density, color=color, alpha=1)
                     ax_marg.set_yticks(categories)

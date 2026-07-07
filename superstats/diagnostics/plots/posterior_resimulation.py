@@ -50,11 +50,7 @@ def _smooth_trajectory(arr: np.ndarray, smoothing: str, window: int) -> np.ndarr
     return out
 
 
-def _aggregate_center(
-        x: np.ndarray,
-        aggregate_fun: str | Callable,
-        axis: int = 0
-) -> np.ndarray:
+def _aggregate_center(x: np.ndarray, aggregate_fun: str | Callable, axis: int = 0) -> np.ndarray:
     """Reduce x along `axis` using aggregate_fun.
 
     Parameters
@@ -107,9 +103,7 @@ def _aggregate_label(aggregate_fun: str | Callable | None) -> str:
 
 
 def _compute_uncertainty(
-    x: np.ndarray,
-    uncertainty_fun: str | Callable,
-    center: np.ndarray
+    x: np.ndarray, uncertainty_fun: str | Callable, center: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
     """Compute an uncertainty band around `center`, reducing across axis 0.
 
@@ -159,8 +153,7 @@ def _compute_uncertainty(
             lo[i], hi[i] = vals[idx], vals[idx + window]
         return lo, hi
     raise ValueError(
-        f"uncertainty_fun must be None, 'std', '95ci', 'mad', '95hdi', or callable. "
-        f"Got {uncertainty_fun!r}."
+        f"uncertainty_fun must be None, 'std', '95ci', 'mad', '95hdi', or callable. Got {uncertainty_fun!r}."
     )
 
 
@@ -294,9 +287,7 @@ def plot_posterior_resimulation(
     real = np.asarray(real_data)
 
     if pred.ndim != 4:
-        raise ValueError(
-            "pred_data must have shape (num_datasets, num_resims, num_steps, data_dims)."
-        )
+        raise ValueError("pred_data must have shape (num_datasets, num_resims, num_steps, data_dims).")
     if real.ndim != 3:
         raise ValueError("real_data must have shape (num_datasets, num_steps, data_dims).")
 
@@ -316,13 +307,10 @@ def plot_posterior_resimulation(
     agg_label = _aggregate_label(aggregate_fun)
 
     if kind == "trajectory":
-
         if show_aggregate:
             fig, base_ax = plt.subplots(figsize=(COL_WIDTH * 2.5, ROW_HEIGHT + 0.5))
             if marginal:
-                sub = base_ax.get_subplotspec().subgridspec(
-                    1, 2, width_ratios=[4.2, 0.8], wspace=0.0
-                )
+                sub = base_ax.get_subplotspec().subgridspec(1, 2, width_ratios=[4.2, 0.8], wspace=0.0)
                 ax = fig.add_subplot(sub[0])
                 ax_marg = fig.add_subplot(sub[1])
                 base_ax.axis("off")
@@ -337,8 +325,7 @@ def plot_posterior_resimulation(
                 pooled_pred = _aggregate_center(pred_x, aggregate_fun, axis=1)
             else:
                 raise ValueError(
-                    f"aggregate_strategy must be 'full_uncertainty' or 'no_epistemic', "
-                    f"got {aggregate_strategy!r}."
+                    f"aggregate_strategy must be 'full_uncertainty' or 'no_epistemic', got {aggregate_strategy!r}."
                 )
 
             # smooth the pooled trajectories
@@ -356,9 +343,7 @@ def plot_posterior_resimulation(
             if spaghetti:
                 per_dataset_center = _aggregate_center(pred_x, aggregate_fun, axis=1)
                 if smoothing is not None:
-                    per_dataset_center = _smooth_trajectory(
-                        per_dataset_center, smoothing, smoothing_window
-                    )
+                    per_dataset_center = _smooth_trajectory(per_dataset_center, smoothing, smoothing_window)
                 for line in per_dataset_center:
                     ax.plot(t, line, color=color, alpha=alpha, linewidth=1.0, zorder=2)
 
@@ -375,11 +360,7 @@ def plot_posterior_resimulation(
                 ax_marg.set_axis_off()
 
         else:
-            pred_x_panels = (
-                _smooth_trajectory(pred_x, smoothing, smoothing_window)
-                if smoothing is not None
-                else pred_x
-            )
+            pred_x_panels = _smooth_trajectory(pred_x, smoothing, smoothing_window) if smoothing is not None else pred_x
 
             n_rows = int(np.ceil(D / num_cols))
             fig, axes = plt.subplots(
@@ -392,9 +373,7 @@ def plot_posterior_resimulation(
             for i in range(D):
                 base_ax = axes[i]
                 if marginal:
-                    sub = base_ax.get_subplotspec().subgridspec(
-                        1, 2, width_ratios=[4.2, 0.8], wspace=0.0
-                    )
+                    sub = base_ax.get_subplotspec().subgridspec(1, 2, width_ratios=[4.2, 0.8], wspace=0.0)
                     ax = fig.add_subplot(sub[0])
                     ax_marg = fig.add_subplot(sub[1])
                     base_ax.axis("off")
@@ -408,9 +387,7 @@ def plot_posterior_resimulation(
 
                 if uncertainty_fun is not None:
                     lower, upper = _compute_uncertainty(pred_traj, uncertainty_fun, center)
-                    ax.fill_between(
-                        t, lower, upper, color=color, alpha=0.3, edgecolor="none", zorder=1
-                    )
+                    ax.fill_between(t, lower, upper, color=color, alpha=0.3, edgecolor="none", zorder=1)
 
                 if spaghetti:
                     for line in pred_traj:
@@ -437,16 +414,10 @@ def plot_posterior_resimulation(
             mlines.Line2D([], [], color=color, linewidth=2.0, label=agg_label),
         ]
         if uncertainty_fun is not None:
-            band_label = (
-                BAND_LABELS[uncertainty_fun] if isinstance(uncertainty_fun, str) else "Uncertainty"
-            )
-            handles.append(
-                mpatches.Patch(facecolor=color, alpha=0.3, edgecolor="none", label=band_label)
-            )
+            band_label = BAND_LABELS[uncertainty_fun] if isinstance(uncertainty_fun, str) else "Uncertainty"
+            handles.append(mpatches.Patch(facecolor=color, alpha=0.3, edgecolor="none", label=band_label))
         if spaghetti:
-            handles.append(
-                mlines.Line2D([], [], color=color, linewidth=1.0, alpha=1, label="Individual")
-            )
+            handles.append(mlines.Line2D([], [], color=color, linewidth=1.0, alpha=1, label="Individual"))
 
     else:
         if show_aggregate:
@@ -461,8 +432,7 @@ def plot_posterior_resimulation(
                 pooled_stat = _aggregate_center(stat_pred, aggregate_fun, axis=1)
             else:
                 raise ValueError(
-                    f"aggregate_strategy must be 'full_uncertainty' or 'no_epistemic', "
-                    f"got {aggregate_strategy!r}."
+                    f"aggregate_strategy must be 'full_uncertainty' or 'no_epistemic', got {aggregate_strategy!r}."
                 )
 
             reference = float(_aggregate_center(stat_real, aggregate_fun, axis=0))
@@ -485,11 +455,17 @@ def plot_posterior_resimulation(
 
             handles = [
                 mpatches.Patch(
-                    facecolor=color, alpha=1, edgecolor="none",
+                    facecolor=color,
+                    alpha=1,
+                    edgecolor="none",
                     label=f"Predictive {agg_label.lower()}",
                 ),
                 mlines.Line2D(
-                    [], [], color=real_color, linewidth=2.5, linestyle="--",
+                    [],
+                    [],
+                    color=real_color,
+                    linewidth=2.5,
+                    linestyle="--",
                     label=f"Observed {agg_label.lower()}",
                 ),
             ]
@@ -516,9 +492,7 @@ def plot_posterior_resimulation(
                     pred_freq = np.array([np.mean(pred_vals == c) for c in categories])
                     real_freq = np.array([np.mean(real_vals == c) for c in categories])
                     ax.bar(categories - width / 2, pred_freq, width=width, color=color, alpha=1)
-                    ax.bar(
-                        categories + width / 2, real_freq, width=width, color=real_color, alpha=1
-                    )
+                    ax.bar(categories + width / 2, real_freq, width=width, color=real_color, alpha=1)
                     ax.set_xticks(categories)
                 else:
                     sns.histplot(

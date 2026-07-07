@@ -75,9 +75,7 @@ def plot_time_varying_prior(
         values_plot = np.asarray(values)
         n_plot = values_plot.shape[0]
 
-        sub = ax.get_subplotspec().subgridspec(
-            1, 2, width_ratios=[4.2, 0.8], wspace=0.0
-        )
+        sub = ax.get_subplotspec().subgridspec(1, 2, width_ratios=[4.2, 0.8], wspace=0.0)
         ax_traj = fig.add_subplot(sub[0])
         ax_kde = fig.add_subplot(sub[1])
 
@@ -95,9 +93,7 @@ def plot_time_varying_prior(
         ax_traj.grid(alpha=0.3)
         ax_traj.tick_params(labelsize=tick_fontsize)
 
-        sns.kdeplot(
-            y=values_plot.reshape(-1), ax=ax_kde, color=color, fill=True, alpha=1
-        )
+        sns.kdeplot(y=values_plot.reshape(-1), ax=ax_kde, color=color, fill=True, alpha=1)
 
         ax_kde.set_ylim(ax_traj.get_ylim())
         ax_kde.set_axis_off()
@@ -189,9 +185,9 @@ def plot_time_invariant_prior(
 
         if arr.ndim == 2 and arr.shape[1] > 1:
             param_name = label.split("_mixture_weights")[0].strip()
-            component_names = (
-                mixture_names.get(param_name) if mixture_names else None
-            ) or [f"component {k}" for k in range(arr.shape[1])]
+            component_names = (mixture_names.get(param_name) if mixture_names else None) or [
+                f"component {k}" for k in range(arr.shape[1])
+            ]
 
             for k in range(arr.shape[1]):
                 sns.histplot(
@@ -282,27 +278,15 @@ def plot_joint_prior(
     """
     all_param_names = list(
         dict.fromkeys(
-            list(local_params.keys())
-            + list(shared_params.keys())
-            + [k.split("_")[0] for k in hyper_params.keys()]
+            list(local_params.keys()) + list(shared_params.keys()) + [k.split("_")[0] for k in hyper_params.keys()]
         )
     )
 
     row_specs = []
     for param_name in all_param_names:
-        hyper_cols = [
-            (k, np.asarray(v))
-            for k, v in hyper_params.items()
-            if k.startswith(param_name + "_")
-        ]
-        local_arr = (
-            np.asarray(local_params[param_name]) if param_name in local_params else None
-        )
-        shared_arr = (
-            np.asarray(shared_params[param_name])
-            if param_name in shared_params
-            else None
-        )
+        hyper_cols = [(k, np.asarray(v)) for k, v in hyper_params.items() if k.startswith(param_name + "_")]
+        local_arr = np.asarray(local_params[param_name]) if param_name in local_params else None
+        shared_arr = np.asarray(shared_params[param_name]) if param_name in shared_params else None
 
         row_specs.append(
             {
@@ -325,9 +309,7 @@ def plot_joint_prior(
 
     col_widths = [1.0] * (n_cols - 1) + [2.0]
     gs = gridspec.GridSpec(n_rows, n_cols, width_ratios=col_widths, figure=fig)
-    axes = np.array(
-        [[fig.add_subplot(gs[r, c]) for c in range(n_cols)] for r in range(n_rows)]
-    )
+    axes = np.array([[fig.add_subplot(gs[r, c]) for c in range(n_cols)] for r in range(n_rows)])
 
     for row_i, spec in enumerate(row_specs):
         param_name = spec["name"]
@@ -340,9 +322,9 @@ def plot_joint_prior(
             arr = np.asarray(values)
 
             if arr.ndim == 2 and arr.shape[1] > 1:
-                component_names = (
-                    mixture_names.get(param_name) if mixture_names else None
-                ) or [f"component {k}" for k in range(arr.shape[1])]
+                component_names = (mixture_names.get(param_name) if mixture_names else None) or [
+                    f"component {k}" for k in range(arr.shape[1])
+                ]
 
                 for k in range(arr.shape[1]):
                     sns.histplot(
@@ -394,9 +376,7 @@ def plot_joint_prior(
             ax.tick_params(labelsize=tick_fontsize)
 
         ax_cell = axes[row_i, n_cols - 1]
-        sub = ax_cell.get_subplotspec().subgridspec(
-            1, 2, width_ratios=[4.2, 0.8], wspace=0.0
-        )
+        sub = ax_cell.get_subplotspec().subgridspec(1, 2, width_ratios=[4.2, 0.8], wspace=0.0)
         ax_traj = fig.add_subplot(sub[0])
         ax_kde = fig.add_subplot(sub[1])
         ax_cell.axis("off")
@@ -417,9 +397,7 @@ def plot_joint_prior(
             ax_traj.grid(alpha=0.3)
             ax_traj.tick_params(labelsize=tick_fontsize)
 
-            sns.kdeplot(
-                y=local_arr.reshape(-1), ax=ax_kde, color=color, fill=True, alpha=1
-            )
+            sns.kdeplot(y=local_arr.reshape(-1), ax=ax_kde, color=color, fill=True, alpha=1)
             ax_kde.set_ylim(ax_traj.get_ylim())
             ax_kde.set_axis_off()
         else:

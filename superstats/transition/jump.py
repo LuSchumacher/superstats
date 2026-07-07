@@ -48,6 +48,7 @@ def _sample_jump_process(
 
     return local_params
 
+
 @njit
 def _one_step_jump(
     x: float,
@@ -72,6 +73,7 @@ def _one_step_jump(
     if np.random.rand() < p_jump:
         return proposal
     return x
+
 
 class Jump(Transition):
     """Simple jump process: stay or jump to a proposal draw.
@@ -137,10 +139,14 @@ class Jump(Transition):
         else:
             p_jump = np.full(batch_size, fixed["p_jump"], dtype=self.dtype)
 
-        proposals = self.proposal_prior.sample(batch_size * (num_steps - 1)).reshape(
-            batch_size,
-            num_steps - 1,
-        ).astype(self.dtype)
+        proposals = (
+            self.proposal_prior.sample(batch_size * (num_steps - 1))
+            .reshape(
+                batch_size,
+                num_steps - 1,
+            )
+            .astype(self.dtype)
+        )
 
         local_params = _sample_jump_process(
             local_params,

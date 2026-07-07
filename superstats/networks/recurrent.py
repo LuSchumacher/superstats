@@ -61,10 +61,7 @@ class RecurrentNet(bf.networks.SummaryNetwork):
         super().__init__(**layer_kwargs(kwargs))
 
         recurrent_kwargs = expand_singletons_to_common_length(
-            hidden_dim=hidden_dim,
-            recurrent_type=recurrent_type,
-            bidirectional=bidirectional,
-            dropout=dropout
+            hidden_dim=hidden_dim, recurrent_type=recurrent_type, bidirectional=bidirectional, dropout=dropout
         )
 
         recurrent_layers = []
@@ -72,15 +69,11 @@ class RecurrentNet(bf.networks.SummaryNetwork):
             recurrent_kwargs["hidden_dim"],
             recurrent_kwargs["recurrent_type"],
             recurrent_kwargs["bidirectional"],
-            recurrent_kwargs["dropout"]
+            recurrent_kwargs["dropout"],
         ):
             hidden_dim_, recurrent_type_, bidirectional_, dropout_ = self._validate_layer_kwargs(*constructor_kwargs)
             recurrent_constructor = self._recurrent_constructor(recurrent_type_)
-            recurrent_layer = recurrent_constructor(
-                units=hidden_dim_,
-                dropout=dropout_,
-                return_sequences=True
-            )
+            recurrent_layer = recurrent_constructor(units=hidden_dim_, dropout=dropout_, return_sequences=True)
 
             if bidirectional_:
                 recurrent_layer = keras.layers.Bidirectional(recurrent_layer, merge_mode="sum")
@@ -89,10 +82,7 @@ class RecurrentNet(bf.networks.SummaryNetwork):
 
         self.recurrent_layers = recurrent_layers
 
-        self.summary_stats = keras.layers.Conv1D(
-            filters=summary_dim, 
-            kernel_size=1
-        )
+        self.summary_stats = keras.layers.Conv1D(filters=summary_dim, kernel_size=1)
 
         self.summary_dim = summary_dim
         self.hidden_dim = hidden_dim

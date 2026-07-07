@@ -65,7 +65,6 @@ class Workflow:
         Forwarded to `bf.BasicWorkflow`.
     """
 
-
     def __init__(
         self,
         simulator: GenerativeModel | None = None,
@@ -75,7 +74,7 @@ class Workflow:
         checkpoint_filepath: str | None = None,
         restore_approximator: bool = True,
         restore_history: bool = True,
-        **kwargs
+        **kwargs,
     ):
         self.simulator = simulator
 
@@ -85,26 +84,21 @@ class Workflow:
             self.summary_network = summary_network
 
         if inference_network == "consistency":
-            self.inference_network = bf.networks.StableConsistencyModel(
-                **DEFAULT_INFERENCE_NETWORK
-            )
+            self.inference_network = bf.networks.StableConsistencyModel(**DEFAULT_INFERENCE_NETWORK)
         else:
             self.inference_network = inference_network
 
         if adapter is not None:
             self.adapter = adapter
         else:
-            self.local_keys  = self.simulator.local_keys
-            self.hyper_keys  = self.simulator.hyper_keys
+            self.local_keys = self.simulator.local_keys
+            self.hyper_keys = self.simulator.hyper_keys
             self.shared_keys = self.simulator.shared_keys
             self.adapter = (
                 bf.Adapter()
-                    .convert_dtype("float64", "float32")
-                    .concatenate(
-                        self.local_keys + self.hyper_keys + self.shared_keys,
-                        into="inference_variables"
-                    )
-                    .rename("data", "summary_variables")
+                .convert_dtype("float64", "float32")
+                .concatenate(self.local_keys + self.hyper_keys + self.shared_keys, into="inference_variables")
+                .rename("data", "summary_variables")
             )
 
         self.checkpoint_filepath = checkpoint_filepath
@@ -115,7 +109,7 @@ class Workflow:
             warnings.warn(
                 f"restore_approximator=True but no model found at '{self.checkpoint_filepath}'. "
                 "Starting with no trained model.",
-                stacklevel=2
+                stacklevel=2,
             )
             restore = False
         else:
@@ -129,19 +123,16 @@ class Workflow:
             standardize="all",
             checkpoint_filepath=self.checkpoint_filepath,
             restore=restore,
-            **kwargs
+            **kwargs,
         )
-
 
         if restore_history and self.checkpoint_filepath is not None and os.path.isdir(self.checkpoint_filepath):
             self._load_history()
         elif restore_history:
             warnings.warn(
-                f"restore_history=True but no history found at '{self.checkpoint_filepath}'. "
-                "Starting with no history.",
-                stacklevel=2
+                f"restore_history=True but no history found at '{self.checkpoint_filepath}'. Starting with no history.",
+                stacklevel=2,
             )
-
 
     def _load_history(self) -> None:
         """Load persisted training history from `checkpoint_filepath`, if present.
@@ -156,7 +147,6 @@ class Workflow:
             return
         with open(path, "rb") as f:
             self.workflow.history = pickle.load(f)
-
 
     def _save_history(self, new_history: keras.callbacks.History) -> None:
         """Merge and persist training history to `checkpoint_filepath`, if present.
@@ -181,15 +171,8 @@ class Workflow:
             pickle.dump(new_history, f)
         self.workflow.history = new_history
 
-
     def fit_offline(
-        self,
-        data,
-        validation_data,
-        epochs: int = 100,
-        batch_size: int = 32,
-        save_history: bool = True,
-        **kwargs
+        self, data, validation_data, epochs: int = 100, batch_size: int = 32, save_history: bool = True, **kwargs
     ) -> keras.callbacks.History:
         """Train the approximator on a fixed, pre-simulated dataset.
 
@@ -216,18 +199,13 @@ class Workflow:
             this run
         """
         history = self.workflow.fit_offline(
-            data=data,
-            epochs=epochs,
-            batch_size=batch_size,
-            validation_data=validation_data,
-            **kwargs
+            data=data, epochs=epochs, batch_size=batch_size, validation_data=validation_data, **kwargs
         )
 
         if save_history:
             self._save_history(history)
 
         return history
-
 
     def fit_online(
         self,
@@ -236,7 +214,7 @@ class Workflow:
         num_batches_per_epoch: int = 100,
         batch_size: int = 32,
         save_history: bool = True,
-        **kwargs
+        **kwargs,
     ) -> keras.callbacks.History:
         """Train the approximator by simulating data on the fly.
 
@@ -268,15 +246,10 @@ class Workflow:
             this run
         """
         original_sample = self.simulator.sample
-        self.simulator.sample = functools.partial(
-            original_sample, num_steps=num_steps, tile_to_steps=True
-        )
+        self.simulator.sample = functools.partial(original_sample, num_steps=num_steps, tile_to_steps=True)
         try:
             history = self.workflow.fit_online(
-                epochs=epochs,
-                num_batches_per_epoch=num_batches_per_epoch,
-                batch_size=batch_size,
-                **kwargs
+                epochs=epochs, num_batches_per_epoch=num_batches_per_epoch, batch_size=batch_size, **kwargs
             )
         finally:
             self.simulator.sample = original_sample
@@ -285,7 +258,6 @@ class Workflow:
             self._save_history(history)
 
         return history
-
 
     @property
     def history(self):
@@ -296,7 +268,6 @@ class Workflow:
     def approximator(self):
         """The underlying trained bf approximator object."""
         return self.workflow.approximator
-
 
     def sample(
         self,
@@ -374,8 +345,7 @@ class Workflow:
         example = next(iter(posterior_samples.values()))
         if example.ndim < 3:
             raise ValueError(
-                "Posterior sample arrays must have at least 3 dimensions: "
-                "(batch_size, num_samples, num_steps, ...)."
+                "Posterior sample arrays must have at least 3 dimensions: (batch_size, num_samples, num_steps, ...)."
             )
 
         batch_size, num_draws = example.shape[:2]
@@ -390,8 +360,7 @@ class Workflow:
             arr = np.asarray(arr)
             if arr.shape[0] != batch_size:
                 raise ValueError(
-                    f"Posterior parameter '{name}' has batch size {arr.shape[0]} "
-                    f"but expected {batch_size}."
+                    f"Posterior parameter '{name}' has batch size {arr.shape[0]} but expected {batch_size}."
                 )
 
             if arr.ndim == 3:
@@ -421,15 +390,10 @@ class Workflow:
             elif arr.ndim == 4:
                 expanded_params[name] = arr.reshape(batch_size * num_sims, num_steps, arr.shape[3])
             else:
-                raise ValueError(
-                    f"Cannot reshape posterior parameter '{name}' with shape {arr.shape}."
-                )
+                raise ValueError(f"Cannot reshape posterior parameter '{name}' with shape {arr.shape}.")
 
         for name, value in fixed_params.items():
-            expanded_params[name] = np.broadcast_to(
-                np.asarray(value),
-                (batch_size * num_sims,)
-            )
+            expanded_params[name] = np.broadcast_to(np.asarray(value), (batch_size * num_sims,))
 
         raw_sim = self.simulator.simulate_from_parameters(
             expanded_params,
@@ -516,7 +480,7 @@ class Workflow:
         label_fontsize: int = 18,
         metric_fontsize: int = 18,
         tick_fontsize: int = 16,
-        color: str = "#822621"
+        color: str = "#822621",
     ):
         """Plot time-invariant parameter recovery and calibration.
 
@@ -566,8 +530,8 @@ class Workflow:
         if not keys:
             raise ValueError("No time-invariant parameters found.")
 
-        target_list    = []
-        estimate_list  = []
+        target_list = []
+        estimate_list = []
         expanded_names = []
 
         for k in keys:
@@ -575,13 +539,13 @@ class Workflow:
             e_arr = samples[k]
             B, S, T, dim = e_arr.shape
 
-            n_out  = num_out if num_out is not None else S
+            n_out = num_out if num_out is not None else S
             pooled = e_arr.reshape(B, S * T, dim)
-            idx    = rng.integers(0, S * T, size=(B, n_out))
-            e_agg  = pooled[np.arange(B)[:, None], idx, :]
+            idx = rng.integers(0, S * T, size=(B, n_out))
+            e_agg = pooled[np.arange(B)[:, None], idx, :]
 
             if dim > 1:
-                param_key   = k.split("_mixture_weights")[0]
+                param_key = k.split("_mixture_weights")[0]
                 mixture_obj = self.simulator.prior.params.get(param_key)
                 if hasattr(mixture_obj, "names") and len(mixture_obj.names) == dim:
                     comp_names = [f"{k}_{n}" for n in mixture_obj.names]
@@ -589,15 +553,15 @@ class Workflow:
                     comp_names = [f"{k}_{i}" for i in range(dim)]
 
                 for i, name in enumerate(comp_names):
-                    target_list.append(t_arr[:, i:i+1])
-                    estimate_list.append(e_agg[:, :, i:i+1])
+                    target_list.append(t_arr[:, i : i + 1])
+                    estimate_list.append(e_agg[:, :, i : i + 1])
                     expanded_names.append(name)
             else:
                 target_list.append(t_arr)
                 estimate_list.append(e_agg)
                 expanded_names.append(k)
 
-        target_arr   = np.concatenate(target_list,   axis=-1)
+        target_arr = np.concatenate(target_list, axis=-1)
         estimate_arr = np.concatenate(estimate_list, axis=-1)
 
         if param_names is None:
@@ -626,7 +590,6 @@ class Workflow:
         )
 
         return fig_recovery, fig_calibration
-
 
     def plot_time_varying_posterior(
         self,

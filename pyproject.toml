@@ -23,7 +23,7 @@ description = "Estimating time-varying parameters with deep learning"
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { file = "LICENSE" }
 
-requires-python = ">= 3.10, < 3.13"
+requires-python = ">= 3.11, < 3.14"
 dependencies = [
     "jax >= 0.10.2",
     "bayesflow >= 2.0.12",
@@ -122,7 +122,7 @@ line-length = 120
 indent-width = 4
 
 # minimum target python version
-target-version = "py310"
+target-version = "py311"
 
 [tool.ruff.lint]
 # Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
