@@ -1,0 +1,41 @@
+name: Check Code Style
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+      - dev
+  push:
+    branches:
+      - main
+      - dev
+
+jobs:
+  check-code-style:
+    name: Check Code Style
+
+    runs-on: ubuntu-latest
+
+    permissions: {}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@f98e06938123ccabd21905ea5d0069192241f9f1 # v8.3.1
+
+      - name: Setup Environment
+        run: uv venv
+
+      - name: Install Dependencies
+        run: uv pip install ruff
+
+      - name: Run Linter
+        run: uv run ruff check --config pyproject.toml --verbose
+
+      - name: Run Formatter
+        run: uv run ruff format --config pyproject.toml --check --verbose
