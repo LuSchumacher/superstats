@@ -176,3 +176,6 @@ docstring-code-line-length = "dynamic"
 
 [tool.setuptools.packages]
 find = {}
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
