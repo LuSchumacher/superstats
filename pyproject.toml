@@ -25,9 +25,9 @@ license = { file = "LICENSE" }
 
 requires-python = ">= 3.10, < 3.13"
 dependencies = [
-    "bayesflow >= 2.0.12",
     "jax >= 0.10.2",
-    "numba >= 0.63.1"
+    "bayesflow >= 2.0.12",
+    "numba >= 0.63.1",
 ]
 [project.optional-dependencies]
 all = [
@@ -40,7 +40,6 @@ all = [
     "nbconvert",
     "pre-commit",
     "ruff",
-    "tox",
     # docs
     "myst-nb ~= 1.2",
     "numpydoc ~= 1.8",
@@ -62,7 +61,9 @@ dev = [
     "line-profiler",
     "pre-commit",
     "ruff",
-    "tox",
+]
+cuda = [
+    "jax[cuda12] >= 0.10.2",
 ]
 docs = [
     "myst-nb ~= 1.2",
@@ -103,7 +104,6 @@ exclude = [
     ".pytype",
     ".ruff_cache",
     ".svn",
-    ".tox",
     ".venv",
     ".vscode",
     "__pypackages__",
@@ -177,3 +177,6 @@ docstring-code-line-length = "dynamic"
 
 [tool.setuptools.packages]
 find = {}
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
