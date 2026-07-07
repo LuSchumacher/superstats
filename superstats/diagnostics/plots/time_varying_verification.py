@@ -134,6 +134,11 @@ def plot_time_varying_verification(
         aggregation=np.median if estimator == "median" else np.mean,
     )
 
+    # metrics whose values are mathematically bounded to [0, 1]; the CI/std/mad
+    # band is computed arithmetically and can otherwise overshoot these bounds
+    # even though no individual sample violates them
+    BOUNDED_UNIT_INTERVAL = {"nrmse", "contraction"}
+
     metric_keys = ["r2", "nrmse", "contraction", "calibration"]
     n_rows = len(metric_keys)
     n_cols = num_params
@@ -178,6 +183,11 @@ def plot_time_varying_verification(
                 lower  = center
                 upper  = center
 
+            if key in BOUNDED_UNIT_INTERVAL:
+                center = np.clip(center, 0.0, 1.0)
+                lower  = np.clip(lower, 0.0, 1.0)
+                upper  = np.clip(upper, 0.0, 1.0)
+
             summaries.append((center, lower, upper))
             y_min = min(y_min, lower.min())
             y_max = max(y_max, upper.max())
@@ -204,7 +214,6 @@ def plot_time_varying_verification(
                 ax.set_xlabel("Step", fontsize=label_fontsize)
 
     # -- row labels --
-    plt.tight_layout()
     plt.draw()
 
     for row_i, key in enumerate(metric_keys):
