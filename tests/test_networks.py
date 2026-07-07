@@ -20,7 +20,7 @@ def test_recurrent_net_unidirectional_output_shape(recurrent_type):
 
     out = net(x)
 
-    assert tuple(out.shape) == (BATCH_SIZE, 8)
+    assert tuple(out.shape) == (BATCH_SIZE, SEQ_LEN, 8)
 
 
 @pytest.mark.parametrize("recurrent_type", ["lstm", "gru"])
