@@ -116,19 +116,27 @@ def plot_time_varying_verification(
     if param_names is None:
         param_names = [f"param_{p}" for p in range(num_params)]
 
-    point_est = np.median(estimates, axis=1)
+    # -- point estimates: posterior median per sim per step --
+    point_est = np.median(estimates, axis=1)  # (num_sim, num_steps, num_params)
 
+    # r2: already aggregated across sims -> (num_steps, num_params)
     r2 = r2_score_per_step(point_est, targets)
 
+    # nrmse: per sim -> (num_sim, num_steps, num_params)
     nrmse = nrmse_per_step(estimates, targets, aggregation=np.median if estimator == "median" else np.mean)
 
+    # contraction: per sim -> (num_sim, num_steps, num_params)
     contraction = posterior_contraction_per_step(estimates, targets)
 
+    # calibration: aggregated across sims -> (num_steps, num_params)
     calibration = calibration_error_per_step(
         estimates, targets,
         aggregation=np.median if estimator == "median" else np.mean,
     )
 
+    # metrics whose values are mathematically bounded to [0, 1]; the CI/std/mad
+    # band is computed arithmetically and can otherwise overshoot these bounds
+    # even though no individual sample violates them
     BOUNDED_UNIT_INTERVAL = {"nrmse", "contraction"}
 
     metric_keys = ["r2", "nrmse", "contraction", "calibration"]
@@ -152,21 +160,25 @@ def plot_time_varying_verification(
 
         for p in range(num_params):
             if key == "r2":
+                # (num_steps,) — no CI band
                 center = r2[:, p]
                 lower  = center
                 upper  = center
 
             elif key == "nrmse":
+                # (num_sim, num_steps) — has CI band
                 center, lower, upper = _summarize(
                     nrmse[:, :, p], estimator, uncertainty
                 )
 
             elif key == "contraction":
+                # (num_sim, num_steps) — has CI band
                 center, lower, upper = _summarize(
                     contraction[:, :, p], estimator, uncertainty
                 )
 
             elif key == "calibration":
+                # (num_steps,) — no CI band
                 center = calibration[:, p]
                 lower  = center
                 upper  = center
@@ -201,6 +213,7 @@ def plot_time_varying_verification(
             if row_i == n_rows - 1:
                 ax.set_xlabel("Step", fontsize=label_fontsize)
 
+    # -- row labels --
     plt.draw()
 
     for row_i, key in enumerate(metric_keys):
