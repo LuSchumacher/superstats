@@ -12,3 +12,4 @@ from .posterior_samples import (
 from .prior_push_forward import plot_push_forward
 from .time_varying_verification import plot_time_varying_verification
 from .posterior_resimulation import plot_posterior_resimulation
+from .time_invariant_verification import plot_recovery, plot_calibration
