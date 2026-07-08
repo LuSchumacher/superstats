@@ -4,7 +4,7 @@ from superstats.diagnostics.metrics import (
     calibration_error_per_step,
     nrmse_per_step,
     posterior_contraction_per_step,
-    r2_score_per_step,
+    correlation_per_step,
 )
 
 NUM_SIM = 20
@@ -25,14 +25,14 @@ def _random_estimates_posterior():
     return np.random.normal(size=(NUM_SIM, NUM_SAMPLES, NUM_STEPS, NUM_PARAMS))
 
 
-def test_r2_score_per_step_shape():
+def test_correlation_per_step_shape():
     targets = _random_targets()
     estimates = _random_estimates_point()
 
-    r2 = r2_score_per_step(estimates, targets)
+    correlation = correlation_per_step(estimates, targets)
 
-    assert r2.shape == (NUM_STEPS, NUM_PARAMS)
-    assert np.all(np.isfinite(r2))
+    assert correlation.shape == (NUM_STEPS, NUM_PARAMS)
+    assert np.all(np.isfinite(correlation))
 
 
 def test_posterior_contraction_per_step_shape():
@@ -41,7 +41,7 @@ def test_posterior_contraction_per_step_shape():
 
     contraction = posterior_contraction_per_step(estimates, targets)
 
-    assert contraction.shape == (NUM_SIM, NUM_STEPS, NUM_PARAMS)
+    assert contraction.shape == (NUM_STEPS, NUM_PARAMS)
     assert np.all(np.isfinite(contraction))
 
 
@@ -62,5 +62,5 @@ def test_nrmse_per_step_shape():
 
     nrmse = nrmse_per_step(estimates, targets)
 
-    assert nrmse.shape == (NUM_SIM, NUM_STEPS, NUM_PARAMS)
+    assert nrmse.shape == (NUM_STEPS, NUM_PARAMS)
     assert np.all(np.isfinite(nrmse))
