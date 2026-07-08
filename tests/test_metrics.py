@@ -17,17 +17,13 @@ def _random_targets():
     return np.random.normal(size=(NUM_SIM, NUM_STEPS, NUM_PARAMS))
 
 
-def _random_estimates_point():
-    return np.random.normal(size=(NUM_SIM, NUM_STEPS, NUM_PARAMS))
-
-
 def _random_estimates_posterior():
     return np.random.normal(size=(NUM_SIM, NUM_SAMPLES, NUM_STEPS, NUM_PARAMS))
 
 
 def test_correlation_per_step_shape():
     targets = _random_targets()
-    estimates = _random_estimates_point()
+    estimates = _random_estimates_posterior()
 
     correlation = correlation_per_step(estimates, targets)
 
