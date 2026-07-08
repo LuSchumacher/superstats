@@ -1,6 +1,7 @@
 from .transformations import scaled_sigmoid
+from .plotting import prepare_plot_data
 
 __all__ = [
-    "expand_singletons_to_common_length",
     "scaled_sigmoid",
+    "prepare_plot_data",
 ]

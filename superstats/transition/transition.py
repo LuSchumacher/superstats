@@ -3,7 +3,7 @@ from typing import Tuple, Dict, Any, Union
 import numpy as np
 
 from superstats.prior import Prior
-from superstats.defaults import (
+from superstats.defaults.transition_defaults import (
     DEFAULT_HYPER_PRIORS,
     DEFAULT_BOUNDS,
     DEFAULT_INITIAL_PRIOR,

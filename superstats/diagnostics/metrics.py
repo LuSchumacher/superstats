@@ -1,71 +1,98 @@
 from typing import Callable
 import numpy as np
-from numba import njit, prange
 
 
-@njit(parallel=True, fastmath=True)
-def r2_score_per_step(estimates: np.ndarray, targets: np.ndarray) -> np.ndarray:
-    """Coefficient of determination (R2) between estimates and true values, per step and parameter.
+def correlation_per_step(
+    estimates: np.ndarray,
+    targets: np.ndarray,
+    aggregation: Callable = np.median,
+) -> np.ndarray:
+    """Pearson correlation between point estimates and true values, per step and parameter.
+
+    Posterior samples are first collapsed to a point estimate per
+    simulation, step, and parameter (using `aggregation`), then the
+    Pearson correlation between those point estimates and `targets` is
+    computed across simulations.
 
     Parameters
     ----------
-    estimates : np.ndarray of shape (num_sim, num_steps, num_params)
-        Point estimates (e.g. posterior medians) - compute before
-        calling this function.
-    targets   : np.ndarray of shape (num_sim, num_steps, num_params)
+    estimates   : np.ndarray of shape (num_sim, num_samples, num_steps, num_params)
+        Posterior samples.
+    targets     : np.ndarray of shape (num_sim, num_steps, num_params)
         Ground-truth parameter values.
+    aggregation : callable, optional, default: np.median
+        Function used to collapse posterior samples into a point
+        estimate per simulation, step, and parameter. Typically
+        np.mean or np.median.
 
     Returns
     -------
-    r2 : np.ndarray of shape (num_steps, num_params) - R2 per step
-        and parameter
+    correlation : np.ndarray of shape (num_steps, num_params) - Pearson
+        correlation per step and parameter
     """
-    num_sim, num_steps, num_params = targets.shape
-    r2_scores = np.zeros((num_steps, num_params))
-    for t in prange(num_steps):
-        for p in range(num_params):
-            y_true = targets[:, t, p]
-            y_pred = estimates[:, t, p]
-            ss_res = np.sum((y_true - y_pred) ** 2)
-            ss_tot = np.sum((y_true - np.mean(y_true)) ** 2)
-            r2_scores[t, p] = 1.0 - ss_res / (ss_tot + 1e-12)
-    return r2_scores
+    if estimates.ndim != 4:
+        raise ValueError(
+            f"estimates must have shape (num_sim, num_samples, num_steps, num_params), got {estimates.shape}."
+        )
+    if estimates.shape[0] != targets.shape[0] or estimates.shape[2:] != targets.shape[1:]:
+        raise ValueError(f"estimates and targets have incompatible shapes: {estimates.shape} vs {targets.shape}.")
+
+    point_est = aggregation(estimates, axis=1)  # (num_sim, num_steps, num_params)
+
+    mean_true = targets.mean(axis=0, keepdims=True)
+    mean_pred = point_est.mean(axis=0, keepdims=True)
+
+    cov = np.sum((targets - mean_true) * (point_est - mean_pred), axis=0)
+    std_true = np.sqrt(np.sum((targets - mean_true) ** 2, axis=0))
+    std_pred = np.sqrt(np.sum((point_est - mean_pred) ** 2, axis=0))
+    denom = std_true * std_pred
+
+    return np.where(denom > 1e-12, cov / denom, 0.0)
 
 
-@njit(parallel=True, fastmath=True)
 def posterior_contraction_per_step(
     estimates: np.ndarray,
     targets: np.ndarray,
-    eps: float = 1e-12,
+    aggregation: Callable = np.median,
 ) -> np.ndarray:
-    """Posterior contraction per simulation, step and parameter.
+    """Posterior contraction per step and parameter.
+
+    Computes 1 minus the ratio of posterior to prior variance (using
+    the unbiased/sample variance, ddof=1) for each simulation, step,
+    and parameter, clipped to [0, 1], then aggregates across
+    simulations (using `aggregation`) to yield one value per step and
+    parameter. Matches the bayesflow `posterior_contraction` metric,
+    extended over an additional time-step axis.
 
     Parameters
     ----------
-    estimates : np.ndarray of shape (num_sim, num_samples, num_steps, num_params)
+    estimates   : np.ndarray of shape (num_sim, num_samples, num_steps, num_params)
         Posterior samples.
-    targets   : np.ndarray of shape (num_sim, num_steps, num_params)
+    targets     : np.ndarray of shape (num_sim, num_steps, num_params)
         Ground-truth parameter values, used to estimate the prior
         variance per step and parameter.
-    eps       : float, optional, default: 1e-12
-        Numerical floor added to the prior variance denominator.
+    aggregation : callable, optional, default: np.median
+        Function used to aggregate the per-simulation contraction
+        values across simulations. Typically np.mean or np.median.
 
     Returns
     -------
-    contraction : np.ndarray of shape (num_sim, num_steps, num_params)
-        - 1 minus the ratio of posterior to prior variance, per
-        simulation, step, and parameter
+    contraction : np.ndarray of shape (num_steps, num_params) - 1 minus
+        the ratio of posterior to prior variance, per step and
+        parameter, clipped to [0, 1], aggregated across simulations
     """
-    num_sim, num_steps, num_params = targets.shape
-    contraction = np.zeros((num_sim, num_steps, num_params))
-    for s in prange(num_sim):
-        for t in range(num_steps):
-            for p in range(num_params):
-                prior_var = np.var(targets[:, t, p])
-                denom = max(prior_var, eps)
-                post_var = np.var(estimates[s, :, t, p])
-                contraction[s, t, p] = 1.0 - post_var / denom
-    return contraction
+    if estimates.ndim != 4:
+        raise ValueError(
+            f"estimates must have shape (num_sim, num_samples, num_steps, num_params), got {estimates.shape}."
+        )
+    if estimates.shape[0] != targets.shape[0] or estimates.shape[2:] != targets.shape[1:]:
+        raise ValueError(f"estimates and targets have incompatible shapes: {estimates.shape} vs {targets.shape}.")
+
+    post_vars = estimates.var(axis=1, ddof=1)
+    prior_vars = targets.var(axis=0, keepdims=True, ddof=1)
+    contraction = np.clip(1 - (post_vars / prior_vars), 0, 1)
+
+    return aggregation(contraction, axis=0)
 
 
 def calibration_error_per_step(
@@ -105,6 +132,15 @@ def calibration_error_per_step(
     calibration_error : np.ndarray of shape (num_steps, num_params) -
         aggregated calibration error, per step and parameter
     """
+    if estimates.ndim != 4:
+        raise ValueError(
+            f"estimates must have shape (num_sim, num_samples, num_steps, num_params), got {estimates.shape}."
+        )
+    if estimates.shape[0] != targets.shape[0] or estimates.shape[2:] != targets.shape[1:]:
+        raise ValueError(f"estimates and targets have incompatible shapes: {estimates.shape} vs {targets.shape}.")
+    if not 0 < min_quantile < max_quantile < 1:
+        raise ValueError("Require 0 < min_quantile < max_quantile < 1.")
+
     alphas = np.linspace(start=min_quantile, stop=max_quantile, num=resolution)
     regions = 1 - alphas
     lowers = regions / 2
@@ -128,14 +164,18 @@ def nrmse_per_step(
     targets: np.ndarray,
     aggregation: Callable = np.median,
 ) -> np.ndarray:
-    """Per-simulation normalized RMSE between posterior samples and targets, per step.
+    """Normalized RMSE between posterior samples and targets, per step and parameter.
 
     RMSE is computed across posterior draws (not aggregated first) for
     each simulation, then normalized by a prior-only bootstrap RMSE
     aggregated across simulations. This follows the "prior"
     normalization scheme: 0 indicates a maximally informative posterior
     (point mass at ground truth), 1 indicates a non-informative
-    posterior (equivalent to the prior).
+    posterior (equivalent to the prior). The per-simulation ratios are
+    then aggregated over simulations (using `aggregation`, mirroring
+    the bayesflow convention of aggregating the final metric with the
+    same function used for the normalizer), yielding one value per
+    step and parameter.
 
     Parameters
     ----------
@@ -145,16 +185,23 @@ def nrmse_per_step(
         Target parameter trajectories (themselves prior draws,
         in a simulation-based calibration setting).
     aggregation : callable, optional, default: np.median
-        Function used to aggregate the prior-only bootstrap RMSE across
-        simulations when computing the normalizer. Typically np.mean
-        or np.median.
+        Function used to aggregate both the prior-only bootstrap RMSE
+        (for the normalizer) and the final per-simulation nRMSE values
+        across simulations. Typically np.mean or np.median.
 
     Returns
     -------
-    nrmse : np.ndarray of shape (num_sim, num_steps, num_params) -
-        RMSE across posterior draws, normalized by the aggregated
-        prior-only bootstrap RMSE
+    nrmse : np.ndarray of shape (num_steps, num_params) - RMSE across
+        posterior draws, normalized by the aggregated prior-only
+        bootstrap RMSE, aggregated across simulations
     """
+    if estimates.ndim != 4:
+        raise ValueError(
+            f"estimates must have shape (num_sim, num_samples, num_steps, num_params), got {estimates.shape}."
+        )
+    if estimates.shape[0] != targets.shape[0] or estimates.shape[2:] != targets.shape[1:]:
+        raise ValueError(f"estimates and targets have incompatible shapes: {estimates.shape} vs {targets.shape}.")
+
     num_sim, num_samples, num_steps, num_params = estimates.shape
 
     err = estimates - targets[:, None, :, :]
@@ -166,4 +213,6 @@ def nrmse_per_step(
     prior_rmse = np.sqrt(np.mean(prior_err**2, axis=1))
     normalizer = aggregation(prior_rmse, axis=0)
 
-    return rmse / normalizer
+    nrmse = rmse / normalizer
+
+    return aggregation(nrmse, axis=0)

@@ -1,4 +1,5 @@
-from typing import Literal
+from typing import Literal, Callable
+from collections.abc import Mapping, Sequence
 
 import bayesflow as bf
 import numpy as np
@@ -17,10 +18,10 @@ from superstats.defaults.network_defaults import (
     DEFAULT_SUMMARY_NETWORK,
     DEFAULT_INFERENCE_NETWORK,
 )
-from superstats.diagnostics.plots.time_varying_verification import (
+from superstats.diagnostics.plots import (
     plot_time_varying_verification,
-)
-from superstats.diagnostics.plots.posterior_samples import (
+    plot_recovery,
+    plot_calibration,
     plot_time_varying_posterior,
     plot_time_invariant_posterior,
 )
@@ -304,7 +305,7 @@ class Workflow:
 
     def resimulate_posterior(
         self,
-        posterior_samples: dict[str, np.ndarray],
+        posterior_samples: Mapping[str, np.ndarray],
         num_sims: int = 10,
         rng=None,
     ) -> np.ndarray:
@@ -421,27 +422,39 @@ class Workflow:
     def verify_time_varying(
         self,
         targets: dict,
-        samples: dict,
-        param_names: list | None = None,
-        **plot_kwargs,
+        estimates: dict,
+        variable_keys: list | None = None,
+        variable_names: list | None = None,
+        aggregation: Callable = np.median,
+        **kwargs,
     ):
-        """Simulate, run inference, and plot time-varying parameter recovery.
+        """Plot recovery diagnostics over steps for time-varying parameters.
 
         Parameters
         ----------
-        targets      : dict
+        targets        : dict
             Ground-truth local parameter trajectories, keyed by
             parameter name; each value has shape
             (batch_size, num_steps, 1).
-        samples      : dict
-            Posterior samples for the same parameters, keyed by name;
+        estimates      : dict
+            Posterior estimates for the same parameters, keyed by name;
             each value has shape
             (batch_size, num_post_samples, num_steps, 1).
-        param_names  : list of str or None, optional, default: None
-            Column labels. Defaults to `self.simulator.local_keys` when
-            not supplied.
-        **plot_kwargs
-            Forwarded to `plot_time_varying_verification`.
+        variable_keys  : list of str or None, optional, default: None
+            Which parameters to select and plot, and in what order.
+            Defaults to `self.simulator.local_keys` when not supplied.
+        variable_names : list of str or None, optional, default: None
+            Display names for the plotted columns, in the same order as
+            `variable_keys`. Defaults to `variable_keys` when not
+            supplied.
+        aggregation    : callable, optional, default: np.median
+            Aggregation function forwarded to
+            `plot_time_varying_verification`, used to collapse each
+            metric across simulations. Typically np.mean or np.median.
+        **kwargs
+            Additional keyword arguments forwarded to
+            `plot_time_varying_verification` (e.g. `colors`,
+            `title_fontsize`).
 
         Returns
         -------
@@ -449,69 +462,63 @@ class Workflow:
         """
         local_keys = self.simulator.local_keys
 
-        target_arr = np.stack(
-            [targets[k][..., 0] for k in local_keys],
-            axis=-1,
-        )  # (batch_size, num_steps, num_params)
+        if variable_keys is None:
+            variable_keys = local_keys
 
-        estimate_arr = np.concatenate(
-            [samples[k] for k in local_keys],
-            axis=-1,
-        )  # (batch_size, num_post_samples, num_steps, num_params)
-
-        if param_names is None:
-            param_names = local_keys
+        targets_squeezed = {k: targets[k][..., 0] for k in variable_keys}
+        estimates_squeezed = {k: estimates[k][..., 0] for k in variable_keys}
 
         return plot_time_varying_verification(
-            estimates=estimate_arr,
-            targets=target_arr,
-            param_names=param_names,
-            **plot_kwargs,
+            estimates=estimates_squeezed,
+            targets=targets_squeezed,
+            variable_keys=variable_keys,
+            variable_names=variable_names,
+            aggregation=aggregation,
+            **kwargs,
         )
 
     def verify_time_invariant(
         self,
-        targets,
-        samples,
-        param_names: list | None = None,
-        num_out: int | None = None,
-        rng=None,
-        title_fontsize: int = 22,
-        label_fontsize: int = 18,
-        metric_fontsize: int = 18,
-        tick_fontsize: int = 16,
-        color: str = "#822621",
+        targets: Mapping[str, np.ndarray] | np.ndarray,
+        estimates: Mapping[str, np.ndarray] | np.ndarray,
+        variable_keys: Sequence[str] | None = None,
+        variable_names: Sequence[str] | None = None,
+        **kwargs,
     ):
         """Plot time-invariant parameter recovery and calibration.
 
         Parameters
         ----------
-        targets         : dict
-            Mapping from parameter name to an np.ndarray of shape
-            (num_sims, dim).
-        samples         : dict
-            Mapping from parameter name to an np.ndarray of shape
-            (num_sims, num_samples, steps, dim).
-        param_names     : list of str or None, optional, default: None
-            Names for each (expanded, per-component) column. Defaults
-            to the hyper/shared keys, expanded per mixture component
-            where applicable.
-        num_out         : int or None, optional, default: None
-            Number of aggregated samples per simulation. Defaults to
-            `num_samples` (no subsampling) when not supplied.
-        rng             : int or np.random.Generator or None, optional, default: None
-            Seed or generator for reproducible pooling.
-        title_fontsize  : int, optional, default: 22
-            The font size of the panel titles.
-        label_fontsize  : int, optional, default: 18
-            The font size of the axis label texts.
-        metric_fontsize : int, optional, default: 18
-            The font size of the displayed recovery/calibration metric
-            text.
-        tick_fontsize   : int, optional, default: 16
-            The font size of the axis tick labels.
-        color           : str, optional, default: "#822621"
-            Base plotting color for both figures.
+        targets        : Mapping[str, np.ndarray] or np.ndarray
+            If a dict, mapping from parameter name to an np.ndarray of
+            shape (num_sims, dim). If an array, the fully-prepared target
+            array of shape (num_sims, num_params) directly (e.g. mixture
+            components already expanded).
+        estimates      : Mapping[str, np.ndarray] or np.ndarray
+            If a dict, mapping from parameter name to an np.ndarray of
+            shape (num_sims, num_samples, steps, dim). If an array, the
+            fully-prepared estimate array of shape
+            (num_sims, num_pooled_samples, num_params) directly. Must use
+            the same input type (dict or array) as `targets`.
+        variable_keys  : sequence of str or None, optional, default: None
+            Which time-invariant parameters to include, and in what
+            order, when `targets`/`estimates` are dicts. Defaults to
+            `self.simulator.hyper_keys + self.simulator.shared_keys` when
+            not supplied. Mixture parameters (dim > 1) are expanded into
+            one column per component regardless of this selection.
+            Ignored for array input.
+        variable_names : sequence of str or None, optional, default: None
+            Display names for the final, expanded columns. For dict
+            input, must match the number of expanded columns (not
+            `len(variable_keys)`) and defaults to the auto-derived
+            per-component names. For array input, defaults to `param_0`,
+            `param_1`, ...
+        **kwargs
+            Forwarded to both `plot_recovery` and `plot_calibration` (e.g.
+            `label_fontsize`, `title_fontsize`, `tick_fontsize`). Note
+            `plot_recovery` takes `color` while `plot_calibration` takes
+            `rank_ecdf_color` - pass whichever applies, or both, via
+            `**kwargs`.
 
         Returns
         -------
@@ -521,28 +528,43 @@ class Workflow:
         Raises
         ------
         ValueError
-            If no time-invariant parameters (`hyper_keys` +
-            `shared_keys`) are found on `self.simulator`.
+            If no time-invariant parameters are found for dict input.
         """
-        rng = np.random.default_rng(rng)
+        if not isinstance(estimates, Mapping):
+            fig_recovery = plot_recovery(
+                estimates=estimates,
+                targets=targets,
+                variable_keys=variable_keys,
+                variable_names=variable_names,
+                **kwargs,
+            )
+            fig_calibration = plot_calibration(
+                estimates=estimates,
+                targets=targets,
+                variable_keys=variable_keys,
+                variable_names=variable_names,
+                **kwargs,
+            )
+            return fig_recovery, fig_calibration
 
-        keys = self.simulator.hyper_keys + self.simulator.shared_keys
-        if not keys:
+        if variable_keys is None:
+            variable_keys = self.simulator.hyper_keys + self.simulator.shared_keys
+        if not variable_keys:
             raise ValueError("No time-invariant parameters found.")
+        missing = [k for k in variable_keys if k not in estimates or k not in targets]
+        if missing:
+            raise ValueError(f"variable_keys not found in both estimates and targets: {missing}")
 
         target_list = []
         estimate_list = []
         expanded_names = []
 
-        for k in keys:
+        for k in variable_keys:
             t_arr = targets[k]
-            e_arr = samples[k]
+            e_arr = estimates[k]
             B, S, T, dim = e_arr.shape
 
-            n_out = num_out if num_out is not None else S
-            pooled = e_arr.reshape(B, S * T, dim)
-            idx = rng.integers(0, S * T, size=(B, n_out))
-            e_agg = pooled[np.arange(B)[:, None], idx, :]
+            e_agg = e_arr.reshape(B, S * T, dim)
 
             if dim > 1:
                 param_key = k.split("_mixture_weights")[0]
@@ -564,79 +586,187 @@ class Workflow:
         target_arr = np.concatenate(target_list, axis=-1)
         estimate_arr = np.concatenate(estimate_list, axis=-1)
 
-        if param_names is None:
-            param_names = expanded_names
+        if variable_names is not None:
+            if len(variable_names) != len(expanded_names):
+                raise ValueError(
+                    f"variable_names has {len(variable_names)} entries but there are "
+                    f"{len(expanded_names)} expanded columns."
+                )
+            expanded_names = list(variable_names)
 
-        fig_recovery = bf.diagnostics.plots.recovery(
+        fig_recovery = plot_recovery(
             estimates=estimate_arr,
             targets=target_arr,
-            variable_names=param_names,
-            label_fontsize=label_fontsize,
-            title_fontsize=title_fontsize,
-            metric_fontsize=metric_fontsize,
-            tick_fontsize=tick_fontsize,
-            color=color,
+            variable_names=expanded_names,
+            **kwargs,
         )
 
-        fig_calibration = bf.diagnostics.plots.calibration_ecdf(
+        fig_calibration = plot_calibration(
             estimates=estimate_arr,
             targets=target_arr,
-            variable_names=param_names,
-            label_fontsize=label_fontsize,
-            title_fontsize=title_fontsize,
-            metric_fontsize=metric_fontsize,
-            tick_fontsize=tick_fontsize,
-            rank_ecdf_color=color,
+            variable_names=expanded_names,
+            **kwargs,
         )
 
         return fig_recovery, fig_calibration
 
     def plot_time_varying_posterior(
         self,
-        samples: dict,
+        estimates: Mapping[str, np.ndarray] | np.ndarray,
+        targets: Mapping[str, np.ndarray] | np.ndarray | None = None,
+        variable_keys: Sequence[str] | None = None,
+        variable_names: Sequence[str] | None = None,
+        aggregation: Callable | None = None,
+        aggregate_strategy: Literal["full_uncertainty", "no_epistemic"] = "full_uncertainty",
+        uncertainty_fun: Literal["std", "95ci", "mad", "95hdi"] | Callable | None = "95ci",
+        smoothing: Literal["sma", "ema"] | None = None,
+        smoothing_window: int = 5,
+        marginal: bool = True,
         **kwargs,
     ):
         """Plot time-varying posterior diagnostics.
 
         Parameters
         ----------
-        samples : dict
-            Posterior sample dictionary.
+        estimates          : Mapping[str, np.ndarray] or np.ndarray
+            Posterior samples. If a dict, values of shape
+            (num_datasets, num_post_samples, num_steps, 1), keyed by
+            variable. If an array, shape
+            (num_datasets, num_post_samples, num_steps, num_params)
+            directly.
+        targets            : Mapping[str, np.ndarray], np.ndarray, or None, optional, default: None
+            Ground-truth trajectories, matching the input type of
+            `estimates`. If a dict, values of shape
+            (num_datasets, num_steps, 1). If an array, shape
+            (num_datasets, num_steps, num_params) directly. If given,
+            drawn as a black dashed line on top of each panel: the raw
+            per-dataset trajectory when `aggregation` is None, or
+            aggregated across datasets (using `aggregation`) when
+            `aggregation` is not None.
+        variable_keys      : sequence of str or None, optional, default: None
+            Which variables to select and plot, and in what order, when
+            `estimates`/`targets` are dicts. Defaults to
+            `self.simulator.local_keys` when not supplied. Ignored for
+            array input.
+        variable_names     : sequence of str or None, optional, default: None
+            Display names (used for panel labels/titles), in the same
+            order as `variable_keys` (or the array's last axis). Defaults
+            to `variable_keys` for dict input, or `param_0`, `param_1`,
+            ... for array input.
+        aggregation        : callable or None, optional, default: None
+            None: one panel per (param, dataset).
+            callable: one panel per param, aggregated across datasets.
+            Called as `aggregation(trajectories, axis=0)` and must return
+            a (T,) center. The same function aggregates `targets` across
+            datasets when both `targets` and `aggregation` are given.
+        aggregate_strategy : {"full_uncertainty", "no_epistemic"}, optional, default: "full_uncertainty"
+            Only used when `aggregation` is not None.
+            "full_uncertainty": flatten datasets and posterior samples,
+            then summarize.
+            "no_epistemic": median across posterior samples per dataset
+            first, then aggregate.
+        uncertainty_fun    : {"std", "95ci", "mad", "95hdi"} or callable or None, optional, default: "95ci"
+            Band drawn around the center line. A callable receives (N, T)
+            trajectories and must return `(lo, hi)`, each of shape (T,).
+        smoothing          : {"sma", "ema"} or None, optional, default: None
+            Applied to each trajectory before computing the center,
+            uncertainty, and marginal.
+        smoothing_window   : int, optional, default: 5
+            Window size for `sma`, or span parameter for `ema`.
+        marginal           : bool, optional, default: True
+            Attach a marginal KDE panel to the right of each trajectory
+            axis. The KDE is computed on the same array used for the
+            uncertainty band.
         **kwargs
-            Forwarded to `plot_time_varying_posterior`.
+            Forwarded to `plot_time_varying_posterior` (e.g. `num_cols`,
+            `color`, `alpha`, `title_fontsize`, `label_fontsize`,
+            `tick_fontsize`, `figsize`).
 
         Returns
         -------
         fig : plt.Figure - the figure instance for optional saving
         """
+        if variable_keys is None:
+            variable_keys = self.simulator.local_keys
+
         return plot_time_varying_posterior(
-            samples=samples,
-            local_keys=self.simulator.local_keys,
+            estimates=estimates,
+            targets=targets,
+            variable_keys=variable_keys,
+            variable_names=variable_names,
+            aggregation=aggregation,
+            aggregate_strategy=aggregate_strategy,
+            uncertainty_fun=uncertainty_fun,
+            smoothing=smoothing,
+            smoothing_window=smoothing_window,
+            marginal=marginal,
             **kwargs,
         )
 
     def plot_time_invariant_posterior(
         self,
-        samples: dict,
+        estimates: Mapping[str, np.ndarray] | np.ndarray,
+        targets: Mapping[str, np.ndarray] | np.ndarray | None = None,
+        variable_keys: Sequence[str] | None = None,
+        variable_names: Sequence[str] | None = None,
+        aggregation: Callable | None = None,
+        mixture_names: dict | None = None,
         **kwargs,
     ):
         """Plot time-invariant posterior diagnostics.
 
         Parameters
         ----------
-        samples : dict
-            Posterior sample dictionary.
+        estimates      : Mapping[str, np.ndarray] or np.ndarray
+            Posterior samples. If a dict, values of shape
+            (num_datasets, num_post_samples, num_steps, num_components),
+            keyed by variable. If an array, shape
+            (num_datasets, num_post_samples, num_steps, num_params)
+            directly.
+        targets        : Mapping[str, np.ndarray], np.ndarray, or None, optional, default: None
+            Ground-truth values, matching the input type of `estimates`.
+            If given, drawn as black dashed vertical lines - per dataset
+            when `aggregation` is None, or collapsed with `aggregation`
+            into a single line per panel otherwise.
+        variable_keys  : sequence of str or None, optional, default: None
+            Which variables to select and plot, and in what order, when
+            `estimates` is a dict. Defaults to
+            `self.simulator.hyper_keys + self.simulator.shared_keys` when
+            not supplied. Ignored for array input.
+        variable_names : sequence of str or None, optional, default: None
+            Display names for the plotted panels. Defaults to
+            `variable_keys` (dict input) or `param_0`, `param_1`, ...
+            (array input).
+        aggregation    : callable or None, optional, default: None
+            Controls both the posterior layout and the target summary. If
+            None: one panel per (dataset, parameter) pair. If a callable
+            (e.g. np.mean, np.median): posterior samples (and `targets`,
+            if given) are pooled/aggregated across datasets into one
+            panel per parameter.
+        mixture_names  : dict or None, optional, default: None
+            Mapping from parameter name to a list of component names.
+            Defaults to `self.simulator.prior._mixture_names()` when not
+            supplied.
         **kwargs
-            Forwarded to `plot_time_invariant_posterior`.
+            Forwarded to `plot_time_invariant_posterior` (e.g.
+            `num_cols`, `color`, `title_fontsize`, `label_fontsize`,
+            `tick_fontsize`, `figsize`).
 
         Returns
         -------
         fig : plt.Figure - the figure instance for optional saving
         """
+        if variable_keys is None:
+            variable_keys = self.simulator.hyper_keys + self.simulator.shared_keys
+        if mixture_names is None:
+            mixture_names = self.simulator.prior._mixture_names()
+
         return plot_time_invariant_posterior(
-            samples=samples,
-            hyper_keys=self.simulator.hyper_keys,
-            shared_keys=self.simulator.shared_keys,
-            mixture_names=self.simulator.prior._mixture_names(),
+            estimates=estimates,
+            targets=targets,
+            variable_keys=variable_keys,
+            variable_names=variable_names,
+            aggregation=aggregation,
+            mixture_names=mixture_names,
             **kwargs,
         )
