@@ -107,7 +107,7 @@ class AutoRegression(Transition):
         initial_prior: Prior | None = None,
         sigma: float | Prior | None = None,
         phi: float | Prior | None = None,
-        delta: float | Prior = 0.0,
+        delta: float | Prior | None = None,
     ):
         super().__init__(bounds, initial_prior)
 

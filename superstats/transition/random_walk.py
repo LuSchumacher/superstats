@@ -1,4 +1,5 @@
-from typing import Tuple, Dict, Any
+from typing import Dict, Any
+from collections.abc import Sequence
 import numpy as np
 from numba import njit, prange
 
@@ -93,10 +94,10 @@ class RandomWalk(Transition):
 
     def __init__(
         self,
-        bounds: Tuple[float, float] | None = None,
+        bounds: Sequence[float, float] | None = None,
         initial_prior: Prior | None = None,
         sigma: float | Prior | None = None,
-        delta: float | Prior = 0.0,
+        delta: float | Prior | None = None,
     ):
         super().__init__(bounds, initial_prior)
 

@@ -47,7 +47,7 @@ class Mixture(Transition):
         self,
         transitions: Sequence[Transition],
         mixture_weights: Prior | Tuple[float, ...] | None = None,
-        bounds: Tuple[float, float] | None = None,
+        bounds: Sequence[float] | None = None,
         initial_prior: Prior | None = None,
         names: Sequence[str] | None = None,
     ):
