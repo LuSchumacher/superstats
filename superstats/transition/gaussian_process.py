@@ -80,7 +80,7 @@ class GaussianProcess(Transition):
 
     def __init__(
         self,
-        kernel: Literal["rbf", "linear"] | Kernel = "rbf",
+        kernel: Literal["rbf", "linear", "periodic"] | Kernel = "rbf",
         kernel_params: Dict[str, ParamSpec] | None = None,
         bounds: Sequence[float] | None = None,
         initial_prior: Prior | None = None,
