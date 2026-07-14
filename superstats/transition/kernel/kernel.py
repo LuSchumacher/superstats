@@ -1,3 +1,5 @@
+"""Kernel base classes and composition helpers."""
+
 from abc import ABC, abstractmethod
 from typing import Dict, Sequence
 

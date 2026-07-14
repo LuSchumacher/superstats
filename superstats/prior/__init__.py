@@ -1,3 +1,5 @@
+"""Prior distributions for simulation parameters."""
+
 from .prior import Prior
 from .joint_prior import JointPrior
 

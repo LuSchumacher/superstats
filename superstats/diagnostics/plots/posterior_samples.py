@@ -1,3 +1,5 @@
+"""Posterior sample visualization helpers."""
+
 from collections.abc import Callable, Mapping, Sequence
 import numpy as np
 import matplotlib.pyplot as plt

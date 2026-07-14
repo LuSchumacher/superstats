@@ -1,3 +1,5 @@
+"""Generative-model wrapper for joint priors and simulators."""
+
 from typing import Callable, Dict, Optional
 import inspect
 import numpy as np

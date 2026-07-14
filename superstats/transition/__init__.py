@@ -1,3 +1,5 @@
+"""Transition models for latent time-varying parameters."""
+
 from .random_walk import RandomWalk
 from .auto_regression import AutoRegression
 from .ornstein_uhlenbeck import OrnsteinUhlenbeck
@@ -10,7 +12,8 @@ __all__ = [
     "RandomWalk",
     "AutoRegression",
     "OrnsteinUhlenbeck",
-    "GaussianProcessJump",
+    "GaussianProcess",
+    "Jump",
     "Mixture",
     "Transition",
 ]

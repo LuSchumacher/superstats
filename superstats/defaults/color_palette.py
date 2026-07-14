@@ -1,3 +1,5 @@
+"""Shared color constants for diagnostic plots."""
+
 BASE_COLOR = "#356673"  # teal-slate
 
 METRIC_COLORS = [

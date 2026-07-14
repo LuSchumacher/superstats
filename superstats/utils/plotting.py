@@ -1,3 +1,5 @@
+"""Shared data preparation helpers for plotting functions."""
+
 from collections.abc import Mapping, Sequence
 
 import numpy as np

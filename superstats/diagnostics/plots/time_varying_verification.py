@@ -1,3 +1,5 @@
+"""Time-varying posterior recovery diagnostics."""
+
 from collections.abc import Mapping, Sequence
 from typing import Callable
 

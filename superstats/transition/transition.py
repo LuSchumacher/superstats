@@ -1,3 +1,5 @@
+"""Base transition interface and shared parameter helpers."""
+
 from abc import ABC, abstractmethod
 from typing import Tuple, Dict, Any, Union
 import numpy as np

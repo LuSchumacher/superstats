@@ -1,3 +1,5 @@
+"""Posterior predictive resimulation plots."""
+
 from collections.abc import Callable
 from typing import Literal
 

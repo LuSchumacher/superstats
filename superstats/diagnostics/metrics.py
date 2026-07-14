@@ -1,4 +1,7 @@
+"""Numerical diagnostics for posterior estimates over time."""
+
 from typing import Callable
+
 import numpy as np
 
 
