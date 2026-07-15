@@ -10,7 +10,8 @@ __all__ = [
     "RandomWalk",
     "AutoRegression",
     "OrnsteinUhlenbeck",
-    "GaussianProcessJump",
+    "GaussianProcess",
+    "Jump",
     "Mixture",
     "Transition",
 ]
