@@ -40,7 +40,7 @@ def test_sample_ddm_times_out_when_max_steps_too_small():
     v = np.zeros(num_trials, dtype=np.float32)
     a = np.full(num_trials, 1e6, dtype=np.float32)
     tau = np.zeros(num_trials, dtype=np.float32)
-    bias = np.zeros(num_trials, dtype=np.float32)
+    bias = np.full(num_trials, 0.5, dtype=np.float32)
 
     data = sample_ddm(v, a, tau, bias, max_steps=1)
 
