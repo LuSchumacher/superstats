@@ -1,3 +1,5 @@
+"""Mixture transition models."""
+
 from typing import Sequence, Tuple, Dict, Any
 import numpy as np
 import warnings

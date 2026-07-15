@@ -1,3 +1,5 @@
+"""Joint priors over time-varying and time-invariant parameters."""
+
 from typing import Any, Dict
 
 import numpy as np

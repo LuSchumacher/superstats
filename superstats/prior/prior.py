@@ -1,3 +1,5 @@
+"""Elementary prior distributions."""
+
 import numpy as np
 from typing import Literal, Sequence
 

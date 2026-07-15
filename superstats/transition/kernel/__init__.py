@@ -1,3 +1,5 @@
+"""Kernel implementations for Gaussian-process transitions."""
+
 from .kernel import Kernel, CompositeKernel
 from .rbf import RBFKernel, get_rbf_kernel, build_sq_dist_mat
 from .linear import LinearKernel, get_linear_kernel

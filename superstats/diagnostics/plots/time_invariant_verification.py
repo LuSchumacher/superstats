@@ -1,3 +1,5 @@
+"""Time-invariant posterior recovery and calibration plots."""
+
 from collections.abc import Mapping, Sequence
 
 import numpy as np

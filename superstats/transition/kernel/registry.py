@@ -13,6 +13,8 @@ KERNEL_REGISTRY: Dict[str, Kernel] = {
     "periodic": PeriodicKernel(),
 }
 
+__all__ = ["KERNEL_REGISTRY", "resolve_kernel"]
+
 
 def resolve_kernel(kernel: str | Kernel) -> Kernel:
     """Resolve a kernel name or instance to a `Kernel`.
@@ -20,7 +22,8 @@ def resolve_kernel(kernel: str | Kernel) -> Kernel:
     Parameters
     ----------
     kernel : str or Kernel
-        Either a registered name (currently "rbf", "linear") or a
+        Either a registered name (currently "rbf", "linear", or
+        "periodic") or a
         `Kernel` instance, including composites built via `+`/`*`.
 
     Returns

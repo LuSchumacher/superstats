@@ -1,3 +1,5 @@
+"""Prior sample visualization helpers."""
+
 from collections.abc import Mapping, Sequence
 
 import numpy as np

@@ -1,3 +1,5 @@
+"""High-level workflow wrapper around BayesFlow."""
+
 from typing import Literal, Callable
 from collections.abc import Mapping, Sequence
 
