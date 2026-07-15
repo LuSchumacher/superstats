@@ -37,7 +37,7 @@ def test_call_and_apply_are_interchangeable_with_no_rng():
     for result in (via_call, via_apply):
         assert set(result.keys()) == {"data", "missing_mask", "p_missing", "missing_value"}
         assert result["data"].shape == data.shape
-        assert result["missing_mask"].shape == (4, 10, 1)
+        assert result["missing_mask"].shape == (4, 10)
 
 
 def test_random_missing_shape_and_dtype():
@@ -121,7 +121,7 @@ def test_random_missing_accepts_prior_for_p_missing():
     process = RandomMissing(p_missing=prior, missing_value=-1)
     result = process.apply(data, rng=np.random.default_rng(12))
 
-    assert result["missing_mask"].shape == (5, 10, 1)
+    assert result["missing_mask"].shape == (5, 10)
     assert np.all(np.isin(result["missing_mask"], [0, 1]))
 
 
