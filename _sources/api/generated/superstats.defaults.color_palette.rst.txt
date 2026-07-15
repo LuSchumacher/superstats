@@ -1,0 +1,6 @@
+superstats.defaults.color\_palette
+==================================
+
+.. automodule:: superstats.defaults.color_palette
+
+   

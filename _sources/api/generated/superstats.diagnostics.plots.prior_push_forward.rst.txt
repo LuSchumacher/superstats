@@ -1,0 +1,12 @@
+superstats.diagnostics.plots.prior\_push\_forward
+=================================================
+
+.. automodule:: superstats.diagnostics.plots.prior_push_forward
+
+   
+   .. rubric:: Functions
+
+   .. autosummary::
+   
+      plot_push_forward
+   

@@ -1,0 +1,14 @@
+superstats.diagnostics.plots.prior\_samples
+===========================================
+
+.. automodule:: superstats.diagnostics.plots.prior_samples
+
+   
+   .. rubric:: Functions
+
+   .. autosummary::
+   
+      plot_joint_prior
+      plot_time_invariant_prior
+      plot_time_varying_prior
+   

@@ -1,0 +1,6 @@
+superstats.defaults.transition\_defaults
+========================================
+
+.. automodule:: superstats.defaults.transition_defaults
+
+   

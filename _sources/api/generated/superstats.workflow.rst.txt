@@ -1,0 +1,13 @@
+﻿superstats.workflow
+===================
+
+.. automodule:: superstats.workflow
+
+   
+.. rubric:: Modules
+
+.. autosummary::
+   :toctree:
+   :recursive:
+
+   workflow

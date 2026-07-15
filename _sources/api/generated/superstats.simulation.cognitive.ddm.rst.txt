@@ -1,0 +1,12 @@
+superstats.simulation.cognitive.ddm
+===================================
+
+.. automodule:: superstats.simulation.cognitive.ddm
+
+   
+   .. rubric:: Functions
+
+   .. autosummary::
+   
+      sample_ddm
+   

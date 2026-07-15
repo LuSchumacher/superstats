@@ -1,0 +1,12 @@
+superstats.utils.plotting
+=========================
+
+.. automodule:: superstats.utils.plotting
+
+   
+   .. rubric:: Functions
+
+   .. autosummary::
+   
+      prepare_plot_data
+   

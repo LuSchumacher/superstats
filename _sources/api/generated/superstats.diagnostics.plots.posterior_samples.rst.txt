@@ -1,0 +1,13 @@
+superstats.diagnostics.plots.posterior\_samples
+===============================================
+
+.. automodule:: superstats.diagnostics.plots.posterior_samples
+
+   
+   .. rubric:: Functions
+
+   .. autosummary::
+   
+      plot_time_invariant_posterior
+      plot_time_varying_posterior
+   

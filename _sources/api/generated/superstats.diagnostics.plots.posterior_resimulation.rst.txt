@@ -1,0 +1,12 @@
+superstats.diagnostics.plots.posterior\_resimulation
+====================================================
+
+.. automodule:: superstats.diagnostics.plots.posterior_resimulation
+
+   
+   .. rubric:: Functions
+
+   .. autosummary::
+   
+      plot_posterior_resimulation
+   

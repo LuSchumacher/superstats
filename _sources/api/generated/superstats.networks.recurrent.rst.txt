@@ -1,0 +1,12 @@
+superstats.networks.recurrent
+=============================
+
+.. automodule:: superstats.networks.recurrent
+
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      RecurrentNet
+   

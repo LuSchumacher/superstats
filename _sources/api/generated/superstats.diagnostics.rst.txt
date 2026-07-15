@@ -1,0 +1,14 @@
+﻿superstats.diagnostics
+======================
+
+.. automodule:: superstats.diagnostics
+
+   
+.. rubric:: Modules
+
+.. autosummary::
+   :toctree:
+   :recursive:
+
+   metrics
+   plots

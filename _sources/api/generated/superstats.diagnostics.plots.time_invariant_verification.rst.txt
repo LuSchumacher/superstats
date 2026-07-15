@@ -1,0 +1,13 @@
+superstats.diagnostics.plots.time\_invariant\_verification
+==========================================================
+
+.. automodule:: superstats.diagnostics.plots.time_invariant_verification
+
+   
+   .. rubric:: Functions
+
+   .. autosummary::
+   
+      plot_calibration
+      plot_recovery
+   

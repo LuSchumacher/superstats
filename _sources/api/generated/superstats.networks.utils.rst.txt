@@ -1,0 +1,12 @@
+superstats.networks.utils
+=========================
+
+.. automodule:: superstats.networks.utils
+
+   
+   .. rubric:: Functions
+
+   .. autosummary::
+   
+      expand_singletons_to_common_length
+   

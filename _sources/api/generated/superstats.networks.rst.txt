@@ -1,0 +1,14 @@
+﻿superstats.networks
+===================
+
+.. automodule:: superstats.networks
+
+   
+.. rubric:: Modules
+
+.. autosummary::
+   :toctree:
+   :recursive:
+
+   recurrent
+   utils

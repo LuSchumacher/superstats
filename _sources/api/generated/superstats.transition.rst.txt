@@ -1,0 +1,20 @@
+﻿superstats.transition
+=====================
+
+.. automodule:: superstats.transition
+
+   
+.. rubric:: Modules
+
+.. autosummary::
+   :toctree:
+   :recursive:
+
+   auto_regression
+   gaussian_process
+   jump
+   kernel
+   mixture
+   ornstein_uhlenbeck
+   random_walk
+   transition

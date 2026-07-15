@@ -1,0 +1,19 @@
+superstats.transition.kernel.periodic
+=====================================
+
+.. automodule:: superstats.transition.kernel.periodic
+
+   
+   .. rubric:: Functions
+
+   .. autosummary::
+   
+      build_abs_dist_mat
+      get_periodic_kernel
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      PeriodicKernel
+   

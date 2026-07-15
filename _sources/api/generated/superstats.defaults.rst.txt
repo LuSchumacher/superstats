@@ -1,0 +1,15 @@
+﻿superstats.defaults
+===================
+
+.. automodule:: superstats.defaults
+
+   
+.. rubric:: Modules
+
+.. autosummary::
+   :toctree:
+   :recursive:
+
+   color_palette
+   network_defaults
+   transition_defaults

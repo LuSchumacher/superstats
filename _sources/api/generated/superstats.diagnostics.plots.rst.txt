@@ -1,0 +1,18 @@
+superstats.diagnostics.plots
+============================
+
+.. automodule:: superstats.diagnostics.plots
+
+   
+.. rubric:: Modules
+
+.. autosummary::
+   :toctree:
+   :recursive:
+
+   posterior_resimulation
+   posterior_samples
+   prior_push_forward
+   prior_samples
+   time_invariant_verification
+   time_varying_verification

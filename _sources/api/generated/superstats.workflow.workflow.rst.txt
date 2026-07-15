@@ -1,0 +1,12 @@
+superstats.workflow.workflow
+============================
+
+.. automodule:: superstats.workflow.workflow
+
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      Workflow
+   

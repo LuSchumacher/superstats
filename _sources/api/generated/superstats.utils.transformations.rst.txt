@@ -1,0 +1,12 @@
+superstats.utils.transformations
+================================
+
+.. automodule:: superstats.utils.transformations
+
+   
+   .. rubric:: Functions
+
+   .. autosummary::
+   
+      scaled_sigmoid
+   

@@ -1,0 +1,12 @@
+superstats.prior.joint\_prior
+=============================
+
+.. automodule:: superstats.prior.joint_prior
+
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      JointPrior
+   

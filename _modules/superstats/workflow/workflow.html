@@ -1,0 +1,1272 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>superstats.workflow.workflow &#8212; superstats</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../../_static/styles/theme.css?digest=a95f357e85573c9b56d5" rel="stylesheet" />
+<link href="../../../_static/styles/pydata-sphinx-theme.css?digest=a95f357e85573c9b56d5" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../../../_static/scripts/fontawesome.js?digest=a95f357e85573c9b56d5"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../../_static/scripts/bootstrap.js?digest=a95f357e85573c9b56d5" />
+<link rel="preload" as="script" href="../../../_static/scripts/pydata-sphinx-theme.js?digest=a95f357e85573c9b56d5" />
+
+    <script src="../../../_static/documentation_options.js?v=d45e8c67"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/design-tabs.js?v=f930bc37"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/superstats/workflow/workflow';</script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="0.0" />
+  
+    
+    <script src="../../../_static/searchtools.js"></script>
+    <script src="../../../_static/language_data.js"></script>
+    <script src="../../../searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">superstats</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../getting_started.html">
+    Getting Started
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../user_guide/index.html">
+    User Guide
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../examples/index.html">
+    Examples
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../api/index.html">
+    API Reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../contributing.html">
+    Contributing to superstats
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/LuSchumacher/superstats" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+        
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar hide-on-wide">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../getting_started.html">
+    Getting Started
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../user_guide/index.html">
+    User Guide
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../examples/index.html">
+    Examples
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../api/index.html">
+    API Reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../contributing.html">
+    Contributing to superstats
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/LuSchumacher/superstats" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../../index.html" class="nav-link">Module code</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">superstats.workflow.workflow</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for superstats.workflow.workflow</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;High-level workflow wrapper around BayesFlow.&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Literal</span><span class="p">,</span> <span class="n">Callable</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Mapping</span><span class="p">,</span> <span class="n">Sequence</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">bayesflow</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">bf</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">keras</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">functools</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pickle</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">bayesflow.adapters</span><span class="w"> </span><span class="kn">import</span> <span class="n">Adapter</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">bayesflow.networks</span><span class="w"> </span><span class="kn">import</span> <span class="n">SummaryNetwork</span><span class="p">,</span> <span class="n">InferenceNetwork</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">superstats.simulation</span><span class="w"> </span><span class="kn">import</span> <span class="n">GenerativeModel</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">superstats.networks</span><span class="w"> </span><span class="kn">import</span> <span class="n">RecurrentNet</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">superstats.defaults.network_defaults</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">DEFAULT_SUMMARY_NETWORK</span><span class="p">,</span>
+    <span class="n">DEFAULT_INFERENCE_NETWORK</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">superstats.diagnostics.plots</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">plot_time_varying_verification</span><span class="p">,</span>
+    <span class="n">plot_recovery</span><span class="p">,</span>
+    <span class="n">plot_calibration</span><span class="p">,</span>
+    <span class="n">plot_time_varying_posterior</span><span class="p">,</span>
+    <span class="n">plot_time_invariant_posterior</span><span class="p">,</span>
+<span class="p">)</span>
+
+
+<div class="viewcode-block" id="Workflow">
+<a class="viewcode-back" href="../../../api/generated/superstats.workflow.workflow.html#superstats.workflow.Workflow">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Workflow</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Lightweight amortized Bayesian inference workflow wrapper.</span>
+
+<span class="sd">    Wraps `bf.BasicWorkflow` with sensible defaults for the summary and</span>
+<span class="sd">    inference networks, an auto-built adapter when one isn&#39;t supplied,</span>
+<span class="sd">    and optional checkpoint/history restoration.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    simulator            : GenerativeModel or None, optional, default: None</span>
+<span class="sd">        The simulator used for training and, when `adapter` is not</span>
+<span class="sd">        provided, for building a default adapter. Required in that case.</span>
+<span class="sd">    adapter              : Adapter or None, optional, default: None</span>
+<span class="sd">        Data adapter for the workflow. If None, a default adapter is</span>
+<span class="sd">        built from `simulator.local_keys`, `simulator.hyper_keys`, and</span>
+<span class="sd">        `simulator.shared_keys` (which requires `simulator` to be set).</span>
+<span class="sd">    summary_network      : {&quot;recurrent&quot;} or SummaryNetwork or None, optional, default: &quot;recurrent&quot;</span>
+<span class="sd">        &quot;recurrent&quot; builds a `RecurrentNet` using</span>
+<span class="sd">        `DEFAULT_SUMMARY_NETWORK`; otherwise, the given network (or</span>
+<span class="sd">        None) is used directly.</span>
+<span class="sd">    inference_network    : {&quot;consistency&quot;} or InferenceNetwork, optional, default: &quot;consistency&quot;</span>
+<span class="sd">        &quot;consistency&quot; builds a `bf.networks.StableConsistencyModel`</span>
+<span class="sd">        using `DEFAULT_INFERENCE_NETWORK`; otherwise, the given network</span>
+<span class="sd">        is used directly.</span>
+<span class="sd">    checkpoint_filepath  : str or None, optional, default: None</span>
+<span class="sd">        Directory for saving/restoring the approximator and training</span>
+<span class="sd">        history.</span>
+<span class="sd">    restore_approximator : bool, optional, default: True</span>
+<span class="sd">        If True and a checkpoint directory exists at</span>
+<span class="sd">        `checkpoint_filepath`, restore the approximator from it.</span>
+<span class="sd">        Otherwise, a warning is issued and training starts from scratch.</span>
+<span class="sd">    restore_history      : bool, optional, default: True</span>
+<span class="sd">        If True and a `history.pkl` file exists at</span>
+<span class="sd">        `checkpoint_filepath`, restore `self.history` from it.</span>
+<span class="sd">        Otherwise, a warning is issued.</span>
+<span class="sd">    **kwargs</span>
+<span class="sd">        Forwarded to `bf.BasicWorkflow`.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">simulator</span><span class="p">:</span> <span class="n">GenerativeModel</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">adapter</span><span class="p">:</span> <span class="n">Adapter</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">summary_network</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;recurrent&quot;</span><span class="p">]</span> <span class="o">|</span> <span class="n">SummaryNetwork</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="s2">&quot;recurrent&quot;</span><span class="p">,</span>
+        <span class="n">inference_network</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;consistency&quot;</span><span class="p">]</span> <span class="o">|</span> <span class="n">InferenceNetwork</span> <span class="o">=</span> <span class="s2">&quot;consistency&quot;</span><span class="p">,</span>
+        <span class="n">checkpoint_filepath</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">restore_approximator</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="n">restore_history</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">simulator</span> <span class="o">=</span> <span class="n">simulator</span>
+
+        <span class="k">if</span> <span class="n">summary_network</span> <span class="o">==</span> <span class="s2">&quot;recurrent&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">summary_network</span> <span class="o">=</span> <span class="n">RecurrentNet</span><span class="p">(</span><span class="o">**</span><span class="n">DEFAULT_SUMMARY_NETWORK</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">summary_network</span> <span class="o">=</span> <span class="n">summary_network</span>
+
+        <span class="k">if</span> <span class="n">inference_network</span> <span class="o">==</span> <span class="s2">&quot;consistency&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">inference_network</span> <span class="o">=</span> <span class="n">bf</span><span class="o">.</span><span class="n">networks</span><span class="o">.</span><span class="n">StableConsistencyModel</span><span class="p">(</span><span class="o">**</span><span class="n">DEFAULT_INFERENCE_NETWORK</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">inference_network</span> <span class="o">=</span> <span class="n">inference_network</span>
+
+        <span class="k">if</span> <span class="n">adapter</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">adapter</span> <span class="o">=</span> <span class="n">adapter</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">local_keys</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">simulator</span><span class="o">.</span><span class="n">local_keys</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">hyper_keys</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">simulator</span><span class="o">.</span><span class="n">hyper_keys</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">shared_keys</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">simulator</span><span class="o">.</span><span class="n">shared_keys</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">adapter</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">bf</span><span class="o">.</span><span class="n">Adapter</span><span class="p">()</span>
+                <span class="o">.</span><span class="n">convert_dtype</span><span class="p">(</span><span class="s2">&quot;float64&quot;</span><span class="p">,</span> <span class="s2">&quot;float32&quot;</span><span class="p">)</span>
+                <span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">local_keys</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">hyper_keys</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">shared_keys</span><span class="p">,</span> <span class="n">into</span><span class="o">=</span><span class="s2">&quot;inference_variables&quot;</span><span class="p">)</span>
+                <span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="s2">&quot;data&quot;</span><span class="p">,</span> <span class="s2">&quot;summary_variables&quot;</span><span class="p">)</span>
+            <span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_filepath</span> <span class="o">=</span> <span class="n">checkpoint_filepath</span>
+
+        <span class="k">if</span> <span class="n">restore_approximator</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_filepath</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_filepath</span><span class="p">):</span>
+            <span class="n">restore</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">elif</span> <span class="n">restore_approximator</span><span class="p">:</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;restore_approximator=True but no model found at &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_filepath</span><span class="si">}</span><span class="s2">&#39;. &quot;</span>
+                <span class="s2">&quot;Starting with no trained model.&quot;</span><span class="p">,</span>
+                <span class="n">stacklevel</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">restore</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">restore</span> <span class="o">=</span> <span class="kc">False</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">workflow</span> <span class="o">=</span> <span class="n">bf</span><span class="o">.</span><span class="n">BasicWorkflow</span><span class="p">(</span>
+            <span class="n">simulator</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">simulator</span><span class="p">,</span>
+            <span class="n">adapter</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">adapter</span><span class="p">,</span>
+            <span class="n">summary_network</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">summary_network</span><span class="p">,</span>
+            <span class="n">inference_network</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">inference_network</span><span class="p">,</span>
+            <span class="n">standardize</span><span class="o">=</span><span class="s2">&quot;all&quot;</span><span class="p">,</span>
+            <span class="n">checkpoint_filepath</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_filepath</span><span class="p">,</span>
+            <span class="n">restore</span><span class="o">=</span><span class="n">restore</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">restore_history</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_filepath</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_filepath</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_load_history</span><span class="p">()</span>
+        <span class="k">elif</span> <span class="n">restore_history</span><span class="p">:</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;restore_history=True but no history found at &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_filepath</span><span class="si">}</span><span class="s2">&#39;. Starting with no history.&quot;</span><span class="p">,</span>
+                <span class="n">stacklevel</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+            <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_load_history</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Load persisted training history from `checkpoint_filepath`, if present.</span>
+
+<span class="sd">        A no-op if `checkpoint_filepath` is None or no `history.pkl`</span>
+<span class="sd">        file exists there.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_filepath</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_filepath</span><span class="p">,</span> <span class="s2">&quot;history.pkl&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+            <span class="k">return</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s2">&quot;rb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">workflow</span><span class="o">.</span><span class="n">history</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_save_history</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">new_history</span><span class="p">:</span> <span class="n">keras</span><span class="o">.</span><span class="n">callbacks</span><span class="o">.</span><span class="n">History</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Merge and persist training history to `checkpoint_filepath`, if present.</span>
+
+<span class="sd">        A no-op if `checkpoint_filepath` is None.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        new_history : keras.callbacks.History</span>
+<span class="sd">            History from the most recent training run. Merged into any</span>
+<span class="sd">            existing `self.workflow.history` before saving.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_filepath</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="n">existing</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">workflow</span><span class="o">.</span><span class="n">history</span>
+        <span class="k">if</span> <span class="n">existing</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">existing</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">new_history</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">values</span> <span class="ow">in</span> <span class="n">new_history</span><span class="o">.</span><span class="n">history</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="n">existing</span><span class="o">.</span><span class="n">history</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="p">[])</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">values</span><span class="p">)</span>
+            <span class="n">new_history</span> <span class="o">=</span> <span class="n">existing</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_filepath</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_filepath</span><span class="p">,</span> <span class="s2">&quot;history.pkl&quot;</span><span class="p">),</span> <span class="s2">&quot;wb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">pickle</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">new_history</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">workflow</span><span class="o">.</span><span class="n">history</span> <span class="o">=</span> <span class="n">new_history</span>
+
+<div class="viewcode-block" id="Workflow.fit_offline">
+<a class="viewcode-back" href="../../../api/generated/superstats.workflow.workflow.html#superstats.workflow.Workflow.fit_offline">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">fit_offline</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">validation_data</span><span class="p">,</span> <span class="n">epochs</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span> <span class="n">batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">32</span><span class="p">,</span> <span class="n">save_history</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">keras</span><span class="o">.</span><span class="n">callbacks</span><span class="o">.</span><span class="n">History</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Train the approximator on a fixed, pre-simulated dataset.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        data            : Any</span>
+<span class="sd">            Training data, in the format expected by</span>
+<span class="sd">            `bf.BasicWorkflow.fit_offline`.</span>
+<span class="sd">        validation_data : Any</span>
+<span class="sd">            Validation data, in the same format as `data`.</span>
+<span class="sd">        epochs          : int, optional, default: 100</span>
+<span class="sd">            Number of training epochs.</span>
+<span class="sd">        batch_size      : int, optional, default: 32</span>
+<span class="sd">            Training batch size.</span>
+<span class="sd">        save_history    : bool, optional, default: True</span>
+<span class="sd">            If True, merge this run&#39;s history into `self.history` and</span>
+<span class="sd">            persist it to `checkpoint_filepath` (if set).</span>
+<span class="sd">        **kwargs</span>
+<span class="sd">            Forwarded to `bf.BasicWorkflow.fit_offline`.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        history : keras.callbacks.History - the training history for</span>
+<span class="sd">            this run</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">history</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">workflow</span><span class="o">.</span><span class="n">fit_offline</span><span class="p">(</span>
+            <span class="n">data</span><span class="o">=</span><span class="n">data</span><span class="p">,</span> <span class="n">epochs</span><span class="o">=</span><span class="n">epochs</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">validation_data</span><span class="o">=</span><span class="n">validation_data</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+        <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">save_history</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_save_history</span><span class="p">(</span><span class="n">history</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">history</span></div>
+
+
+<div class="viewcode-block" id="Workflow.fit_online">
+<a class="viewcode-back" href="../../../api/generated/superstats.workflow.workflow.html#superstats.workflow.Workflow.fit_online">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">fit_online</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">num_steps</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+        <span class="n">epochs</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span>
+        <span class="n">num_batches_per_epoch</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span>
+        <span class="n">batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">32</span><span class="p">,</span>
+        <span class="n">save_history</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">keras</span><span class="o">.</span><span class="n">callbacks</span><span class="o">.</span><span class="n">History</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Train the approximator by simulating data on the fly.</span>
+
+<span class="sd">        Temporarily binds `self.simulator.sample` to always draw</span>
+<span class="sd">        trajectories of length `num_steps` with `tile_to_steps=True`,</span>
+<span class="sd">        then restores the original method afterward (even if training</span>
+<span class="sd">        raises).</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        num_steps             : int</span>
+<span class="sd">            Number of time steps per simulated trajectory during</span>
+<span class="sd">            training.</span>
+<span class="sd">        epochs                : int, optional, default: 100</span>
+<span class="sd">            Number of training epochs.</span>
+<span class="sd">        num_batches_per_epoch : int, optional, default: 100</span>
+<span class="sd">            Number of simulated batches per epoch.</span>
+<span class="sd">        batch_size            : int, optional, default: 32</span>
+<span class="sd">            Training batch size.</span>
+<span class="sd">        save_history          : bool, optional, default: True</span>
+<span class="sd">            If True, merge this run&#39;s history into `self.history` and</span>
+<span class="sd">            persist it to `checkpoint_filepath` (if set).</span>
+<span class="sd">        **kwargs</span>
+<span class="sd">            Forwarded to `bf.BasicWorkflow.fit_online`.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        history : keras.callbacks.History - the training history for</span>
+<span class="sd">            this run</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">original_sample</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">simulator</span><span class="o">.</span><span class="n">sample</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">simulator</span><span class="o">.</span><span class="n">sample</span> <span class="o">=</span> <span class="n">functools</span><span class="o">.</span><span class="n">partial</span><span class="p">(</span><span class="n">original_sample</span><span class="p">,</span> <span class="n">num_steps</span><span class="o">=</span><span class="n">num_steps</span><span class="p">,</span> <span class="n">tile_to_steps</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">history</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">workflow</span><span class="o">.</span><span class="n">fit_online</span><span class="p">(</span>
+                <span class="n">epochs</span><span class="o">=</span><span class="n">epochs</span><span class="p">,</span> <span class="n">num_batches_per_epoch</span><span class="o">=</span><span class="n">num_batches_per_epoch</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="n">batch_size</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+            <span class="p">)</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">simulator</span><span class="o">.</span><span class="n">sample</span> <span class="o">=</span> <span class="n">original_sample</span>
+
+        <span class="k">if</span> <span class="n">save_history</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_save_history</span><span class="p">(</span><span class="n">history</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">history</span></div>
+
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">history</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;keras.callbacks.History or None - the workflow&#39;s training history.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">workflow</span><span class="o">.</span><span class="n">history</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">approximator</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The underlying trained bf approximator object.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">workflow</span><span class="o">.</span><span class="n">approximator</span>
+
+<div class="viewcode-block" id="Workflow.sample">
+<a class="viewcode-back" href="../../../api/generated/superstats.workflow.workflow.html#superstats.workflow.Workflow.sample">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">sample</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">data</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+        <span class="n">num_samples</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1000</span><span class="p">,</span>
+        <span class="n">inference_batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">5</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Run inference on observed data.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        data                 : np.ndarray of shape (num_datasets, num_steps, data_dims)</span>
+<span class="sd">            Observed data to condition on.</span>
+<span class="sd">        num_samples          : int, optional, default: 1000</span>
+<span class="sd">            Number of posterior samples per dataset.</span>
+<span class="sd">        inference_batch_size : int, optional, default: 5</span>
+<span class="sd">            Datasets per GPU batch, to avoid out-of-memory errors.</span>
+<span class="sd">        **kwargs</span>
+<span class="sd">            Forwarded to `self.approximator.sample`.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        samples : dict of {param_name: np.ndarray} - posterior samples</span>
+<span class="sd">            per parameter</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">samples</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">approximator</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span>
+            <span class="n">conditions</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;data&quot;</span><span class="p">:</span> <span class="n">data</span><span class="p">},</span>
+            <span class="n">num_samples</span><span class="o">=</span><span class="n">num_samples</span><span class="p">,</span>
+            <span class="n">batch_size</span><span class="o">=</span><span class="n">inference_batch_size</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">samples</span></div>
+
+
+<div class="viewcode-block" id="Workflow.resimulate_posterior">
+<a class="viewcode-back" href="../../../api/generated/superstats.workflow.workflow.html#superstats.workflow.Workflow.resimulate_posterior">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">resimulate_posterior</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">posterior_samples</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
+        <span class="n">num_sims</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
+        <span class="n">rng</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Generate posterior predictive simulations from posterior parameter draws.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        posterior_samples : dict of np.ndarray</span>
+<span class="sd">            Posterior samples returned by `self.sample`. Each array</span>
+<span class="sd">            should have shape (batch_size, num_samples, num_steps, dim)</span>
+<span class="sd">            or (batch_size, num_samples, num_steps).</span>
+<span class="sd">        num_sims          : int, optional, default: 10</span>
+<span class="sd">            Number of posterior predictive trajectories to simulate</span>
+<span class="sd">            per dataset.</span>
+<span class="sd">        rng               : int or np.random.Generator or None, optional, default: None</span>
+<span class="sd">            Random seed or generator for sampling posterior indices.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        sim_data : np.ndarray of shape (batch_size, num_sims,</span>
+<span class="sd">            num_steps, data_dim) - simulated data</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If `posterior_samples` is empty, if a posterior array has</span>
+<span class="sd">            fewer than 3 dimensions, if a parameter&#39;s batch size</span>
+<span class="sd">            doesn&#39;t match the others, if a parameter has an unsupported</span>
+<span class="sd">            number of dimensions, or if a parameter&#39;s shape can&#39;t be</span>
+<span class="sd">            reshaped to collapse the sample axis into the batch axis.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="n">rng</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">posterior_samples</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;posterior_samples must be a non-empty dict.&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Infer shape from one posterior parameter</span>
+        <span class="n">example</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="n">posterior_samples</span><span class="o">.</span><span class="n">values</span><span class="p">()))</span>
+        <span class="k">if</span> <span class="n">example</span><span class="o">.</span><span class="n">ndim</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;Posterior sample arrays must have at least 3 dimensions: (batch_size, num_samples, num_steps, ...).&quot;</span>
+            <span class="p">)</span>
+
+        <span class="n">batch_size</span><span class="p">,</span> <span class="n">num_draws</span> <span class="o">=</span> <span class="n">example</span><span class="o">.</span><span class="n">shape</span><span class="p">[:</span><span class="mi">2</span><span class="p">]</span>
+        <span class="n">num_steps</span> <span class="o">=</span> <span class="n">example</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+
+        <span class="n">sample_idx</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">integers</span><span class="p">(</span><span class="n">num_draws</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">num_sims</span><span class="p">))</span>
+
+        <span class="n">simulation_params</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">fixed_params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">simulator</span><span class="o">.</span><span class="n">get_fixed_params</span><span class="p">()</span>
+
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">arr</span> <span class="ow">in</span> <span class="n">posterior_samples</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">arr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">arr</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">arr</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">batch_size</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;Posterior parameter &#39;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&#39; has batch size </span><span class="si">{</span><span class="n">arr</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2"> but expected </span><span class="si">{</span><span class="n">batch_size</span><span class="si">}</span><span class="s2">.&quot;</span>
+                <span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">arr</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
+                <span class="n">selected</span> <span class="o">=</span> <span class="n">arr</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">batch_size</span><span class="p">)[:,</span> <span class="kc">None</span><span class="p">],</span> <span class="n">sample_idx</span><span class="p">,</span> <span class="p">:]</span>
+                <span class="n">simulation_params</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">selected</span>
+            <span class="k">elif</span> <span class="n">arr</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">4</span><span class="p">:</span>
+                <span class="n">selected</span> <span class="o">=</span> <span class="n">arr</span><span class="p">[</span>
+                    <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">batch_size</span><span class="p">)[:,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">],</span>
+                    <span class="n">sample_idx</span><span class="p">[:,</span> <span class="p">:,</span> <span class="kc">None</span><span class="p">],</span>
+                    <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">num_steps</span><span class="p">)[</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="p">:],</span>
+                    <span class="p">:,</span>
+                <span class="p">]</span>
+                <span class="n">simulation_params</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">selected</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;Unexpected posterior shape for &#39;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&#39;: </span><span class="si">{</span><span class="n">arr</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">. &quot;</span>
+                    <span class="s2">&quot;Expected (batch, samples, steps, dim) or (batch, samples, steps).&quot;</span>
+                <span class="p">)</span>
+
+        <span class="c1"># Collapse sample axis into batch axis for simulation</span>
+        <span class="n">expanded_params</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">arr</span> <span class="ow">in</span> <span class="n">simulation_params</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">arr</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="n">expanded_params</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">batch_size</span> <span class="o">*</span> <span class="n">num_sims</span><span class="p">,</span> <span class="n">num_steps</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="n">arr</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
+                <span class="n">expanded_params</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">batch_size</span> <span class="o">*</span> <span class="n">num_sims</span><span class="p">,</span> <span class="n">num_steps</span><span class="p">,</span> <span class="n">arr</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+            <span class="k">elif</span> <span class="n">arr</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">4</span><span class="p">:</span>
+                <span class="n">expanded_params</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">batch_size</span> <span class="o">*</span> <span class="n">num_sims</span><span class="p">,</span> <span class="n">num_steps</span><span class="p">,</span> <span class="n">arr</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">3</span><span class="p">])</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Cannot reshape posterior parameter &#39;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&#39; with shape </span><span class="si">{</span><span class="n">arr</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">.&quot;</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">fixed_params</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">expanded_params</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">broadcast_to</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">value</span><span class="p">),</span> <span class="p">(</span><span class="n">batch_size</span> <span class="o">*</span> <span class="n">num_sims</span><span class="p">,))</span>
+
+        <span class="n">raw_sim</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">simulator</span><span class="o">.</span><span class="n">simulate_from_parameters</span><span class="p">(</span>
+            <span class="n">expanded_params</span><span class="p">,</span>
+            <span class="n">batch_size</span><span class="o">=</span><span class="n">batch_size</span> <span class="o">*</span> <span class="n">num_sims</span><span class="p">,</span>
+            <span class="n">num_steps</span><span class="o">=</span><span class="n">num_steps</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">raw_sim</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">num_sims</span><span class="p">,</span> <span class="n">num_steps</span><span class="p">,</span> <span class="o">*</span><span class="n">raw_sim</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">:])</span></div>
+
+
+<div class="viewcode-block" id="Workflow.plot_history">
+<a class="viewcode-back" href="../../../api/generated/superstats.workflow.workflow.html#superstats.workflow.Workflow.plot_history">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">plot_history</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">history</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Plot training loss curves.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        history : keras.callbacks.History</span>
+<span class="sd">            Training history, e.g. from `fit_offline`, `fit_online`, or</span>
+<span class="sd">            `self.history`.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        fig : plt.Figure - the loss curve figure</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">bf</span><span class="o">.</span><span class="n">diagnostics</span><span class="o">.</span><span class="n">plots</span><span class="o">.</span><span class="n">loss</span><span class="p">(</span><span class="n">history</span><span class="p">,</span> <span class="n">train_color</span><span class="o">=</span><span class="s2">&quot;#822621&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Workflow.verify_time_varying">
+<a class="viewcode-back" href="../../../api/generated/superstats.workflow.workflow.html#superstats.workflow.Workflow.verify_time_varying">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">verify_time_varying</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">targets</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
+        <span class="n">estimates</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
+        <span class="n">variable_keys</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">variable_names</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">aggregation</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">median</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Plot recovery diagnostics over steps for time-varying parameters.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        targets        : dict</span>
+<span class="sd">            Ground-truth local parameter trajectories, keyed by</span>
+<span class="sd">            parameter name; each value has shape</span>
+<span class="sd">            (batch_size, num_steps, 1).</span>
+<span class="sd">        estimates      : dict</span>
+<span class="sd">            Posterior estimates for the same parameters, keyed by name;</span>
+<span class="sd">            each value has shape</span>
+<span class="sd">            (batch_size, num_post_samples, num_steps, 1).</span>
+<span class="sd">        variable_keys  : list of str or None, optional, default: None</span>
+<span class="sd">            Which parameters to select and plot, and in what order.</span>
+<span class="sd">            Defaults to `self.simulator.local_keys` when not supplied.</span>
+<span class="sd">        variable_names : list of str or None, optional, default: None</span>
+<span class="sd">            Display names for the plotted columns, in the same order as</span>
+<span class="sd">            `variable_keys`. Defaults to `variable_keys` when not</span>
+<span class="sd">            supplied.</span>
+<span class="sd">        aggregation    : callable, optional, default: np.median</span>
+<span class="sd">            Aggregation function forwarded to</span>
+<span class="sd">            `plot_time_varying_verification`, used to collapse each</span>
+<span class="sd">            metric across simulations. Typically np.mean or np.median.</span>
+<span class="sd">        **kwargs</span>
+<span class="sd">            Additional keyword arguments forwarded to</span>
+<span class="sd">            `plot_time_varying_verification` (e.g. `colors`,</span>
+<span class="sd">            `title_fontsize`).</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        fig : plt.Figure - the figure instance for optional saving</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">local_keys</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">simulator</span><span class="o">.</span><span class="n">local_keys</span>
+
+        <span class="k">if</span> <span class="n">variable_keys</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">variable_keys</span> <span class="o">=</span> <span class="n">local_keys</span>
+
+        <span class="n">targets_squeezed</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">targets</span><span class="p">[</span><span class="n">k</span><span class="p">][</span><span class="o">...</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">variable_keys</span><span class="p">}</span>
+        <span class="n">estimates_squeezed</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">estimates</span><span class="p">[</span><span class="n">k</span><span class="p">][</span><span class="o">...</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">variable_keys</span><span class="p">}</span>
+
+        <span class="k">return</span> <span class="n">plot_time_varying_verification</span><span class="p">(</span>
+            <span class="n">estimates</span><span class="o">=</span><span class="n">estimates_squeezed</span><span class="p">,</span>
+            <span class="n">targets</span><span class="o">=</span><span class="n">targets_squeezed</span><span class="p">,</span>
+            <span class="n">variable_keys</span><span class="o">=</span><span class="n">variable_keys</span><span class="p">,</span>
+            <span class="n">variable_names</span><span class="o">=</span><span class="n">variable_names</span><span class="p">,</span>
+            <span class="n">aggregation</span><span class="o">=</span><span class="n">aggregation</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Workflow.verify_time_invariant">
+<a class="viewcode-back" href="../../../api/generated/superstats.workflow.workflow.html#superstats.workflow.Workflow.verify_time_invariant">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">verify_time_invariant</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">targets</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]</span> <span class="o">|</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+        <span class="n">estimates</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]</span> <span class="o">|</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+        <span class="n">variable_keys</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">variable_names</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Plot time-invariant parameter recovery and calibration.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        targets        : Mapping[str, np.ndarray] or np.ndarray</span>
+<span class="sd">            If a dict, mapping from parameter name to an np.ndarray of</span>
+<span class="sd">            shape (num_sims, dim). If an array, the fully-prepared target</span>
+<span class="sd">            array of shape (num_sims, num_params) directly (e.g. mixture</span>
+<span class="sd">            components already expanded).</span>
+<span class="sd">        estimates      : Mapping[str, np.ndarray] or np.ndarray</span>
+<span class="sd">            If a dict, mapping from parameter name to an np.ndarray of</span>
+<span class="sd">            shape (num_sims, num_samples, steps, dim). If an array, the</span>
+<span class="sd">            fully-prepared estimate array of shape</span>
+<span class="sd">            (num_sims, num_pooled_samples, num_params) directly. Must use</span>
+<span class="sd">            the same input type (dict or array) as `targets`.</span>
+<span class="sd">        variable_keys  : sequence of str or None, optional, default: None</span>
+<span class="sd">            Which time-invariant parameters to include, and in what</span>
+<span class="sd">            order, when `targets`/`estimates` are dicts. Defaults to</span>
+<span class="sd">            `self.simulator.hyper_keys + self.simulator.shared_keys` when</span>
+<span class="sd">            not supplied. Mixture parameters (dim &gt; 1) are expanded into</span>
+<span class="sd">            one column per component regardless of this selection.</span>
+<span class="sd">            Ignored for array input.</span>
+<span class="sd">        variable_names : sequence of str or None, optional, default: None</span>
+<span class="sd">            Display names for the final, expanded columns. For dict</span>
+<span class="sd">            input, must match the number of expanded columns (not</span>
+<span class="sd">            `len(variable_keys)`) and defaults to the auto-derived</span>
+<span class="sd">            per-component names. For array input, defaults to `param_0`,</span>
+<span class="sd">            `param_1`, ...</span>
+<span class="sd">        **kwargs</span>
+<span class="sd">            Forwarded to both `plot_recovery` and `plot_calibration` (e.g.</span>
+<span class="sd">            `label_fontsize`, `title_fontsize`, `tick_fontsize`). Note</span>
+<span class="sd">            `plot_recovery` takes `color` while `plot_calibration` takes</span>
+<span class="sd">            `rank_ecdf_color` - pass whichever applies, or both, via</span>
+<span class="sd">            `**kwargs`.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        figs : tuple - `(fig_recovery, fig_calibration)`, the recovery</span>
+<span class="sd">            and calibration diagnostic figures</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If no time-invariant parameters are found for dict input.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">estimates</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">):</span>
+            <span class="n">fig_recovery</span> <span class="o">=</span> <span class="n">plot_recovery</span><span class="p">(</span>
+                <span class="n">estimates</span><span class="o">=</span><span class="n">estimates</span><span class="p">,</span>
+                <span class="n">targets</span><span class="o">=</span><span class="n">targets</span><span class="p">,</span>
+                <span class="n">variable_keys</span><span class="o">=</span><span class="n">variable_keys</span><span class="p">,</span>
+                <span class="n">variable_names</span><span class="o">=</span><span class="n">variable_names</span><span class="p">,</span>
+                <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">fig_calibration</span> <span class="o">=</span> <span class="n">plot_calibration</span><span class="p">(</span>
+                <span class="n">estimates</span><span class="o">=</span><span class="n">estimates</span><span class="p">,</span>
+                <span class="n">targets</span><span class="o">=</span><span class="n">targets</span><span class="p">,</span>
+                <span class="n">variable_keys</span><span class="o">=</span><span class="n">variable_keys</span><span class="p">,</span>
+                <span class="n">variable_names</span><span class="o">=</span><span class="n">variable_names</span><span class="p">,</span>
+                <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="k">return</span> <span class="n">fig_recovery</span><span class="p">,</span> <span class="n">fig_calibration</span>
+
+        <span class="k">if</span> <span class="n">variable_keys</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">variable_keys</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">simulator</span><span class="o">.</span><span class="n">hyper_keys</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">simulator</span><span class="o">.</span><span class="n">shared_keys</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">variable_keys</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;No time-invariant parameters found.&quot;</span><span class="p">)</span>
+        <span class="n">missing</span> <span class="o">=</span> <span class="p">[</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">variable_keys</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">estimates</span> <span class="ow">or</span> <span class="n">k</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">targets</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">missing</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;variable_keys not found in both estimates and targets: </span><span class="si">{</span><span class="n">missing</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="n">target_list</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">estimate_list</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">expanded_names</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">variable_keys</span><span class="p">:</span>
+            <span class="n">t_arr</span> <span class="o">=</span> <span class="n">targets</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+            <span class="n">e_arr</span> <span class="o">=</span> <span class="n">estimates</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+            <span class="n">B</span><span class="p">,</span> <span class="n">S</span><span class="p">,</span> <span class="n">T</span><span class="p">,</span> <span class="n">dim</span> <span class="o">=</span> <span class="n">e_arr</span><span class="o">.</span><span class="n">shape</span>
+
+            <span class="n">e_agg</span> <span class="o">=</span> <span class="n">e_arr</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">B</span><span class="p">,</span> <span class="n">S</span> <span class="o">*</span> <span class="n">T</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">dim</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">param_key</span> <span class="o">=</span> <span class="n">k</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;_mixture_weights&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="n">mixture_obj</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">simulator</span><span class="o">.</span><span class="n">prior</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">param_key</span><span class="p">)</span>
+                <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">mixture_obj</span><span class="p">,</span> <span class="s2">&quot;names&quot;</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">mixture_obj</span><span class="o">.</span><span class="n">names</span><span class="p">)</span> <span class="o">==</span> <span class="n">dim</span><span class="p">:</span>
+                    <span class="n">comp_names</span> <span class="o">=</span> <span class="p">[</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">k</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">mixture_obj</span><span class="o">.</span><span class="n">names</span><span class="p">]</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">comp_names</span> <span class="o">=</span> <span class="p">[</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">k</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">dim</span><span class="p">)]</span>
+
+                <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">name</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">comp_names</span><span class="p">):</span>
+                    <span class="n">target_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">t_arr</span><span class="p">[:,</span> <span class="n">i</span> <span class="p">:</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">])</span>
+                    <span class="n">estimate_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">e_agg</span><span class="p">[:,</span> <span class="p">:,</span> <span class="n">i</span> <span class="p">:</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">])</span>
+                    <span class="n">expanded_names</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">target_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">t_arr</span><span class="p">)</span>
+                <span class="n">estimate_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">e_agg</span><span class="p">)</span>
+                <span class="n">expanded_names</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">k</span><span class="p">)</span>
+
+        <span class="n">target_arr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">target_list</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">estimate_arr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">estimate_list</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">variable_names</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">variable_names</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">expanded_names</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;variable_names has </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">variable_names</span><span class="p">)</span><span class="si">}</span><span class="s2"> entries but there are &quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">expanded_names</span><span class="p">)</span><span class="si">}</span><span class="s2"> expanded columns.&quot;</span>
+                <span class="p">)</span>
+            <span class="n">expanded_names</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">variable_names</span><span class="p">)</span>
+
+        <span class="n">fig_recovery</span> <span class="o">=</span> <span class="n">plot_recovery</span><span class="p">(</span>
+            <span class="n">estimates</span><span class="o">=</span><span class="n">estimate_arr</span><span class="p">,</span>
+            <span class="n">targets</span><span class="o">=</span><span class="n">target_arr</span><span class="p">,</span>
+            <span class="n">variable_names</span><span class="o">=</span><span class="n">expanded_names</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="n">fig_calibration</span> <span class="o">=</span> <span class="n">plot_calibration</span><span class="p">(</span>
+            <span class="n">estimates</span><span class="o">=</span><span class="n">estimate_arr</span><span class="p">,</span>
+            <span class="n">targets</span><span class="o">=</span><span class="n">target_arr</span><span class="p">,</span>
+            <span class="n">variable_names</span><span class="o">=</span><span class="n">expanded_names</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">fig_recovery</span><span class="p">,</span> <span class="n">fig_calibration</span></div>
+
+
+<div class="viewcode-block" id="Workflow.plot_time_varying_posterior">
+<a class="viewcode-back" href="../../../api/generated/superstats.workflow.workflow.html#superstats.workflow.Workflow.plot_time_varying_posterior">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">plot_time_varying_posterior</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">estimates</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]</span> <span class="o">|</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+        <span class="n">targets</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]</span> <span class="o">|</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">variable_keys</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">variable_names</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">aggregation</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">aggregate_strategy</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;full_uncertainty&quot;</span><span class="p">,</span> <span class="s2">&quot;no_epistemic&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;full_uncertainty&quot;</span><span class="p">,</span>
+        <span class="n">uncertainty_fun</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;std&quot;</span><span class="p">,</span> <span class="s2">&quot;95ci&quot;</span><span class="p">,</span> <span class="s2">&quot;mad&quot;</span><span class="p">,</span> <span class="s2">&quot;95hdi&quot;</span><span class="p">]</span> <span class="o">|</span> <span class="n">Callable</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="s2">&quot;95ci&quot;</span><span class="p">,</span>
+        <span class="n">smoothing</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;sma&quot;</span><span class="p">,</span> <span class="s2">&quot;ema&quot;</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">smoothing_window</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">5</span><span class="p">,</span>
+        <span class="n">marginal</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Plot time-varying posterior diagnostics.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        estimates          : Mapping[str, np.ndarray] or np.ndarray</span>
+<span class="sd">            Posterior samples. If a dict, values of shape</span>
+<span class="sd">            (num_datasets, num_post_samples, num_steps, 1), keyed by</span>
+<span class="sd">            variable. If an array, shape</span>
+<span class="sd">            (num_datasets, num_post_samples, num_steps, num_params)</span>
+<span class="sd">            directly.</span>
+<span class="sd">        targets            : Mapping[str, np.ndarray], np.ndarray, or None, optional, default: None</span>
+<span class="sd">            Ground-truth trajectories, matching the input type of</span>
+<span class="sd">            `estimates`. If a dict, values of shape</span>
+<span class="sd">            (num_datasets, num_steps, 1). If an array, shape</span>
+<span class="sd">            (num_datasets, num_steps, num_params) directly. If given,</span>
+<span class="sd">            drawn as a black dashed line on top of each panel: the raw</span>
+<span class="sd">            per-dataset trajectory when `aggregation` is None, or</span>
+<span class="sd">            aggregated across datasets (using `aggregation`) when</span>
+<span class="sd">            `aggregation` is not None.</span>
+<span class="sd">        variable_keys      : sequence of str or None, optional, default: None</span>
+<span class="sd">            Which variables to select and plot, and in what order, when</span>
+<span class="sd">            `estimates`/`targets` are dicts. Defaults to</span>
+<span class="sd">            `self.simulator.local_keys` when not supplied. Ignored for</span>
+<span class="sd">            array input.</span>
+<span class="sd">        variable_names     : sequence of str or None, optional, default: None</span>
+<span class="sd">            Display names (used for panel labels/titles), in the same</span>
+<span class="sd">            order as `variable_keys` (or the array&#39;s last axis). Defaults</span>
+<span class="sd">            to `variable_keys` for dict input, or `param_0`, `param_1`,</span>
+<span class="sd">            ... for array input.</span>
+<span class="sd">        aggregation        : callable or None, optional, default: None</span>
+<span class="sd">            None: one panel per (param, dataset).</span>
+<span class="sd">            callable: one panel per param, aggregated across datasets.</span>
+<span class="sd">            Called as `aggregation(trajectories, axis=0)` and must return</span>
+<span class="sd">            a (T,) center. The same function aggregates `targets` across</span>
+<span class="sd">            datasets when both `targets` and `aggregation` are given.</span>
+<span class="sd">        aggregate_strategy : {&quot;full_uncertainty&quot;, &quot;no_epistemic&quot;}, optional, default: &quot;full_uncertainty&quot;</span>
+<span class="sd">            Only used when `aggregation` is not None.</span>
+<span class="sd">            &quot;full_uncertainty&quot;: flatten datasets and posterior samples,</span>
+<span class="sd">            then summarize.</span>
+<span class="sd">            &quot;no_epistemic&quot;: median across posterior samples per dataset</span>
+<span class="sd">            first, then aggregate.</span>
+<span class="sd">        uncertainty_fun    : {&quot;std&quot;, &quot;95ci&quot;, &quot;mad&quot;, &quot;95hdi&quot;} or callable or None, optional, default: &quot;95ci&quot;</span>
+<span class="sd">            Band drawn around the center line. A callable receives (N, T)</span>
+<span class="sd">            trajectories and must return `(lo, hi)`, each of shape (T,).</span>
+<span class="sd">        smoothing          : {&quot;sma&quot;, &quot;ema&quot;} or None, optional, default: None</span>
+<span class="sd">            Applied to each trajectory before computing the center,</span>
+<span class="sd">            uncertainty, and marginal.</span>
+<span class="sd">        smoothing_window   : int, optional, default: 5</span>
+<span class="sd">            Window size for `sma`, or span parameter for `ema`.</span>
+<span class="sd">        marginal           : bool, optional, default: True</span>
+<span class="sd">            Attach a marginal KDE panel to the right of each trajectory</span>
+<span class="sd">            axis. The KDE is computed on the same array used for the</span>
+<span class="sd">            uncertainty band.</span>
+<span class="sd">        **kwargs</span>
+<span class="sd">            Forwarded to `plot_time_varying_posterior` (e.g. `num_cols`,</span>
+<span class="sd">            `color`, `alpha`, `title_fontsize`, `label_fontsize`,</span>
+<span class="sd">            `tick_fontsize`, `figsize`).</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        fig : plt.Figure - the figure instance for optional saving</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">variable_keys</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">variable_keys</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">simulator</span><span class="o">.</span><span class="n">local_keys</span>
+
+        <span class="k">return</span> <span class="n">plot_time_varying_posterior</span><span class="p">(</span>
+            <span class="n">estimates</span><span class="o">=</span><span class="n">estimates</span><span class="p">,</span>
+            <span class="n">targets</span><span class="o">=</span><span class="n">targets</span><span class="p">,</span>
+            <span class="n">variable_keys</span><span class="o">=</span><span class="n">variable_keys</span><span class="p">,</span>
+            <span class="n">variable_names</span><span class="o">=</span><span class="n">variable_names</span><span class="p">,</span>
+            <span class="n">aggregation</span><span class="o">=</span><span class="n">aggregation</span><span class="p">,</span>
+            <span class="n">aggregate_strategy</span><span class="o">=</span><span class="n">aggregate_strategy</span><span class="p">,</span>
+            <span class="n">uncertainty_fun</span><span class="o">=</span><span class="n">uncertainty_fun</span><span class="p">,</span>
+            <span class="n">smoothing</span><span class="o">=</span><span class="n">smoothing</span><span class="p">,</span>
+            <span class="n">smoothing_window</span><span class="o">=</span><span class="n">smoothing_window</span><span class="p">,</span>
+            <span class="n">marginal</span><span class="o">=</span><span class="n">marginal</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Workflow.plot_time_invariant_posterior">
+<a class="viewcode-back" href="../../../api/generated/superstats.workflow.workflow.html#superstats.workflow.Workflow.plot_time_invariant_posterior">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">plot_time_invariant_posterior</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">estimates</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]</span> <span class="o">|</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+        <span class="n">targets</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]</span> <span class="o">|</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">variable_keys</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">variable_names</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">aggregation</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">mixture_names</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Plot time-invariant posterior diagnostics.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        estimates      : Mapping[str, np.ndarray] or np.ndarray</span>
+<span class="sd">            Posterior samples. If a dict, values of shape</span>
+<span class="sd">            (num_datasets, num_post_samples, num_steps, num_components),</span>
+<span class="sd">            keyed by variable. If an array, shape</span>
+<span class="sd">            (num_datasets, num_post_samples, num_steps, num_params)</span>
+<span class="sd">            directly.</span>
+<span class="sd">        targets        : Mapping[str, np.ndarray], np.ndarray, or None, optional, default: None</span>
+<span class="sd">            Ground-truth values, matching the input type of `estimates`.</span>
+<span class="sd">            If given, drawn as black dashed vertical lines - per dataset</span>
+<span class="sd">            when `aggregation` is None, or collapsed with `aggregation`</span>
+<span class="sd">            into a single line per panel otherwise.</span>
+<span class="sd">        variable_keys  : sequence of str or None, optional, default: None</span>
+<span class="sd">            Which variables to select and plot, and in what order, when</span>
+<span class="sd">            `estimates` is a dict. Defaults to</span>
+<span class="sd">            `self.simulator.hyper_keys + self.simulator.shared_keys` when</span>
+<span class="sd">            not supplied. Ignored for array input.</span>
+<span class="sd">        variable_names : sequence of str or None, optional, default: None</span>
+<span class="sd">            Display names for the plotted panels. Defaults to</span>
+<span class="sd">            `variable_keys` (dict input) or `param_0`, `param_1`, ...</span>
+<span class="sd">            (array input).</span>
+<span class="sd">        aggregation    : callable or None, optional, default: None</span>
+<span class="sd">            Controls both the posterior layout and the target summary. If</span>
+<span class="sd">            None: one panel per (dataset, parameter) pair. If a callable</span>
+<span class="sd">            (e.g. np.mean, np.median): posterior samples (and `targets`,</span>
+<span class="sd">            if given) are pooled/aggregated across datasets into one</span>
+<span class="sd">            panel per parameter.</span>
+<span class="sd">        mixture_names  : dict or None, optional, default: None</span>
+<span class="sd">            Mapping from parameter name to a list of component names.</span>
+<span class="sd">            Defaults to `self.simulator.prior._mixture_names()` when not</span>
+<span class="sd">            supplied.</span>
+<span class="sd">        **kwargs</span>
+<span class="sd">            Forwarded to `plot_time_invariant_posterior` (e.g.</span>
+<span class="sd">            `num_cols`, `color`, `title_fontsize`, `label_fontsize`,</span>
+<span class="sd">            `tick_fontsize`, `figsize`).</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        fig : plt.Figure - the figure instance for optional saving</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">variable_keys</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">variable_keys</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">simulator</span><span class="o">.</span><span class="n">hyper_keys</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">simulator</span><span class="o">.</span><span class="n">shared_keys</span>
+        <span class="k">if</span> <span class="n">mixture_names</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">mixture_names</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">simulator</span><span class="o">.</span><span class="n">prior</span><span class="o">.</span><span class="n">_mixture_names</span><span class="p">()</span>
+
+        <span class="k">return</span> <span class="n">plot_time_invariant_posterior</span><span class="p">(</span>
+            <span class="n">estimates</span><span class="o">=</span><span class="n">estimates</span><span class="p">,</span>
+            <span class="n">targets</span><span class="o">=</span><span class="n">targets</span><span class="p">,</span>
+            <span class="n">variable_keys</span><span class="o">=</span><span class="n">variable_keys</span><span class="p">,</span>
+            <span class="n">variable_names</span><span class="o">=</span><span class="n">variable_names</span><span class="p">,</span>
+            <span class="n">aggregation</span><span class="o">=</span><span class="n">aggregation</span><span class="p">,</span>
+            <span class="n">mixture_names</span><span class="o">=</span><span class="n">mixture_names</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+        <span class="p">)</span></div>
+</div>
+
+</pre></div>
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../../_static/scripts/bootstrap.js?digest=a95f357e85573c9b56d5"></script>
+<script defer src="../../../_static/scripts/pydata-sphinx-theme.js?digest=a95f357e85573c9b56d5"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2026, Lukas Schumacher and Stefan Radev.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.1.3.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.19.0.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>

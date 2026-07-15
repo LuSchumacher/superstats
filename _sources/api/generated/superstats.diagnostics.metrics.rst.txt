@@ -1,0 +1,15 @@
+superstats.diagnostics.metrics
+==============================
+
+.. automodule:: superstats.diagnostics.metrics
+
+   
+   .. rubric:: Functions
+
+   .. autosummary::
+   
+      calibration_error_per_step
+      correlation_per_step
+      nrmse_per_step
+      posterior_contraction_per_step
+   

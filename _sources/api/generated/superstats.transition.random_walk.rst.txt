@@ -1,0 +1,12 @@
+superstats.transition.random\_walk
+==================================
+
+.. automodule:: superstats.transition.random_walk
+
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      RandomWalk
+   

@@ -1,0 +1,14 @@
+﻿superstats.prior
+================
+
+.. automodule:: superstats.prior
+
+   
+.. rubric:: Modules
+
+.. autosummary::
+   :toctree:
+   :recursive:
+
+   joint_prior
+   prior

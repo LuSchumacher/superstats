@@ -1,0 +1,14 @@
+﻿superstats.utils
+================
+
+.. automodule:: superstats.utils
+
+   
+.. rubric:: Modules
+
+.. autosummary::
+   :toctree:
+   :recursive:
+
+   plotting
+   transformations

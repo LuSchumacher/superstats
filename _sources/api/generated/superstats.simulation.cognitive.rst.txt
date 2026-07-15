@@ -1,0 +1,13 @@
+superstats.simulation.cognitive
+===============================
+
+.. automodule:: superstats.simulation.cognitive
+
+   
+.. rubric:: Modules
+
+.. autosummary::
+   :toctree:
+   :recursive:
+
+   ddm

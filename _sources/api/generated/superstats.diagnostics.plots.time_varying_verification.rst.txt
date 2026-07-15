@@ -1,0 +1,12 @@
+superstats.diagnostics.plots.time\_varying\_verification
+========================================================
+
+.. automodule:: superstats.diagnostics.plots.time_varying_verification
+
+   
+   .. rubric:: Functions
+
+   .. autosummary::
+   
+      plot_time_varying_verification
+   

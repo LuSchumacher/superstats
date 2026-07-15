@@ -1,0 +1,14 @@
+﻿superstats.simulation
+=====================
+
+.. automodule:: superstats.simulation
+
+   
+.. rubric:: Modules
+
+.. autosummary::
+   :toctree:
+   :recursive:
+
+   cognitive
+   generative_model

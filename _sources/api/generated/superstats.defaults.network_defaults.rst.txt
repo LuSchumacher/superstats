@@ -1,0 +1,6 @@
+superstats.defaults.network\_defaults
+=====================================
+
+.. automodule:: superstats.defaults.network_defaults
+
+   

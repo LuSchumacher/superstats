@@ -1,0 +1,18 @@
+superstats.transition.kernel.linear
+===================================
+
+.. automodule:: superstats.transition.kernel.linear
+
+   
+   .. rubric:: Functions
+
+   .. autosummary::
+   
+      get_linear_kernel
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      LinearKernel
+   

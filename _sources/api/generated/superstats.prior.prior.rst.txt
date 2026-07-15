@@ -1,0 +1,12 @@
+superstats.prior.prior
+======================
+
+.. automodule:: superstats.prior.prior
+
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      Prior
+   

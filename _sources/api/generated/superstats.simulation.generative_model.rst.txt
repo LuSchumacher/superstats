@@ -1,0 +1,12 @@
+superstats.simulation.generative\_model
+=======================================
+
+.. automodule:: superstats.simulation.generative_model
+
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      GenerativeModel
+   
