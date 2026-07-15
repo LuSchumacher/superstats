@@ -71,8 +71,8 @@ class Workflow:
         self,
         simulator: GenerativeModel | None = None,
         adapter: Adapter | None = None,
-        summary_network: Literal["recurrent"] | SummaryNetwork | None = "recurrent",
-        inference_network: Literal["consistency"] | InferenceNetwork = "consistency",
+        summary_network: Literal["recurrent", "transformer"] | SummaryNetwork | None = "recurrent",
+        inference_network: Literal["consistency"] | InferenceNetwork = "coupling",
         checkpoint_filepath: str | None = None,
         restore_approximator: bool = True,
         restore_history: bool = True,
@@ -82,10 +82,12 @@ class Workflow:
 
         if summary_network == "recurrent":
             self.summary_network = RecurrentNet(**DEFAULT_SUMMARY_NETWORK)
+        elif summary_network == "transformer":
+            self.summary_network = bf.networks.TimeSeriesTransformer(**DEFAULT_SUMMARY_NETWORK)
         else:
             self.summary_network = summary_network
 
-        if inference_network == "consistency":
+        if inference_network == "coupling":
             self.inference_network = bf.networks.CouplingFlow(**DEFAULT_INFERENCE_NETWORK)
         else:
             self.inference_network = inference_network
@@ -93,22 +95,7 @@ class Workflow:
         if adapter is not None:
             self.adapter = adapter
         else:
-            self.local_keys = self.simulator.local_keys
-            self.hyper_keys = self.simulator.hyper_keys
-            self.shared_keys = self.simulator.shared_keys
-
-            adapter = (
-                bf.Adapter()
-                .convert_dtype("float64", "float32")
-                .concatenate(self.local_keys + self.hyper_keys + self.shared_keys, into="inference_variables")
-                .as_time_series("time_steps")
-            )
-
-            if hasattr(self.simulator, "has_mask") and self.simulator.has_mask:
-                adapter = adapter.as_time_series("missing_mask")
-                self.adapter = adapter.concatenate(["time_steps", "data", "missing_mask"], into="summary_variables")
-            else:
-                self.adapter = adapter.concatenate(["time_steps", "data"], into="summary_variables")
+            self.adapter = self.default_adapter(simulator)
 
         self.checkpoint_filepath = checkpoint_filepath
 
@@ -132,6 +119,27 @@ class Workflow:
 
         if restore_history and self.checkpoint_filepath is not None and os.path.isdir(self.checkpoint_filepath):
             self._load_history()
+
+    @staticmethod
+    def default_adapter(simulator):
+        local_keys = simulator.local_keys
+        hyper_keys = simulator.hyper_keys
+        shared_keys = simulator.shared_keys
+
+        adapter = (
+            bf.Adapter()
+            .convert_dtype("float64", "float32")
+            .concatenate(local_keys + hyper_keys + shared_keys, into="inference_variables")
+            .as_time_series("time_steps")
+        )
+
+        if hasattr(simulator, "has_mask") and simulator.has_mask:
+            adapter = adapter.as_time_series("missing_mask")
+            adapter = adapter.concatenate(["time_steps", "data", "missing_mask"], into="summary_variables")
+        else:
+            adapter = adapter.concatenate(["time_steps", "data"], into="summary_variables")
+
+        return adapter
 
     def _load_history(self) -> None:
         """Load persisted training history from `checkpoint_filepath`, if present.

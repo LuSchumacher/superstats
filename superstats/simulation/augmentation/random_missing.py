@@ -76,7 +76,11 @@ class RandomMissing(MissingProcess):
             mask = rng.random((batch_size, num_steps)) < p[:, None]
             p_used = p.reshape(batch_size, 1)
 
-        data[mask] = self.missing_value
+        try:
+            data[mask] = self.missing_value
+        except (TypeError, ValueError, OverflowError):
+            data = data.astype(np.result_type(data.dtype, self.missing_value), copy=True)
+            data[mask] = self.missing_value
 
         return {
             "data": data,

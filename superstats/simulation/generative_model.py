@@ -31,20 +31,20 @@ class GenerativeModel:
         parameter names and order.
     missing_process : MissingProcess, Callable, or None, optional
         Process applied to simulated data to introduce missingness.
-        - Not provided (default): uses `RandomMissing()`, the default MCAR
-          missingness process.
+        - Not provided (default) or `None`: disables missingness augmentation
+          and `sample` will not include a `"missing_mask"` entry in its result.
+        - `"random"`: uses `RandomMissing()`, the default MCAR missingness
+          process.
         - `MissingProcess` instance: used as-is.
         - Plain `Callable`: must follow the same contract as
           `MissingProcess.__call__`, i.e. `(data, rng=None) -> dict` with
           keys `"data"` (the corrupted array) and `"missing_mask"`.
-        - `None`: disables missingness augmentation entirely; `sample`
-          will not include a `"missing_mask"` entry in its result.
 
     Raises
     ------
     TypeError
         If `model` is not callable, or if `missing_process` is neither
-        `None` nor callable.
+        `None`, `"random"`, nor callable.
     """
 
     def __init__(
@@ -61,8 +61,10 @@ class GenerativeModel:
 
         if missing_process == "random":
             self.missing_process = RandomMissing()
-        else:
+        elif missing_process is None or callable(missing_process):
             self.missing_process = missing_process
+        else:
+            raise TypeError("missing_process must be None, 'random', a MissingProcess instance, or callable")
 
         if self.missing_process is not None:
             self.has_mask = True
@@ -429,8 +431,8 @@ class GenerativeModel:
             (for `RandomMissing`, (batch_size, num_steps)).
             - any additional keys the missing process returns beyond
             `"data"`/`"missing_mask"` (e.g. `RandomMissing` also
-            returns `"p_missing"`, shape (batch_size, 1), and
-            `"missing_value"`); omitted if `self.missing_process` is
+            returns `"p_missing"`, shape (batch_size, 1)); omitted if
+            `self.missing_process` is
             None or returns no extra keys.
             - one entry per sampled parameter. Local (time-varying) params
               have shape (batch_size, num_steps); hyper and shared

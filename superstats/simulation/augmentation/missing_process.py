@@ -8,7 +8,7 @@ class MissingProcess(ABC):
     """Introduces missingness into simulated data.
 
     Contract: ``(data, rng) -> {"data": filled, "missing_mask": mask}``.
-    ``mask`` is a boolean array of ``data.shape`` (True = missing) and
+    ``mask`` is a boolean array of shape ``data.shape[:2]`` (True = missing) and
     ``filled`` is ``data`` with masked entries set to the process's
     ``missing_value``. Instances are callable, so a MissingProcess, a
     subclass, or a bare function with this signature are interchangeable.
