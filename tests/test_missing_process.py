@@ -48,8 +48,8 @@ def test_random_missing_shape_and_dtype():
     result = process.apply(data, rng=np.random.default_rng(42))
 
     assert result["data"].shape == data.shape
-    assert result["missing_mask"].shape == (batch_size, num_steps, 1)
-    assert result["missing_mask"].dtype == np.int64
+    assert result["missing_mask"].shape == (batch_size, num_steps)
+    assert result["missing_mask"].dtype == np.bool
     assert np.all(np.isin(result["missing_mask"], [0, 1]))
 
 
