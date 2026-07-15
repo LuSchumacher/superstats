@@ -1,3 +1,5 @@
+"""Default priors and bounds for transition models."""
+
 from superstats.prior.prior import Prior
 
 

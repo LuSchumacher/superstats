@@ -1,3 +1,5 @@
+"""Random-walk transition models."""
+
 from typing import Dict, Any
 from collections.abc import Sequence
 import numpy as np

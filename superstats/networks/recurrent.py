@@ -1,7 +1,10 @@
+"""Recurrent summary network layers."""
+
 from collections.abc import Sequence
 from numbers import Integral, Real
 
 import bayesflow as bf
+
 import keras
 
 from bayesflow.types import Tensor

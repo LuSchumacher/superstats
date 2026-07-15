@@ -1,3 +1,5 @@
+"""Gaussian-process transition models."""
+
 from typing import Any, Dict, Sequence, Literal
 import numpy as np
 from numba import njit, prange
