@@ -9,5 +9,5 @@ __all__ = [
     "GenerativeModel",
     "sample_ddm",
     "sample_rdm",
-    "sample_d]cdm",
+    "sample_cdm",
 ]

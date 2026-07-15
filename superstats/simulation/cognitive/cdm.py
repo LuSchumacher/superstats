@@ -1,3 +1,5 @@
+"""Circular Diffusion Model simulator."""
+
 import numpy as np
 from numba import njit, prange
 
@@ -74,11 +76,12 @@ def sample_cdm(
             x1 += mu1 * dt + noise_scale * np.random.randn()
 
             if x0 * x0 + x1 * x1 >= a_sq:
-                rt = tau[idx] + i * dt
+                rt = tau[idx] + (i + 1) * dt
                 angle = np.arctan2(x1, x0)
                 break
 
         data[idx, 0] = rt
+        angle = angle
         data[idx, 1] = angle
 
     return data
