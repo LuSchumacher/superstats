@@ -18,3 +18,7 @@ DEFAULT_HYPER_PRIORS = {
 DEFAULT_BOUNDS = (0.0, 1.0)
 
 DEFAULT_INITIAL_PRIOR = Prior("normal", loc=0.0, scale=1.0)
+
+DEFAULT_BOUNDS = (0.0, 1.0)
+
+DEFAULT_INITIAL_PRIOR = Prior("normal", loc=0.0, scale=1.0)

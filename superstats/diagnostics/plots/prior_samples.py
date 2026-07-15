@@ -470,7 +470,7 @@ def plot_joint_prior(
         ax0 = axes[row_i, 0]
         bbox = ax0.get_position()
         fig.text(
-            0.01,
+            -0.01,
             bbox.y0 + bbox.height / 2,
             spec["name"],
             ha="center",
