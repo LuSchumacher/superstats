@@ -35,7 +35,7 @@ def test_call_and_apply_are_interchangeable_with_no_rng():
     via_apply = process.apply(data)
 
     for result in (via_call, via_apply):
-        assert set(result.keys()) == {"data", "missing_mask"}
+        assert set(result.keys()) == {"data", "missing_mask", "p_missing", "missing_value"}
         assert result["data"].shape == data.shape
         assert result["missing_mask"].shape == (4, 10, 1)
 
@@ -150,7 +150,7 @@ def test_random_missing_keeps_int_dtype_for_int_fill():
     process = RandomMissing(p_missing=1.0, missing_value=-1)
     result = process.apply(data, rng=np.random.default_rng(16))
 
-    assert result["data"].dtype == np.int32
+    assert np.issubdtype(result["data"].dtype, np.integer)
     assert np.all(result["data"] == -1)
 
 

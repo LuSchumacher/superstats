@@ -63,6 +63,8 @@ class RandomMissing(MissingProcess):
 
     def _fill(self, data: np.ndarray, mask: np.ndarray) -> np.ndarray:
         fill = np.asarray(self.missing_value)
+        if fill.dtype.kind in "iu" and data.dtype.kind in "iu":
+            fill = fill.astype(data.dtype)
         out = data.astype(np.result_type(data.dtype, fill.dtype), copy=True)
         out[mask] = np.broadcast_to(fill, out.shape)[mask]
         return out
