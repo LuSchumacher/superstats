@@ -1,9 +1,11 @@
+"""Base transition interface and shared parameter helpers."""
+
 from abc import ABC, abstractmethod
 from typing import Tuple, Dict, Any, Union
 import numpy as np
 
 from superstats.prior import Prior
-from superstats.defaults import (
+from superstats.defaults.transition_defaults import (
     DEFAULT_HYPER_PRIORS,
     DEFAULT_BOUNDS,
     DEFAULT_INITIAL_PRIOR,
@@ -88,7 +90,9 @@ class Transition(ABC):
             default = DEFAULT_HYPER_PRIORS.get(name)
             if default is None:
                 raise KeyError(f"No default hyperprior found for '{name}'")
-            return default, True
+            if isinstance(default, Prior):
+                return default, True
+            return float(default), False
 
         if isinstance(spec, Prior):
             return spec, True

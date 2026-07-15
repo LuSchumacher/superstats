@@ -1,7 +1,37 @@
-from . import plots
+"""Metrics and plotting helpers for validating superstats workflows."""
+
+from .plots import (
+    plot_time_varying_prior,
+    plot_time_invariant_prior,
+    plot_joint_prior,
+    plot_time_varying_posterior,
+    plot_time_invariant_posterior,
+    plot_push_forward,
+    plot_time_varying_verification,
+    plot_posterior_resimulation,
+    plot_recovery,
+    plot_calibration,
+)
 from .metrics import (
-    r2_score_per_step,
+    correlation_per_step,
     nrmse_per_step,
     posterior_contraction_per_step,
     calibration_error_per_step,
 )
+
+__all__ = [
+    "plot_time_varying_prior",
+    "plot_time_invariant_prior",
+    "plot_joint_prior",
+    "plot_time_varying_posterior",
+    "plot_time_invariant_posterior",
+    "plot_push_forward",
+    "plot_time_varying_verification",
+    "plot_posterior_resimulation",
+    "plot_recovery",
+    "plot_calibration",
+    "correlation_per_step",
+    "nrmse_per_step",
+    "posterior_contraction_per_step",
+    "calibration_error_per_step",
+]

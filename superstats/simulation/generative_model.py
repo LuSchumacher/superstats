@@ -1,3 +1,5 @@
+"""Generative-model wrapper for joint priors and simulators."""
+
 from typing import Callable, Dict, Optional
 import inspect
 import numpy as np
@@ -415,10 +417,10 @@ class GenerativeModel:
         num_steps: int = 200,
         data_dim: int = 0,
         kind: str = "dist",
-        aggregate_fun: str | Callable | None = None,
+        aggregation: Callable | None = None,
         uncertainty_fun: str | Callable | None = None,
-        spaghetti: bool = True,
         marginal: bool = True,
+        spaghetti: bool = False,
         **kwargs,
     ) -> plt.Figure:
         """Render prior push-forward diagnostics for the generative model.
@@ -433,16 +435,19 @@ class GenerativeModel:
             Data dimension to plot.
         kind            : {"dist", "trajectory"}, optional, default: "dist"
             Plot type.
-        aggregate_fun   : {"mean", "median"} or callable or None, optional, default: None
-            Aggregation function over simulations.
+        aggregation     : callable or None, optional, default: None
+            Aggregation function over the dataset dimension, called as
+            `aggregation(x, axis=...)` (e.g. np.mean, np.median).
+            If None, individual datasets are shown in separate panels.
+            If specified, all datasets are aggregated into a single panel.
         uncertainty_fun : {"std", "95ci", "mad", "95hdi"} or callable or None, optional, default: None
             Uncertainty function for aggregate trajectory plots. Forwarded
             directly to `plot_push_forward`, so the accepted values must
             match that function's own supported set.
-        spaghetti       : bool, optional, default: True
-            If True, include individual trajectories.
         marginal        : bool, optional, default: True
             If True, include marginal distributions beside trajectories.
+        spaghetti       : bool, optional, default: False
+            If True, include individual trajectories.
         **kwargs
             Forwarded to `plot_push_forward`.
 
@@ -455,7 +460,7 @@ class GenerativeModel:
             data=data,
             data_dim=data_dim,
             kind=kind,
-            aggregate_fun=aggregate_fun,
+            aggregation=aggregation,
             uncertainty_fun=uncertainty_fun,
             spaghetti=spaghetti,
             marginal=marginal,

@@ -26,8 +26,9 @@ license = { file = "LICENSE" }
 requires-python = ">= 3.11, < 3.14"
 dependencies = [
     "jax >= 0.10.2",
-    "bayesflow >= 2.0.12",
+    "bayesflow>=2.0.12",
     "numba >= 0.63.1",
+    "ipywidgets>=8.1.8",
 ]
 [project.optional-dependencies]
 all = [
@@ -180,3 +181,6 @@ find = {}
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.uv.sources]
+bayesflow = { git = "https://github.com/bayesflow-org/bayesflow.git", rev = "dev" }

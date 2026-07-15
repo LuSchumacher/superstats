@@ -1,3 +1,6 @@
+"""Prior push-forward plotting helpers."""
+
+import warnings
 from collections.abc import Callable
 from typing import Literal
 
@@ -7,25 +10,40 @@ import matplotlib.lines as mlines
 import matplotlib.patches as mpatches
 import seaborn as sns
 
-plt.rcParams["axes.axisbelow"] = True
+from superstats.defaults import (
+    BASE_COLOR,
+)
 
-BAND_LABELS = {"std": "±1 SD", "95ci": "95% CI", "mad": "±1.48 MAD", "95hdi": "95% HDI"}
+plt.rcParams["axes.axisbelow"] = True
+plt.rcParams["font.family"] = "serif"
+plt.rcParams["font.serif"] = ["Palatino", "Palatino Linotype", "DejaVu Serif"]
+
+BAND_LABELS = {
+    "std": "±1 SD",
+    "95ci": "95% CI",
+    "mad": "±1.48 MAD",
+    "95hdi": "95% HDI",
+}
+
+BASE_COL_WIDTH = 6.0
+BASE_ROW_HEIGHT = 3.0
 
 
 def plot_push_forward(
     data: np.ndarray,
     data_dim: int = 0,
     kind: Literal["trajectory", "dist"] = "dist",
-    aggregate_fun: Literal["mean", "median"] | Callable | None = None,
+    aggregation: Callable | None = None,
     uncertainty_fun: Literal["std", "95ci", "mad", "95hdi"] | Callable | None = "95ci",
     marginal: bool = True,
     spaghetti: bool = False,
-    num_cols: int = 3,
-    color: str = "#822621",
-    title_fontsize: int = 16,
-    label_fontsize: int = 14,
-    tick_fontsize: int = 12,
     alpha: float = 0.5,
+    num_cols: int = 3,
+    color: str = BASE_COLOR,
+    title_fontsize: int = 22,
+    label_fontsize: int = 18,
+    tick_fontsize: int = 16,
+    figsize: tuple[float, float] | None = None,
     max_discrete_values: int = 30,
 ):
     """Plot prior push-forward for a single data dimension.
@@ -39,28 +57,33 @@ def plot_push_forward(
     kind                : {"dist", "trajectory"}, optional, default: "dist"
         Plot type: distribution of summary statistics or time-series
         trajectories.
-    aggregate_fun       : {"mean", "median"} or callable or None, optional, default: None
-        Aggregation function over the dataset dimension.
+    aggregation         : callable or None, optional, default: None
+        Aggregation function over the dataset dimension, called as
+        `aggregation(x, axis=...)` (e.g. np.mean, np.median).
         If None, individual datasets are shown in separate panels.
         If specified, all datasets are aggregated into a single panel.
     uncertainty_fun     : {"std", "95ci", "mad", "95hdi"} or callable or None, optional, default: "95ci"
-        Uncertainty function. Only used when `aggregate_fun` is not None.
+        Uncertainty function. Only used when `aggregation` is not None
+        and `kind` is "trajectory". Ignored (with a warning) otherwise.
     marginal            : bool, optional, default: True
         Whether to draw marginal distributions beside trajectory plots.
     spaghetti           : bool, optional, default: False
         Whether to draw individual trajectories behind the aggregate line.
     num_cols            : int, optional, default: 3
         Number of columns when rendering individual panels.
-    color               : str, optional, default: "#822621"
-        Base color for plotted lines and fills.
-    title_fontsize      : int, optional, default: 16
-        The font size of the panel titles.
-    label_fontsize      : int, optional, default: 14
-        The font size of the axis label texts.
-    tick_fontsize       : int, optional, default: 12
-        The font size of the axis tick labels.
     alpha               : float in [0, 1], optional, default: 0.5
         Alpha value for individual dataset traces.
+    color               : str, optional, default: "#822621"
+        Base color for plotted lines and fills.
+    title_fontsize      : int, optional, default: 22
+        The font size of the panel titles.
+    label_fontsize      : int, optional, default: 18
+        The font size of the axis label texts.
+    tick_fontsize       : int, optional, default: 16
+        The font size of the axis tick labels.
+    figsize            : tuple of two floats or None, optional, default: None
+        Explicit figure size in inches. If None, the default layout size
+        is used.
     max_discrete_values : int, optional, default: 30
         Maximum number of discrete categories to treat the data as discrete.
 
@@ -71,20 +94,31 @@ def plot_push_forward(
     Raises
     ------
     ValueError
-        If `kind` is not "dist" or "trajectory", if `uncertainty_fun`
-        is given without `aggregate_fun`, or if `aggregate_fun` or
-        `uncertainty_fun` (when given as a string) is not one of the
-        recognized values.
+        If `kind` is not "dist" or "trajectory".
     """
     if kind not in {"dist", "trajectory"}:
         raise ValueError("kind must be 'dist' or 'trajectory'.")
 
     x = np.asarray(data)[:, :, data_dim]
-    show_aggregate = aggregate_fun is not None
+    show_aggregate = aggregation is not None
     show_uncertainty = uncertainty_fun is not None
 
     if show_uncertainty and not show_aggregate:
-        raise ValueError("uncertainty_fun requires aggregate_fun to be specified.")
+        warnings.warn(
+            "uncertainty_fun requires aggregation to be specified; ignoring uncertainty_fun.",
+            stacklevel=2,
+        )
+        uncertainty_fun = None
+        show_uncertainty = False
+
+    if show_uncertainty and kind == "dist":
+        warnings.warn(
+            "uncertainty_fun is not supported for kind='dist'; ignoring uncertainty_fun.",
+            stacklevel=2,
+        )
+        uncertainty_fun = None
+        show_uncertainty = False
+
     batch_size, steps = x.shape
     flat = x.reshape(-1)
     flat = flat[np.isfinite(flat)]
@@ -95,14 +129,14 @@ def plot_push_forward(
         and categories.size <= max_discrete_values
     )
 
-    COL_WIDTH, ROW_HEIGHT = 4.0, 3.0
     layout_rect = None
 
     if show_aggregate:
         if kind == "trajectory":
             t = np.arange(steps)
 
-            fig, base_ax = plt.subplots(figsize=(COL_WIDTH * 2.5, ROW_HEIGHT + 0.5))
+            default_figsize = (BASE_COL_WIDTH * 1.75, BASE_ROW_HEIGHT * 1.5)
+            fig, base_ax = plt.subplots(figsize=figsize if figsize is not None else default_figsize)
             if marginal:
                 sub = base_ax.get_subplotspec().subgridspec(1, 2, width_ratios=[4.2, 0.8], wspace=0.0)
                 ax = fig.add_subplot(sub[0])
@@ -112,14 +146,7 @@ def plot_push_forward(
                 ax = base_ax
                 ax_marg = None
 
-            if callable(aggregate_fun):
-                center = np.asarray(aggregate_fun(x))
-            elif aggregate_fun == "mean":
-                center = x.mean(axis=0)
-            elif aggregate_fun == "median":
-                center = np.median(x, axis=0)
-            else:
-                raise ValueError("aggregate_fun must be 'mean', 'median', or callable.")
+            center = aggregation(x, axis=0)
 
             if show_uncertainty:
                 if callable(uncertainty_fun):
@@ -182,11 +209,11 @@ def plot_push_forward(
             ax.plot(
                 t,
                 center,
-                color="black",
+                color=color,
                 linewidth=2.5,
                 zorder=3,
             )
-            ax.set_xlabel("Step", fontsize=label_fontsize)
+            ax.set_xlabel("Step", fontsize=label_fontsize, labelpad=10)
             ax.grid(alpha=0.3)
             ax.tick_params(labelsize=tick_fontsize)
             if discrete:
@@ -203,9 +230,9 @@ def plot_push_forward(
                     sns.kdeplot(y=values, ax=ax_marg, color=color, fill=True, alpha=1)
                 ax_marg.set_ylim(ax.get_ylim())
                 ax_marg.set_axis_off()
-
+            aggregate_label = getattr(aggregation, "__name__", "aggregate").capitalize()
             handles = [
-                mlines.Line2D([], [], color="black", linewidth=2.5, label="Aggregate"),
+                mlines.Line2D([], [], color=color, linewidth=2.5, label=aggregate_label),
             ]
             if show_uncertainty:
                 band_label = BAND_LABELS[uncertainty_fun] if isinstance(uncertainty_fun, str) else "Uncertainty"
@@ -239,30 +266,17 @@ def plot_push_forward(
             layout_rect = [0, 0.08, 1, 1]
 
         elif kind == "dist":
-            fig, ax = plt.subplots(figsize=(COL_WIDTH * 2.0, ROW_HEIGHT + 0.5))
+            default_figsize = (BASE_COL_WIDTH * 1.75, BASE_ROW_HEIGHT * 1.5)
+            fig, ax = plt.subplots(figsize=figsize if figsize is not None else default_figsize)
 
             if discrete:
                 counts = np.array([[np.mean(row.reshape(-1) == category) for category in categories] for row in x])
-                if callable(aggregate_fun):
-                    heights = np.asarray(aggregate_fun(counts)).reshape(-1)
-                elif aggregate_fun == "mean":
-                    heights = counts.mean(axis=0)
-                elif aggregate_fun == "median":
-                    heights = np.median(counts, axis=0)
-                else:
-                    raise ValueError("aggregate_fun must be 'mean', 'median', or callable.")
+                heights = aggregation(counts, axis=0)
 
                 ax.bar(categories, heights, color=color, alpha=1)
                 ax.set_xticks(categories)
             else:
-                if callable(aggregate_fun):
-                    stats = np.asarray(aggregate_fun(x)).reshape(-1)
-                elif aggregate_fun == "mean":
-                    stats = x.mean(axis=-1)
-                elif aggregate_fun == "median":
-                    stats = np.median(x, axis=-1)
-                else:
-                    raise ValueError("aggregate_fun must be 'mean', 'median', or callable.")
+                stats = aggregation(x, axis=-1)
 
                 sns.histplot(
                     stats,
@@ -284,12 +298,9 @@ def plot_push_forward(
             raise ValueError("kind must be 'dist' or 'trajectory'.")
 
     elif kind == "trajectory":
-        n_rows = int(np.ceil(batch_size / num_cols))
-        fig, axes = plt.subplots(
-            n_rows,
-            num_cols,
-            figsize=(COL_WIDTH * num_cols, ROW_HEIGHT * n_rows + 0.5),
-        )
+        num_rows = int(np.ceil(batch_size / num_cols))
+        default_figsize = (BASE_COL_WIDTH * num_cols, BASE_ROW_HEIGHT * num_rows + 0.5)
+        fig, axes = plt.subplots(num_rows, num_cols, figsize=figsize if figsize is not None else default_figsize)
         axes = np.atleast_1d(axes).ravel()
         t = np.arange(steps)
 
@@ -304,10 +315,10 @@ def plot_push_forward(
                 ax = base_ax
                 ax_marg = None
 
-            show_xlabel = i // num_cols == n_rows - 1
+            show_xlabel = i // num_cols == num_rows - 1
             show_ylabel = i % num_cols == 0
 
-            ax.plot(t, x[i], color=color, alpha=alpha, linewidth=1.5)
+            ax.plot(t, x[i], color=color, alpha=1.0, linewidth=1.5)
             ax.set_title(f"Dataset {i}", fontsize=title_fontsize)
             ax.set_xlabel("Step" if show_xlabel else "", fontsize=label_fontsize)
             ax.grid(alpha=0.3)
@@ -334,12 +345,9 @@ def plot_push_forward(
             axes[j].axis("off")
 
     else:
-        n_rows = int(np.ceil(batch_size / num_cols))
-        fig, axes = plt.subplots(
-            n_rows,
-            num_cols,
-            figsize=(COL_WIDTH * num_cols, ROW_HEIGHT * n_rows + 0.5),
-        )
+        num_rows = int(np.ceil(batch_size / num_cols))
+        default_figsize = (BASE_COL_WIDTH * num_cols, BASE_ROW_HEIGHT * num_rows + 0.5)
+        fig, axes = plt.subplots(num_rows, num_cols, figsize=figsize if figsize is not None else default_figsize)
         axes = np.atleast_1d(axes).ravel()
 
         for i in range(batch_size):
@@ -361,7 +369,7 @@ def plot_push_forward(
                     alpha=1,
                 )
 
-            show_xlabel = i // num_cols == n_rows - 1
+            show_xlabel = i // num_cols == num_rows - 1
             show_ylabel = i % num_cols == 0
 
             ax.set_title(f"Dataset {i}", fontsize=title_fontsize)

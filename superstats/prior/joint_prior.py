@@ -1,3 +1,5 @@
+"""Joint priors over time-varying and time-invariant parameters."""
+
 from typing import Any, Dict
 
 import numpy as np
@@ -7,7 +9,7 @@ from superstats.diagnostics.plots.prior_samples import (
     plot_time_invariant_prior,
     plot_time_varying_prior,
 )
-from superstats.prior.prior import Prior
+from .prior import Prior
 from superstats.transition.transition import Transition
 
 
