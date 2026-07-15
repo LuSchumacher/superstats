@@ -9,7 +9,6 @@ import keras
 import functools
 import os
 import pickle
-import warnings
 
 from bayesflow.adapters import Adapter
 from bayesflow.networks import SummaryNetwork, InferenceNetwork
@@ -87,7 +86,7 @@ class Workflow:
             self.summary_network = summary_network
 
         if inference_network == "consistency":
-            self.inference_network = bf.networks.StableConsistencyModel(**DEFAULT_INFERENCE_NETWORK)
+            self.inference_network = bf.networks.CouplingFlow(**DEFAULT_INFERENCE_NETWORK)
         else:
             self.inference_network = inference_network
 
@@ -97,23 +96,25 @@ class Workflow:
             self.local_keys = self.simulator.local_keys
             self.hyper_keys = self.simulator.hyper_keys
             self.shared_keys = self.simulator.shared_keys
-            self.adapter = (
+
+            adapter = (
                 bf.Adapter()
                 .convert_dtype("float64", "float32")
                 .concatenate(self.local_keys + self.hyper_keys + self.shared_keys, into="inference_variables")
-                .rename("data", "summary_variables")
+                .as_time_series("time_steps")
             )
+
+            if hasattr(self.simulator, "has_mask") and self.simulator.has_mask:
+                adapter = adapter.as_time_series("missing_mask")
+                self.adapter = adapter.concatenate(["time_steps", "data", "missing_mask"], into="summary_variables")
+            else:
+                self.adapter = adapter.concatenate(["time_steps", "data"], into="summary_variables")
 
         self.checkpoint_filepath = checkpoint_filepath
 
         if restore_approximator and self.checkpoint_filepath is not None and os.path.isdir(self.checkpoint_filepath):
             restore = True
         elif restore_approximator:
-            warnings.warn(
-                f"restore_approximator=True but no model found at '{self.checkpoint_filepath}'. "
-                "Starting with no trained model.",
-                stacklevel=2,
-            )
             restore = False
         else:
             restore = False
@@ -131,11 +132,6 @@ class Workflow:
 
         if restore_history and self.checkpoint_filepath is not None and os.path.isdir(self.checkpoint_filepath):
             self._load_history()
-        elif restore_history:
-            warnings.warn(
-                f"restore_history=True but no history found at '{self.checkpoint_filepath}'. Starting with no history.",
-                stacklevel=2,
-            )
 
     def _load_history(self) -> None:
         """Load persisted training history from `checkpoint_filepath`, if present.
@@ -274,9 +270,9 @@ class Workflow:
 
     def sample(
         self,
-        data: np.ndarray,
-        num_samples: int = 1000,
-        inference_batch_size: int = 5,
+        data: dict[str, np.ndarray],
+        num_samples: int = 500,
+        batch_size: int = 4,
         **kwargs,
     ) -> dict[str, np.ndarray]:
         """Run inference on observed data.
@@ -285,9 +281,9 @@ class Workflow:
         ----------
         data                 : np.ndarray of shape (num_datasets, num_steps, data_dims)
             Observed data to condition on.
-        num_samples          : int, optional, default: 1000
+        num_samples          : int, optional, default: 500
             Number of posterior samples per dataset.
-        inference_batch_size : int, optional, default: 5
+        batch_size : int, optional, default: 4
             Datasets per GPU batch, to avoid out-of-memory errors.
         **kwargs
             Forwarded to `self.approximator.sample`.
@@ -297,12 +293,7 @@ class Workflow:
         samples : dict of {param_name: np.ndarray} - posterior samples
             per parameter
         """
-        samples = self.approximator.sample(
-            conditions={"data": data},
-            num_samples=num_samples,
-            batch_size=inference_batch_size,
-            **kwargs,
-        )
+        samples = self.approximator.sample(conditions=data, num_samples=num_samples, batch_size=batch_size, **kwargs)
         return samples
 
     def resimulate_posterior(

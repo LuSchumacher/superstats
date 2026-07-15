@@ -1,7 +1,7 @@
 """Recurrent summary network layers."""
 
 from collections.abc import Sequence
-from numbers import Integral, Real
+from numbers import Integral
 
 import bayesflow as bf
 
@@ -10,6 +10,7 @@ import keras
 from bayesflow.types import Tensor
 from bayesflow.utils import layer_kwargs
 from bayesflow.utils.serialization import serializable
+from bayesflow.networks.helpers import Time2Vec
 
 from .utils import expand_singletons_to_common_length
 
@@ -22,7 +23,7 @@ class RecurrentNet(bf.networks.SummaryNetwork):
     ----------
     summary_dim    : int, optional, default: 64
         Per-timestep output dimensionality.
-    hidden_dim     : int or sequence of int, optional, default: 256
+    hidden_dim     : int or sequence of int, optional, default: 128
         Dimensionality of the hidden state in each recurrent layer.
     recurrent_type : {"lstm", "gru"} or sequence thereof, optional, default: "lstm"
         Type of recurrent unit to use in each layer.
@@ -30,8 +31,10 @@ class RecurrentNet(bf.networks.SummaryNetwork):
         If True, the layer is processed bidirectionally and the two
         directions are summed. If False, the layer processes the
         sequence forward only.
+    time_embed_dim : int, optional, default: 16
+        The number of featuresa learned by the time2vec preprocessing layer.
     dropout        : float or sequence of float in [0, 1], optional, default: 0.05
-        Dropout rate applied within each recurrent layer.
+        Dropout rate applied after the recurrent layer(s).
     **kwargs
         Additional keyword arguments passed to the parent class
         constructor.
@@ -55,16 +58,18 @@ class RecurrentNet(bf.networks.SummaryNetwork):
     def __init__(
         self,
         summary_dim: int = 64,
-        hidden_dim: int | Sequence[int] = 256,
+        hidden_dim: int | Sequence[int] = 128,
         recurrent_type: str | Sequence[str] = "lstm",
         bidirectional: bool | Sequence[bool] = True,
+        time_axis: int = 0,
+        time_embed_dim: int = 16,
         dropout: float | Sequence[float] = 0.05,
         **kwargs,
     ):
         super().__init__(**layer_kwargs(kwargs))
 
         recurrent_kwargs = expand_singletons_to_common_length(
-            hidden_dim=hidden_dim, recurrent_type=recurrent_type, bidirectional=bidirectional, dropout=dropout
+            hidden_dim=hidden_dim, recurrent_type=recurrent_type, bidirectional=bidirectional
         )
 
         recurrent_layers = []
@@ -72,11 +77,10 @@ class RecurrentNet(bf.networks.SummaryNetwork):
             recurrent_kwargs["hidden_dim"],
             recurrent_kwargs["recurrent_type"],
             recurrent_kwargs["bidirectional"],
-            recurrent_kwargs["dropout"],
         ):
-            hidden_dim_, recurrent_type_, bidirectional_, dropout_ = self._validate_layer_kwargs(*constructor_kwargs)
+            hidden_dim_, recurrent_type_, bidirectional_ = self._validate_layer_kwargs(*constructor_kwargs)
             recurrent_constructor = self._recurrent_constructor(recurrent_type_)
-            recurrent_layer = recurrent_constructor(units=hidden_dim_, dropout=dropout_, return_sequences=True)
+            recurrent_layer = recurrent_constructor(units=hidden_dim_, return_sequences=True)
 
             if bidirectional_:
                 recurrent_layer = keras.layers.Bidirectional(recurrent_layer, merge_mode="sum")
@@ -85,9 +89,14 @@ class RecurrentNet(bf.networks.SummaryNetwork):
 
         self.recurrent_layers = recurrent_layers
 
+        self.dropout_layer = keras.layers.Dropout(dropout)
+
         self.summary_stats = keras.layers.Conv1D(filters=summary_dim, kernel_size=1)
+        self.time_embedding = Time2Vec(time_embed_dim)
 
         self.summary_dim = summary_dim
+        self.time_axis = time_axis
+        self.time_embed_dim = time_embed_dim
         self.hidden_dim = hidden_dim
         self.recurrent_type = recurrent_type
         self.bidirectional = bidirectional
@@ -108,9 +117,18 @@ class RecurrentNet(bf.networks.SummaryNetwork):
         summary : Tensor - the learned summary of shape
             (batch_size, sequence_length, summary_dim).
         """
-        out = time_series
+
+        time = time_series[..., self.time_axis]
+        indices = list(range(keras.ops.shape(time_series)[-1]))
+        indices.pop(self.time_axis)
+        out = keras.ops.take(time_series, indices, axis=-1)
+
+        out = self.time_embedding(out, t=time)
+
         for recurrent_layer in self.recurrent_layers:
-            out = recurrent_layer(out, training=training)
+            out = recurrent_layer(out)
+
+        out = self.dropout_layer(out, training=training)
 
         return self.summary_stats(out)
 
@@ -123,6 +141,8 @@ class RecurrentNet(bf.networks.SummaryNetwork):
                 "recurrent_type": self.recurrent_type,
                 "bidirectional": self.bidirectional,
                 "dropout": self.dropout,
+                "time_axis": self.time_axis,
+                "time_embed_dim": self.time_embed_dim,
             }
         )
         return config
@@ -141,7 +161,6 @@ class RecurrentNet(bf.networks.SummaryNetwork):
         hidden_dim: int,
         recurrent_type: str,
         bidirectional: bool,
-        dropout: float,
     ) -> tuple[int, str, bool, float]:
         if isinstance(hidden_dim, bool) or not isinstance(hidden_dim, Integral) or hidden_dim <= 0:
             raise ValueError(f"hidden_dim must be a positive integer, not {hidden_dim!r}.")
@@ -153,7 +172,4 @@ class RecurrentNet(bf.networks.SummaryNetwork):
         if not isinstance(bidirectional, bool):
             raise ValueError(f"bidirectional must be a boolean, not {bidirectional!r}.")
 
-        if isinstance(dropout, bool) or not isinstance(dropout, Real) or not 0 <= dropout <= 1:
-            raise ValueError(f"dropout must be a float in [0, 1], not {dropout!r}.")
-
-        return int(hidden_dim), recurrent_type, bidirectional, float(dropout)
+        return hidden_dim, recurrent_type, bidirectional
