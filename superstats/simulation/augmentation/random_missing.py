@@ -77,11 +77,21 @@ class RandomMissing(MissingProcess):
             p = self._draw_p(1)[0]
             m = rng.random((num_steps,)) < p
             m = np.broadcast_to(m.reshape(1, num_steps), (batch_size, num_steps)).copy()
+            p_used = np.full((batch_size, 1), p)
         else:
             p = self._draw_p(batch_size)
             m = rng.random((batch_size, num_steps)) < p[:, None]
+            p_used = p.reshape(batch_size, 1)
 
+        # full-shape bool mask, used only internally to fill `data`
         fill_mask = np.broadcast_to(m.reshape((batch_size, num_steps) + trailing), data.shape)
+
+        # returned mask: 0/1 int, shape (batch_size, num_steps, 1)
         missing_mask = m.reshape(batch_size, num_steps, 1).astype(np.int64)
 
-        return {"data": self._fill(data, fill_mask), "missing_mask": missing_mask}
+        return {
+            "data": self._fill(data, fill_mask),
+            "missing_mask": missing_mask,
+            "p_missing": p_used,
+            "missing_value": np.asarray(self.missing_value),
+        }

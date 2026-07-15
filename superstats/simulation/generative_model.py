@@ -337,7 +337,7 @@ class GenerativeModel:
         self,
         sim_data: np.ndarray,
         rng: np.random.Generator | None,
-    ) -> tuple[np.ndarray, Optional[np.ndarray]]:
+    ) -> tuple[np.ndarray, Optional[np.ndarray], Dict[str, np.ndarray]]:
         """Run `self.missing_process` on `sim_data`, if configured.
 
         Parameters
@@ -352,6 +352,11 @@ class GenerativeModel:
         sim_data     : np.ndarray - the (possibly corrupted) data
         missing_mask : np.ndarray or None - mask from the process, or
             None if `self.missing_process` is None
+        extra        : dict of np.ndarray - any additional entries the
+            process returned beyond `"data"` and `"missing_mask"` (e.g.
+            `RandomMissing` also returns `"p_missing"` and
+            `"missing_value"`); empty dict if `self.missing_process` is
+            None or the process returned no extra keys
 
         Raises
         ------
@@ -360,7 +365,24 @@ class GenerativeModel:
             is not a dict with `"data"` and `"missing_mask"` keys.
         """
         if self.missing_process is None:
-            return sim_data, None
+            return sim_data, None, {}
+
+        try:
+            params = inspect.signature(self.missing_process).parameters
+            accepts_rng = "rng" in params or any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values())
+        except (TypeError, ValueError):
+            # signature introspection can fail for some callables/builtins
+            accepts_rng = False
+
+        result = self.missing_process(sim_data, rng=rng) if accepts_rng else self.missing_process(sim_data)
+
+        if not isinstance(result, dict) or "data" not in result or "missing_mask" not in result:
+            raise TypeError(
+                f"missing_process must return a dict with 'data' and 'missing_mask' keys, got {type(result)}"
+            )
+
+        extra = {k: v for k, v in result.items() if k not in ("data", "missing_mask")}
+        return result["data"], result["missing_mask"], extra
 
         try:
             params = inspect.signature(self.missing_process).parameters
@@ -416,12 +438,17 @@ class GenerativeModel:
         -------
         result : dict - flat dictionary with the following entries:
             - `"data"`: simulated data, shape (batch_size, num_steps, ...),
-              corrupted by `self.missing_process` if one is configured.
+            corrupted by `self.missing_process` if one is configured.
             - `"time_steps"`: shape (batch_size, num_steps, 1), each row
-              equal to `np.arange(num_steps)`.
+            equal to `np.arange(num_steps)`.
             - `"missing_mask"`: included only if `self.missing_process`
-              is not None; shape matches the mask returned by the process
-              (for `RandomMissing`, (batch_size, num_steps, 1)).
+            is not None; shape matches the mask returned by the process
+            (for `RandomMissing`, (batch_size, num_steps, 1)).
+            - any additional keys the missing process returns beyond
+            `"data"`/`"missing_mask"` (e.g. `RandomMissing` also
+            returns `"p_missing"`, shape (batch_size, 1), and
+            `"missing_value"`); omitted if `self.missing_process` is
+            None or returns no extra keys.
             - one entry per sampled parameter. Local (time-varying) params
               have shape (batch_size, num_steps, 1); hyper and shared
               params have shape (batch_size, 1), or (batch_size, num_steps, 1)
@@ -479,7 +506,7 @@ class GenerativeModel:
         sim_data = sim_data.reshape(batch_size, num_steps, *output_shape)
 
         # Apply missingness augmentation, if configured
-        sim_data, missing_mask = self._apply_missing_process(sim_data, rng)
+        sim_data, missing_mask, missing_extra = self._apply_missing_process(sim_data, rng)
 
         local_params = self._normalize_local_params(local_params, batch_size, num_steps)
         hyper_params = self._normalize_batch_params(prior_draws.get("hyper_params", {}), batch_size)
@@ -496,6 +523,8 @@ class GenerativeModel:
         result = {"data": sim_data, "time_steps": time_steps}
         if missing_mask is not None:
             result["missing_mask"] = missing_mask
+        if missing_extra:
+            result.update(missing_extra)
         if local_params:
             result.update(local_params)
         if hyper_params:
