@@ -69,7 +69,7 @@ class RecurrentNet(bf.networks.SummaryNetwork):
         layer_norm: bool | Sequence[bool] = True,
         time_axis: int = 0,
         time_embed_dim: int = 16,
-        dropout: float | Sequence[float] = 0.05,
+        dropout: float = 0.05,
         **kwargs,
     ):
         super().__init__(**layer_kwargs(kwargs))
