@@ -7,6 +7,12 @@
 
 **superstats** is a Python library for simulation and Bayesian estimation of models with time-varying parameter.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="img/superstats-square-light.svg">
+  <source media="(prefers-color-scheme: light)" srcset="img/superstats-square-dark.svg">
+  <img align="right" src="img/superstats-square-dark.svg" alt="Superstats logo" width="180">
+</picture>
+
 The library is general, but for now focuses on cognitive modeling. It provides users with:
 
 - A lean API for non-stationary models: specify which parameters change across time, and how.
