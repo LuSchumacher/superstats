@@ -445,7 +445,7 @@ class GenerativeModel:
         result = self.missing_process(sim_data, rng=rng) if accepts_rng else self.missing_process(sim_data)
 
         sim_data = {key: result[key] for key in self.data_keys}
-        missing_mask = result.get("missing_mask")
+        missing_mask = result["missing_mask"]
         extra = {k: v for k, v in result.items() if k not in (*self.data_keys, "missing_mask")}
         return sim_data, missing_mask, extra
 
