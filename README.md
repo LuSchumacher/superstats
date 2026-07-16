@@ -2,14 +2,14 @@
 
 [![Tests](https://github.com/LuSchumacher/superstats/actions/workflows/tests.yml/badge.svg)](https://github.com/LuSchumacher/superstats/actions/workflows/tests.yml)
 
-**superstats** is a Python library for Neural Superstatistics --- simulation and Bayesian estimation of models with time-varying parameter.
+**superstats** is a Python library for simulation and Bayesian estimation of models with time-varying parameter.
 
-The library is general, but focuses on cognitive modeling. It provides users with:
+The library is general, but for now focuses on cognitive modeling. It provides users with:
 
 - A declarative API for **non-stationary models**: specify which parameters change across time, and how.
-- A library of **transition models** — random walks, Ornstein–Uhlenbeck, autoregression, jump processes, gaussian processes and mixtures thereof
-- **Built-in cognitive models**, plus a plug-in interface for any simulator of your own
-- **Amortized Bayesian inference** build on top of [BayesFlow](https://github.com/bayesflow-org/bayesflow): train once, then quicklz fit every data set
+- A library of **transition models**: random walks, Ornstein–Uhlenbeck, autoregression, jump processes, mixtures thereof, and gaussian processes.
+- **Built-in cognitive models**, plus a plug-in interface for any simulator of your own.
+- **Amortized Bayesian inference** build on top of [BayesFlow](https://github.com/bayesflow-org/bayesflow): train once, then quickly fit every data set
 
 ## Conceptual overview
 
@@ -41,13 +41,13 @@ pip install git+https://github.com/LuSchumacher/superstats.git@dev"
 
 A complete workflow: a diffusion decision model whose drift rate and thresold are free to vary across time:
 
-```python
+```pythons
 import superstats as sup
 
 # 1. Say which parameters move, and how
 joint_prior = sup.prior.JointPrior(
     v = sup.transition.RandomWalk(),
-    a = sup.transition.RandomWalk(bounds=(0.0, 6.0)),
+    a = sup.transition.RandomWalk(),
     tau = sup.prior.Prior(dist="halfnormal", scale=0.15),
     bias = 0.5,
 )
@@ -60,10 +60,10 @@ generative_model = sup.simulation.GenerativeModel(
 
 # 3. Train a neural approximator
 workflow = sup.workflow.Workflow(simulator=generative_model)
-history = workflow.fit_online(num_steps=800, epochs=50, batch_size=32)
+history = workflow.fit_online(num_steps=100 epochs=10, batch_size=16)
 
 # 4. Fit any number of data sets, instantly
-samples = workflow.sample(data=rt_data, num_samples=500)
+samples = workflow.sample(data=rt_data, num_samples=250)
 ```
 
 For an in-depth exposition, check out the examples below.
