@@ -13,7 +13,7 @@ def sample_cdm(
     sigma: float = 1.0,
     dt: float = 0.001,
     max_steps: int = 10000,
-) -> np.ndarray:
+) -> dict[str, np.ndarray]:
     """Sample from the Circular Diffusion Model (CDM).
 
     Simulates a 2D diffusion process starting from the origin, with a
@@ -46,12 +46,14 @@ def sample_cdm(
 
     Returns
     -------
-    data : np.ndarray of shape (num_trials, 2) - decision data, where
-        column 0 is the response time (or -5.0 on timeout) and column
-        1 is the response angle in radians (-5.0 on timeout)
+    data : dict of np.ndarray
+        Named decision data. `"response_time"` contains response times
+        (or -5.0 on timeout) and `"choice"` contains response angles in
+        radians (or -5.0 on timeout). Each array has shape (num_trials,).
     """
     num_trials = v_angle.shape[0]
-    data = np.empty((num_trials, 2))
+    response_time = np.empty(num_trials)
+    choice = np.empty(num_trials)
 
     noise_scale = sigma * np.sqrt(dt)
 
@@ -80,8 +82,7 @@ def sample_cdm(
                 angle = np.arctan2(x1, x0)
                 break
 
-        data[idx, 0] = rt
-        angle = angle
-        data[idx, 1] = angle
+        response_time[idx] = rt
+        choice[idx] = angle
 
-    return data
+    return {"response_time": response_time, "choice": choice}

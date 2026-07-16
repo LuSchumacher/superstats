@@ -1,3 +1,5 @@
+from collections.abc import Mapping
+
 import numpy as np
 
 from superstats.simulation import sample_rdm
@@ -14,11 +16,14 @@ def test_sample_rdm_shape_and_dtype():
 
     data = sample_rdm(v_base, v_diff, a_base, tau, bias, sigma_diff)
 
-    assert isinstance(data, np.ndarray)
-    assert data.shape == (num_trials, 2)
-    assert data.dtype == np.float32
+    assert isinstance(data, Mapping)
+    assert set(data) == {"response_time", "choice"}
+    assert data["response_time"].shape == (num_trials,)
+    assert data["choice"].shape == (num_trials,)
+    assert data["response_time"].dtype == np.float32
+    assert data["choice"].dtype == np.float32
 
-    rt, choice = data[:, 0], data[:, 1]
+    rt, choice = data["response_time"], data["choice"]
     # response times are either positive (a decision was reached) or -1.0 (timeout)
     assert np.all((rt > 0) | (rt == -1.0))
     # winner is a valid accumulator index (0 or 1 with the default of 2) or -1.0
@@ -38,8 +43,8 @@ def test_sample_rdm_correct_accumulator_wins_with_strong_drift_advantage():
     data = sample_rdm(v_base, v_diff, a_base, tau, bias, sigma_diff, correct_idx=correct_idx)
 
     # the correct accumulator has an overwhelming drift advantage, so it should win
-    assert np.all(data[:, 1] == 1.0)
-    assert np.all(data[:, 0] > 0)
+    assert np.all(data["choice"] == 1.0)
+    assert np.all(data["response_time"] > 0)
 
 
 def test_sample_rdm_times_out_when_max_steps_too_small():
@@ -53,5 +58,5 @@ def test_sample_rdm_times_out_when_max_steps_too_small():
 
     data = sample_rdm(v_base, v_diff, a_base, tau, bias, sigma_diff, max_steps=1)
 
-    assert np.all(data[:, 0] == -1.0)
-    assert np.all(data[:, 1] == -1.0)
+    assert np.all(data["response_time"] == -1.0)
+    assert np.all(data["choice"] == -1.0)

@@ -1,5 +1,7 @@
 """Wrapper for missing at random data augmentation process"""
 
+from collections.abc import Mapping
+
 from .missing_process import MissingProcess
 from superstats.defaults.augmentation_defaults import DEFAULT_P_MISSING_PRIOR
 from superstats.prior.prior import Prior
@@ -27,10 +29,11 @@ class RandomMissing(MissingProcess):
         dataset (default) otherwise.
         Prior draws (including the default) are clipped to [0, 1].
     missing_value       : float or np.ndarray, default: -1
-        Value written into masked entries. A scalar fills every data
-        dimension; an array of shape ``(data_dim,)`` sets a
-        per-dimension sentinel. Output dtype is promoted as needed
-        (e.g. ``np.nan`` forces float; ``-1`` stays int on int data).
+        Value written into masked entries. A scalar fills every observed
+        variable; a mapping sets a per-variable sentinel; an array of
+        shape ``(num_variables,)`` sets sentinels in data-key order.
+        Output dtype is promoted as needed (e.g. ``np.nan`` forces
+        float; ``-1`` stays int on int data).
     shared_across_batch : bool, default: False
         If True, one probability and one mask are drawn and applied to
         every dataset in the batch. If False (default), each dataset
@@ -61,11 +64,8 @@ class RandomMissing(MissingProcess):
             vals = np.full(n, p)
         return vals
 
-    def apply(self, data: np.ndarray, rng: np.random.Generator | None = None) -> dict:
-        rng = self._default_rng(rng)
-
-        batch_size, num_steps = data.shape[0], data.shape[1]
-
+    def _draw_mask(self, batch_size: int, num_steps: int, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:
+        """Draw a batch x time missingness mask and the probabilities used."""
         if self.shared_across_batch:
             p = self._draw_p(1)[0]
             mask = rng.random(num_steps) < p
@@ -75,15 +75,45 @@ class RandomMissing(MissingProcess):
             p = self._draw_p(batch_size)
             mask = rng.random((batch_size, num_steps)) < p[:, None]
             p_used = p.reshape(batch_size, 1)
+        return mask, p_used
 
+    @staticmethod
+    def _fill_array(arr: np.ndarray, mask: np.ndarray, missing_value) -> np.ndarray:
+        """Fill masked rows in one observed array, promoting dtype if needed."""
         try:
-            data[mask] = self.missing_value
+            arr[mask] = missing_value
         except (TypeError, ValueError, OverflowError):
-            data = data.astype(np.result_type(data.dtype, self.missing_value), copy=True)
-            data[mask] = self.missing_value
+            arr = arr.astype(np.result_type(arr.dtype, missing_value), copy=True)
+            arr[mask] = missing_value
+        return arr
 
-        return {
-            "data": data,
+    def _missing_value_for_key(self, key: str, index: int, num_keys: int):
+        """Resolve scalar, per-key, or per-position missing values for mappings."""
+        if isinstance(self.missing_value, Mapping):
+            return self.missing_value[key]
+
+        value = np.asarray(self.missing_value)
+        if value.ndim == 0:
+            return self.missing_value
+        if value.shape != (num_keys,):
+            raise ValueError(f"Array missing_value for mapping data must have shape ({num_keys},), got {value.shape}.")
+        return value[index]
+
+    def apply(self, data: Mapping[str, np.ndarray], rng: np.random.Generator | None = None) -> dict:
+        rng = self._default_rng(rng)
+
+        keys = list(data)
+        first = data[keys[0]]
+        batch_size, num_steps = first.shape
+
+        mask, p_used = self._draw_mask(batch_size, num_steps, rng)
+
+        filled = {
+            key: self._fill_array(value, mask, self._missing_value_for_key(key, i, len(keys)))
+            for i, (key, value) in enumerate(data.items())
+        }
+
+        return filled | {
             "missing_mask": mask,
             "p_missing": p_used,
         }

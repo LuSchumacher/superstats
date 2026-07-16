@@ -17,7 +17,7 @@ def sample_rdm(
     sigma_base: float = 1.0,
     dt: float = 0.001,
     max_steps: int = 10000,
-) -> np.ndarray:
+) -> dict[str, np.ndarray]:
     """Sample from the Racing Diffusion Model (RDM).
 
     Simulates `num_accumulators` independent diffusion accumulators racing
@@ -66,14 +66,17 @@ def sample_rdm(
 
     Returns
     -------
-    data : np.ndarray of shape (num_trials, 2) - decision data, where
-        column 0 is the response time (or -1.0 on timeout) and column
-        1 is the index of the winning accumulator (-1.0 on timeout)
+    data : dict of np.ndarray
+        Named decision data. `"response_time"` contains response times
+        (or -1.0 on timeout) and `"choice"` contains the index of the
+        winning accumulator (or -1.0 on timeout). Each array has shape
+        (num_trials,).
     """
     num_trials = v_base.shape[0]
     if correct_idx is None:
         correct_idx = np.zeros(num_trials, dtype=np.float32)
-    data = np.empty((num_trials, 2), dtype=np.float32)
+    response_time = np.empty(num_trials, dtype=np.float32)
+    choice = np.empty(num_trials, dtype=np.float32)
     sqrt_dt = np.sqrt(dt)
 
     for i in prange(num_trials):
@@ -106,11 +109,11 @@ def sample_rdm(
                     winner = j
                     break
             if winner >= 0:
-                data[i, 0] = t
-                data[i, 1] = float(winner)
+                response_time[i] = t
+                choice[i] = float(winner)
                 break
         else:
-            data[i, 0] = -1.0
-            data[i, 1] = -1.0
+            response_time[i] = -1.0
+            choice[i] = -1.0
 
-    return data
+    return {"response_time": response_time, "choice": choice}
