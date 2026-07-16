@@ -16,8 +16,6 @@ The library is general, but for now focuses on cognitive modeling. It provides u
 
 ## Conceptual overview
 
-[NEEDS FIGURE]
-
 A superstatistical model has two levels. A **low-level observation model** $\mathcal{G}$, for instance a cognitive model, generates the data at each time step.
 A **high-level transition model** $\mathcal{T}$ describes how the parameters of that model evolve:
 
