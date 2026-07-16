@@ -1,4 +1,4 @@
-# Contributing to superstats
+# Contributing
 
 Contributions to `superstats` are **very welcome**. Whether you are fixing a bug, improving documentation, proposing a feature, or adding new statistical functionality, we appreciate your help.
 

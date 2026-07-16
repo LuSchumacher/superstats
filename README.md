@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/github/license/LuSchumacher/superstats?style=for-the-badge)](LICENSE)
 [![Contributions Welcome](https://img.shields.io/badge/contributions-welcome-brightgreen?style=for-the-badge)](https://github.com/LuSchumacher/superstats/issues)
 
-**superstats** is a Python library for simulation and Bayesian estimation of models with time-varying parameter.
+**superstats** is a Python library for simulation and Bayesian estimation of models with time-varying parameters.
 
 The library is general, but for now focuses on cognitive modeling. It provides users with:
 
@@ -13,6 +13,7 @@ The library is general, but for now focuses on cognitive modeling. It provides u
 - A library of transition models: random walks, Ornstein–Uhlenbeck, autoregression, jump processes, mixtures, and Gaussian processes.
 - Built-in cognitive models, plus a plug-in interface for any simulator of your own.
 - Amortized Bayesian inference build on top of [BayesFlow](https://github.com/bayesflow-org/bayesflow): train once, then quickly fit every data set.
+- Diagnostic and visualization tools for every critical step in a principled Bayesian workflow.
 
 ## Conceptual overview
 
