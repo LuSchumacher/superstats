@@ -5,21 +5,23 @@ import numpy as np
 import pytest
 
 from superstats.defaults import (
-    DEFAULT_INFERENCE_NETWORK,
-    DEFAULT_RECURRENT_SUMMARY_NETWORK,
-    DEFAULT_TRANSFORMER_SUMMARY_NETWORK,
+    DEFAULT_COUPLING_FLOW,
+    DEFAULT_CONSISTENCY_MODEL,
+    DEFAULT_RECURRENT_NETWORK,
+    DEFAULT_TRANSFORMER_NETWORK,
 )
 from superstats.networks import RecurrentNet
 from superstats.utils.dispatch import find_inference_network, find_summary_network
 
 
 def test_network_defaults_are_frozen():
-    assert isinstance(DEFAULT_RECURRENT_SUMMARY_NETWORK, MappingProxyType)
-    assert isinstance(DEFAULT_TRANSFORMER_SUMMARY_NETWORK, MappingProxyType)
-    assert isinstance(DEFAULT_INFERENCE_NETWORK, MappingProxyType)
+    assert isinstance(DEFAULT_RECURRENT_NETWORK, MappingProxyType)
+    assert isinstance(DEFAULT_TRANSFORMER_NETWORK, MappingProxyType)
+    assert isinstance(DEFAULT_COUPLING_FLOW, MappingProxyType)
+    assert isinstance(DEFAULT_CONSISTENCY_MODEL, MappingProxyType)
 
     with pytest.raises(TypeError):
-        DEFAULT_RECURRENT_SUMMARY_NETWORK["hidden_dim"] = 64
+        DEFAULT_RECURRENT_NETWORK["hidden_dim"] = 64
 
 
 def test_summary_network_dispatches_recurrent_defaults():
