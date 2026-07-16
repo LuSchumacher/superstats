@@ -7,7 +7,6 @@ import keras
 
 from superstats.defaults import (
     DEFAULT_COUPLING_FLOW,
-    DEFAULT_CONSISTENCY_MODEL,
     DEFAULT_RECURRENT_NETWORK,
     DEFAULT_TRANSFORMER_NETWORK,
 )
@@ -21,7 +20,7 @@ def _merge_defaults(defaults, kwargs):
 @singledispatch
 def find_summary_network(arg, *args, **kwargs):
     raise TypeError(
-        f"summary_network must be one of 'recurrent', 'lstm', 'transformer', or a keras.Layer instance, not {arg!r}."
+        f"summary_network must be one of 'recurrent', 'transformer', or a keras.Layer instance, not {arg!r}."
     )
 
 
@@ -47,8 +46,7 @@ def _(network: keras.Layer, *args, **kwargs):
 @singledispatch
 def find_inference_network(arg, *args, **kwargs):
     raise TypeError(
-        f"inference_network must be one of 'coupling', 'coupling_flow', 'consistency' or "
-        f"a keras.Layer instance, not {arg!r}."
+        f"inference_network must be one of 'coupling', 'coupling_flow' or a keras.Layer instance, not {arg!r}."
     )
 
 
@@ -57,8 +55,6 @@ def _(name: str, *args, **kwargs):
     match name.lower():
         case "coupling" | "coupling_flow":
             return bf.networks.CouplingFlow(*args, **_merge_defaults(DEFAULT_COUPLING_FLOW, kwargs))
-        case "consistency" | "consistency_model":
-            return bf.networks.StableConsistencyModel(*args, **_merge_defaults(DEFAULT_CONSISTENCY_MODEL, kwargs))
         case unknown_network:
             raise ValueError(f"Unknown inference network: {unknown_network!r}.")
 

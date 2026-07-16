@@ -42,7 +42,7 @@ class Workflow:
         `simulator.shared_keys` (which requires `simulator` to be set).
     summary_network   : {"recurrent", "transformer"} or keras.Layer, optional, default: "recurrent".
         String names build a default summary network; otherwise, an already-created Keras layer is used directly.
-    inference_network : {"coupling", "consistency"} or keras.Layer, optional, default: "coupling".
+    inference_network : {"coupling", "coupling_flow"} or keras.Layer, optional, default: "coupling".
         String names build a default inference network; otherwise, an already-created Keras
         layer is used directly.
     checkpoint_filepath  : str or None, optional, default: None

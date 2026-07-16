@@ -59,6 +59,8 @@ def test_network_dispatch_passes_existing_layers_through():
 def test_network_dispatch_rejects_unsupported_inputs():
     with pytest.raises(ValueError):
         find_summary_network("mlp")
+    with pytest.raises(ValueError):
+        find_summary_network("lstm")
     with pytest.raises(TypeError):
         find_summary_network(RecurrentNet)
     with pytest.raises(TypeError):
