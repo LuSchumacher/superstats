@@ -77,7 +77,11 @@ class GenerativeModel:
 
         if contamination_process == "random_choice":
             self.contamination_process = RandomChoiceProcess()
-        elif contamination_process is None or callable(contamination_process):
+        elif (
+            contamination_process is None
+            or isinstance(contamination_process, ContaminationProcess)
+            or callable(contamination_process)
+        ):
             self.contamination_process = contamination_process
         else:
             raise TypeError(
@@ -416,6 +420,50 @@ class GenerativeModel:
 
         return normalized
 
+    def _apply_contamination_process(
+        self,
+        sim_data: Dict[str, np.ndarray],
+        rng: np.random.Generator | None,
+    ) -> tuple[Dict[str, np.ndarray], Dict[str, np.ndarray]]:
+        """Run `self.contamination_process` on `sim_data`, if configured.
+
+        Parameters
+        ----------
+        sim_data : dict of np.ndarray
+            Named simulated variables. Must include "response_time" and
+            "choice" (each shape (batch_size, num_steps)) if a contamination
+            process is configured, since `ContaminationProcess.apply`
+            requires both. Any additional keys are passed through unchanged.
+        rng      : np.random.Generator or None
+            Generator forwarded to the contamination process.
+
+        Returns
+        -------
+        sim_data : dict of np.ndarray - the (possibly contaminated) named
+            simulated variables. "response_time" and "choice" are replaced
+            by their contaminated versions if a process is configured;
+            otherwise `sim_data` is returned unchanged.
+        extra    : dict of np.ndarray - additional entries the process
+            returned beyond the original `sim_data` keys (e.g.
+            `"p_contaminated"` for `RandomChoiceProcess`); empty dict if
+            `self.contamination_process` is None or the process returned no
+            extra keys.
+        """
+        if self.contamination_process is None:
+            return sim_data, {}
+
+        if isinstance(self.contamination_process, ContaminationProcess):
+            out = self.contamination_process.apply(sim_data, rng=rng)
+        else:
+            out = self.contamination_process(sim_data, rng=rng)
+
+        extra_keys = out.keys() - sim_data.keys()
+        extra = {key: out[key] for key in extra_keys}
+
+        sim_data = {key: out[key] for key in sim_data.keys()}
+
+        return sim_data, extra
+
     def _apply_missing_process(
         self,
         sim_data: Dict[str, np.ndarray],
@@ -553,6 +601,9 @@ class GenerativeModel:
         model_output = self.model(*ordered_params)
         sim_data = self._reshape_model_output(model_output, batch_size, num_steps, expected_data_keys=self.data_keys)
 
+        # Apply contamination augmentation, if configured
+        sim_data, contamination_extra = self._apply_contamination_process(sim_data, rng)
+
         # Apply missingness augmentation, if configured
         sim_data, missing_mask, missing_extra = self._apply_missing_process(sim_data, rng)
 
@@ -569,6 +620,8 @@ class GenerativeModel:
         time_steps = np.broadcast_to(np.arange(num_steps)[None, :], (batch_size, num_steps))
 
         result = {**sim_data, "time_steps": time_steps}
+        if contamination_extra:
+            result.update(contamination_extra)
         if missing_mask is not None:
             result["missing_mask"] = missing_mask
         if missing_extra:
