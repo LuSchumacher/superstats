@@ -65,48 +65,46 @@ def _(network: keras.Layer, *args, **kwargs):
 
 
 @singledispatch
-def find_missing_process(arg, *args, **kwargs):
+def find_missing(arg, *args, **kwargs):
     if callable(arg):
         return arg
-    raise TypeError("missing_process must be None, 'random', a MissingProcess instance, or callable")
+    raise TypeError("missing must be None, 'random', a MissingProcess instance, or callable")
 
 
-@find_missing_process.register
+@find_missing.register
 def _(arg: type(None), *args, **kwargs):
     return None
 
 
-@find_missing_process.register
+@find_missing.register
 def _(name: str, *args, **kwargs):
     match name.lower():
         case "random":
-            from superstats.simulation.augmentation.random_missing import RandomMissing
+            from superstats.simulation.augmentation.random_missing import RandomMissingProcess
 
-            return RandomMissing(*args, **kwargs)
+            return RandomMissingProcess(*args, **kwargs)
         case _:
-            raise TypeError("missing_process must be None, 'random', a MissingProcess instance, or callable")
+            raise TypeError("missing must be None, 'random', a MissingProcess instance, or callable")
 
 
 @singledispatch
-def find_contamination_process(arg, *args, **kwargs):
+def find_contamination(arg, *args, **kwargs):
     if callable(arg):
         return arg
-    raise TypeError("contamination_process must be None, 'random_choice', a ContaminationProcess instance, or callable")
+    raise TypeError("contamination must be None, 'random_choice', a ContaminationProcess instance, or callable")
 
 
-@find_contamination_process.register
+@find_contamination.register
 def _(arg: type(None), *args, **kwargs):
     return None
 
 
-@find_contamination_process.register
+@find_contamination.register
 def _(name: str, *args, **kwargs):
     match name.lower():
         case "random_choice":
-            from superstats.simulation.augmentation.random_choice_process import RandomChoiceProcess
+            from superstats.simulation.augmentation.random_choice_contamination import RandomChoiceContamination
 
-            return RandomChoiceProcess(*args, **kwargs)
+            return RandomChoiceContamination(*args, **kwargs)
         case _:
-            raise TypeError(
-                "contamination_process must be None, 'random_choice', a ContaminationProcess instance, or callable"
-            )
+            raise TypeError("contamination must be None, 'random_choice', a ContaminationProcess instance, or callable")

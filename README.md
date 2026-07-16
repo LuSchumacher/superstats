@@ -56,7 +56,9 @@ joint_prior = sup.JointPrior(
 # 2. Plug in an observation model (any simulator will do)
 generative_model = sup.GenerativeModel(
     prior=joint_prior,
-    model=sup.simulation.sample_ddm
+    model=sup.simulation.sample_ddm,
+    missing="random",
+    contamination="random_choice"
 )
 
 # 3. Train a neural approximator

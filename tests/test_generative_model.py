@@ -5,7 +5,12 @@ import pytest
 
 from superstats.prior import JointPrior, Prior
 from superstats.simulation import GenerativeModel, sample_ddm
-from superstats.simulation.augmentation import ContaminationProcess, MissingProcess, RandomChoiceProcess, RandomMissing
+from superstats.simulation.augmentation import (
+    ContaminationProcess,
+    MissingProcess,
+    RandomChoiceContamination,
+    RandomMissingProcess,
+)
 from superstats.transition import RandomWalk
 from superstats.workflow import Workflow
 
@@ -140,7 +145,7 @@ def test_workflow_prepare_conditions_adds_time_steps_for_named_data(caplog):
 
 
 def test_workflow_prepare_conditions_adds_default_mask_when_configured(caplog):
-    gm = _build_generative_model(missing_process="random")
+    gm = _build_generative_model(missing="random")
     workflow = object.__new__(Workflow)
     workflow.simulator = gm
     result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS, rng=np.random.default_rng(0))
@@ -154,9 +159,9 @@ def test_workflow_prepare_conditions_adds_default_mask_when_configured(caplog):
     assert "No missing_mask provided" in caplog.text
 
 
-def test_generative_model_defaults_to_no_missing_process():
+def test_generative_model_defaults_to_no_missing():
     gm = _build_generative_model()
-    assert gm.missing_process is None
+    assert gm.missing is None
     assert gm.has_mask is False
 
 
@@ -167,29 +172,29 @@ def test_generative_model_sample_omits_missing_mask_by_default():
     assert "missing_mask" not in result
 
 
-def test_generative_model_random_missing_process_includes_mask():
-    gm = _build_generative_model(missing_process="random")
+def test_generative_model_random_missing_includes_mask():
+    gm = _build_generative_model(missing="random")
     result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS, rng=np.random.default_rng(0))
 
-    assert isinstance(gm.missing_process, RandomMissing)
-    assert isinstance(gm.missing_process, MissingProcess)
+    assert isinstance(gm.missing, RandomMissingProcess)
+    assert isinstance(gm.missing, MissingProcess)
     assert gm.has_mask is True
     assert "missing_mask" in result
     assert result["missing_mask"].shape == (BATCH_SIZE, NUM_STEPS)
     assert result["missing_mask"].dtype == np.bool_
 
 
-def test_generative_model_missing_process_none_disables_mask():
-    gm = _build_generative_model(missing_process=None)
-    assert gm.missing_process is None
+def test_generative_model_missing_none_disables_mask():
+    gm = _build_generative_model(missing=None)
+    assert gm.missing is None
 
     result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS)
     assert "missing_mask" not in result
 
 
-def test_generative_model_missing_process_none_leaves_data_unmodified():
-    gm_no_missing = _build_generative_model(missing_process=None)
-    gm_with_missing = _build_generative_model(missing_process=RandomMissing(p_missing=1.0, missing_value=-999.0))
+def test_generative_model_missing_none_leaves_data_unmodified():
+    gm_no_missing = _build_generative_model(missing=None)
+    gm_with_missing = _build_generative_model(missing=RandomMissingProcess(p_missing=1.0, missing_value=-999.0))
 
     rng = np.random.default_rng(1)
     result_none = gm_no_missing.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS, rng=np.random.default_rng(1))
@@ -203,24 +208,24 @@ def test_generative_model_missing_process_none_leaves_data_unmodified():
     assert np.all(result_all_missing["choice"] == -999.0)
 
 
-def test_generative_model_accepts_custom_missing_process_instance():
-    custom = RandomMissing(p_missing=0.0, missing_value=-1.0, shared_across_batch=True)
-    gm = _build_generative_model(missing_process=custom)
+def test_generative_model_accepts_custom_missing_instance():
+    custom = RandomMissingProcess(p_missing=0.0, missing_value=-1.0, shared_across_batch=True)
+    gm = _build_generative_model(missing=custom)
 
-    assert gm.missing_process is custom
+    assert gm.missing is custom
 
     result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS, rng=np.random.default_rng(2))
     # p_missing=0.0 -> nothing should be marked missing
     assert np.all(result["missing_mask"] == 0)
 
 
-def test_generative_model_missing_process_receives_rng_for_reproducibility():
+def test_generative_model_missing_receives_rng_for_reproducibility():
     # Note: `self.prior.sample(...)` in `GenerativeModel.sample` is not
     # itself seeded by `rng` (it uses global `np.random` state internally),
     # so only the missingness draw -- not the underlying simulated data --
     # is guaranteed reproducible here. We isolate that by masking the same
     # fixed array twice rather than asserting on `sample()`'s full output.
-    process = RandomMissing(p_missing=0.5)
+    process = RandomMissingProcess(p_missing=0.5)
     rng = np.random.default_rng(0)
     data_a = {
         "response_time": rng.normal(size=(BATCH_SIZE, NUM_STEPS)).astype(np.float32),
@@ -236,7 +241,7 @@ def test_generative_model_missing_process_receives_rng_for_reproducibility():
         assert np.array_equal(result_a[key], result_b[key])
 
 
-def test_generative_model_accepts_plain_callable_missing_process():
+def test_generative_model_accepts_plain_callable_missing():
     def half_missing(data, rng=None):
         example = next(iter(data.values()))
         mask = np.zeros(example.shape, dtype=bool)
@@ -246,7 +251,7 @@ def test_generative_model_accepts_plain_callable_missing_process():
             value[mask] = -1.0
         return filled | {"missing_mask": mask}
 
-    gm = _build_generative_model(missing_process=half_missing)
+    gm = _build_generative_model(missing=half_missing)
     result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS)
 
     assert np.all(result["missing_mask"][:, : NUM_STEPS // 2])
@@ -256,27 +261,27 @@ def test_generative_model_accepts_plain_callable_missing_process():
     assert np.all(result["choice"][:, : NUM_STEPS // 2] == -1.0)
 
 
-def test_generative_model_rejects_non_callable_missing_process():
+def test_generative_model_rejects_non_callable_missing():
     with pytest.raises(TypeError):
-        _build_generative_model(missing_process="not-callable")
+        _build_generative_model(missing="not-callable")
 
 
-def test_generative_model_random_choice_contamination_process():
-    gm = _build_generative_model(contamination_process="random_choice")
+def test_generative_model_random_choice_contamination():
+    gm = _build_generative_model(contamination="random_choice")
 
-    assert isinstance(gm.contamination_process, RandomChoiceProcess)
-    assert isinstance(gm.contamination_process, ContaminationProcess)
+    assert isinstance(gm.contamination, RandomChoiceContamination)
+    assert isinstance(gm.contamination, ContaminationProcess)
 
 
-def test_generative_model_rejects_non_callable_contamination_process():
+def test_generative_model_rejects_non_callable_contamination():
     with pytest.raises(TypeError):
-        _build_generative_model(contamination_process="not-callable")
+        _build_generative_model(contamination="not-callable")
 
 
-def test_generative_model_propagates_missing_process_contract_errors():
+def test_generative_model_propagates_missing_contract_errors():
     def bad_process(data, rng=None):
         return data
 
-    gm = _build_generative_model(missing_process=bad_process)
+    gm = _build_generative_model(missing=bad_process)
     with pytest.raises(KeyError):
         gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS)

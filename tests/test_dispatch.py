@@ -11,11 +11,16 @@ from superstats.defaults import (
     DEFAULT_TRANSFORMER_NETWORK,
 )
 from superstats.networks import RecurrentNet
-from superstats.simulation.augmentation import ContaminationProcess, MissingProcess, RandomChoiceProcess, RandomMissing
+from superstats.simulation.augmentation import (
+    ContaminationProcess,
+    MissingProcess,
+    RandomChoiceContamination,
+    RandomMissingProcess,
+)
 from superstats.utils.dispatch import (
-    find_contamination_process,
+    find_contamination,
     find_inference_network,
-    find_missing_process,
+    find_missing,
     find_summary_network,
 )
 
@@ -78,55 +83,55 @@ def test_network_dispatch_rejects_unsupported_inputs():
         find_inference_network(None)
 
 
-def test_missing_process_dispatches_random_defaults():
-    process = find_missing_process("random")
+def test_missing_dispatches_random_defaults():
+    process = find_missing("random")
 
-    assert isinstance(process, RandomMissing)
+    assert isinstance(process, RandomMissingProcess)
     assert isinstance(process, MissingProcess)
 
 
-def test_missing_process_dispatch_passes_existing_processes_through():
-    process = RandomMissing(p_missing=0.0)
+def test_missing_dispatch_passes_existing_processes_through():
+    process = RandomMissingProcess(p_missing=0.0)
 
-    assert find_missing_process(process) is process
-    assert find_missing_process(None) is None
+    assert find_missing(process) is process
+    assert find_missing(None) is None
 
 
-def test_missing_process_dispatch_passes_plain_callables_through():
-    def missing_process(data, rng=None):
+def test_missing_dispatch_passes_plain_callables_through():
+    def missing(data, rng=None):
         return data
 
-    assert find_missing_process(missing_process) is missing_process
+    assert find_missing(missing) is missing
 
 
-def test_contamination_process_dispatches_random_choice_defaults():
-    process = find_contamination_process("random_choice")
+def test_contamination_dispatches_random_choice_defaults():
+    process = find_contamination("random_choice")
 
-    assert isinstance(process, RandomChoiceProcess)
+    assert isinstance(process, RandomChoiceContamination)
     assert isinstance(process, ContaminationProcess)
 
 
-def test_contamination_process_dispatch_passes_existing_processes_through():
-    process = RandomChoiceProcess(p_contaminated=0.0)
+def test_contamination_dispatch_passes_existing_processes_through():
+    process = RandomChoiceContamination(p_contaminated=0.0)
 
-    assert find_contamination_process(process) is process
-    assert find_contamination_process(None) is None
+    assert find_contamination(process) is process
+    assert find_contamination(None) is None
 
 
-def test_contamination_process_dispatch_passes_plain_callables_through():
-    def contamination_process(data, rng=None):
+def test_contamination_dispatch_passes_plain_callables_through():
+    def contamination(data, rng=None):
         return data
 
-    assert find_contamination_process(contamination_process) is contamination_process
+    assert find_contamination(contamination) is contamination
 
 
 def test_process_dispatch_rejects_unsupported_inputs():
     with pytest.raises(TypeError):
-        find_missing_process("not-callable")
+        find_missing("not-callable")
     with pytest.raises(TypeError):
-        find_missing_process(1)
+        find_missing(1)
 
     with pytest.raises(TypeError):
-        find_contamination_process("not-callable")
+        find_contamination("not-callable")
     with pytest.raises(TypeError):
-        find_contamination_process(1)
+        find_contamination(1)
