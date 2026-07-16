@@ -1,7 +1,7 @@
 # Superstats
 
 [![Tests](https://img.shields.io/github/actions/workflow/status/LuSchumacher/superstats/tests.yml?branch=main&style=for-the-badge&label=Tests)](https://github.com/LuSchumacher/superstats/actions/workflows/tests.yml)
-[![Coverage](https://img.shields.io/codecov/c/github/LuSchumacher/superstats?style=for-the-badge&label=Coverage)](https://app.codecov.io/gh/LuSchumacher/superstats)
+[![Coverage](https://img.shields.io/codecov/c/github/LuSchumacher/superstats/main?style=for-the-badge&label=Coverage)](https://app.codecov.io/gh/LuSchumacher/superstats/tree/main)
 [![License](https://img.shields.io/github/license/LuSchumacher/superstats?style=for-the-badge)](LICENSE)
 [![Contributions Welcome](https://img.shields.io/badge/contributions-welcome-brightgreen?style=for-the-badge)](https://github.com/LuSchumacher/superstats/issues)
 
@@ -9,19 +9,19 @@
 
 The library is general, but for now focuses on cognitive modeling. It provides users with:
 
-- A declarative API for **non-stationary models**: specify which parameters change across time, and how.
-- A library of **transition models**: random walks, Ornstein–Uhlenbeck, autoregression, jump processes, mixtures thereof, and gaussian processes.
-- **Built-in cognitive models**, plus a plug-in interface for any simulator of your own.
-- **Amortized Bayesian inference** build on top of [BayesFlow](https://github.com/bayesflow-org/bayesflow): train once, then quickly fit every data set
+- A lean API for non-stationary models: specify which parameters change across time, and how.
+- A library of transition models: random walks, Ornstein–Uhlenbeck, autoregression, jump processes, mixtures, and Gaussian processes.
+- Built-in cognitive models, plus a plug-in interface for any simulator of your own.
+- Amortized Bayesian inference build on top of [BayesFlow](https://github.com/bayesflow-org/bayesflow): train once, then quickly fit every data set.
 
 ## Conceptual overview
 
-A superstatistical model has two levels. A **low-level observation model** $\mathcal{G}$, for instance a cognitive model, generates the data at each time step.
+A superstatistical model has two levels. A **low-level observation model** $\mathcal{G}$ generates the data at each time step.
 A **high-level transition model** $\mathcal{T}$ describes how the parameters of that model evolve:
 
-$$\theta_t = \mathcal{T}(\theta_{0:t-1}, \eta, \xi_t) \qquad x_t = \mathcal{G}(x_{1:t-1}, \theta_t, z_t)$$
+$$\theta_t = \mathcal{T}(\theta_{0:t-1}; \eta) \qquad x_t = \mathcal{G}(x_{1:t-1}; \theta_t, \lambda)$$
 
-`superstats` trains a neural approximator on simulations from this generative model and returns the joint posterior over the time-varying parameters $\theta_{1:T}$ and the time-invariant transition hyperparameters $\eta$.
+`superstats` trains a neural estimator on simulations from any generative model of this form and returns the joint posterior $p(\theta_{1:T}, \eta, \lambda \mid x_{1:T})$ over all time-varying parameters $\theta_{1:T}$ and time-invariant parameters $(\eta, \lambda)$.
 
 
 ## Install
@@ -45,29 +45,29 @@ A complete workflow: a diffusion decision model whose drift rate and thresold ar
 ```pythons
 import superstats as sup
 
-# 1. Say which parameters move, and how
-joint_prior = sup.prior.JointPrior(
-    v = sup.transition.RandomWalk(),
-    a = sup.transition.RandomWalk(),
-    tau = sup.prior.Prior(dist="halfnormal", scale=0.15),
-    bias = 0.5,
+# 1. Assume which parameters move, and how
+joint_prior = sup.JointPrior(
+    v=sup.transition.RandomWalk(),
+    a=sup.transition.RandomWalk(),
+    tau=sup.Prior(dist="halfnormal", scale=0.15),
+    bias=0.5
 )
 
 # 2. Plug in an observation model (any simulator will do)
-generative_model = sup.simulation.GenerativeModel(
+generative_model = sup.GenerativeModel(
     prior=joint_prior,
-    model=sup.simulation.sample_ddm,
+    model=sup.simulation.sample_ddm
 )
 
 # 3. Train a neural approximator
-workflow = sup.workflow.Workflow(simulator=generative_model)
-history = workflow.fit_online(num_steps=100 epochs=10, batch_size=16)
+workflow = sup.Workflow(simulator=generative_model)
+history = workflow.fit_online(num_steps=100, epochs=20, batch_size=16)
 
 # 4. Fit any number of data sets, instantly
 samples = workflow.sample(data=rt_data, num_samples=250)
 ```
 
-For an in-depth exposition, check out the examples below.
+It is highly recommended to use a GPU for fast training and inference. For an in-depth exposition, check out the examples below.
 
 ## Examples
 
