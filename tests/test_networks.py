@@ -45,6 +45,41 @@ def test_recurrent_net_invalid_recurrent_type_raises():
         RecurrentNet(recurrent_type="not-a-type")
 
 
+def test_recurrent_net_defaults_to_sum_merge_mode():
+    net = RecurrentNet(bidirectional=True)
+
+    assert net.recurrent_layers[0].merge_mode == "sum"
+
+
+def test_recurrent_net_custom_merge_mode():
+    net = RecurrentNet(bidirectional=True, merge_mode="concat")
+
+    assert net.recurrent_layers[0].merge_mode == "concat"
+
+
+def test_recurrent_net_invalid_merge_mode_raises():
+    with pytest.raises(ValueError):
+        RecurrentNet(merge_mode="invalid")
+
+
+def test_recurrent_net_layer_norm_can_be_disabled():
+    net = RecurrentNet(layer_norm=False)
+
+    assert net.normalization_layers == [None]
+
+
+def test_recurrent_net_adds_normalization_per_recurrent_layer():
+    net = RecurrentNet(
+        hidden_dim=(16, 8),
+        recurrent_type=("lstm", "gru"),
+        bidirectional=(False, True),
+        layer_norm=(True, False),
+    )
+
+    assert isinstance(net.normalization_layers[0], keras.layers.LayerNormalization)
+    assert net.normalization_layers[1] is None
+
+
 @pytest.mark.parametrize("recurrent_type", ["lstm", "gru"])
 @pytest.mark.parametrize("bidirectional", [False, True])
 def test_recurrent_net_save_and_load(tmp_path, recurrent_type, bidirectional):
