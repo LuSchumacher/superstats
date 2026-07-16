@@ -72,7 +72,7 @@ It is highly recommended to use a GPU for fast training and inference. For an in
 | Notebook | What it covers |
 |---|---|
 | [Minimal workflow demo](examples/minimal_workflow_demo.ipynb) | Short path from prior to posterior |
-| [Extensive workflow demo](examples/extensive_workflow_demo.ipynb) | More indepth workflow, end to end, with all diagnostics |
+| Extensive workflow demo | Comming soon |
 
 More examples are always welcome — if you have an application, please consider opening a pull request.
 
