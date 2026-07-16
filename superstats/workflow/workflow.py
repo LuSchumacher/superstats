@@ -203,6 +203,9 @@ class Workflow:
                     f"got {conditions['missing_mask'].shape}."
                 )
 
+        remaining_keys = data_keys + ["missing_mask", "time_steps"]
+        conditions = {k: v for k, v in conditions.items() if k in remaining_keys}
+
         return conditions
 
     def fit_offline(
