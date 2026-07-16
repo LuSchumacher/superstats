@@ -3,22 +3,18 @@
 from typing import Literal, Callable
 from collections.abc import Mapping, Sequence
 
-import bayesflow as bf
-import numpy as np
-import keras
 import functools
 import os
 import pickle
+import numpy as np
+
+import bayesflow as bf
+import keras
 
 from bayesflow.adapters import Adapter
-from bayesflow.networks import SummaryNetwork, InferenceNetwork
 
 from superstats.simulation import GenerativeModel
-from superstats.networks import RecurrentNet
-from superstats.defaults.network_defaults import (
-    DEFAULT_SUMMARY_NETWORK,
-    DEFAULT_INFERENCE_NETWORK,
-)
+from superstats.utils.dispatch import find_inference_network, find_summary_network
 from superstats.diagnostics.plots import (
     plot_time_varying_verification,
     plot_recovery,
@@ -37,21 +33,18 @@ class Workflow:
 
     Parameters
     ----------
-    simulator            : GenerativeModel or None, optional, default: None
+    simulator         : GenerativeModel or None, optional, default: None
         The simulator used for training and, when `adapter` is not
         provided, for building a default adapter. Required in that case.
-    adapter              : Adapter or None, optional, default: None
+    adapter           : Adapter or None, optional, default: None
         Data adapter for the workflow. If None, a default adapter is
         built from `simulator.local_keys`, `simulator.hyper_keys`, and
         `simulator.shared_keys` (which requires `simulator` to be set).
-    summary_network      : {"recurrent"} or SummaryNetwork or None, optional, default: "recurrent"
-        "recurrent" builds a `RecurrentNet` using
-        `DEFAULT_SUMMARY_NETWORK`; otherwise, the given network (or
-        None) is used directly.
-    inference_network    : {"consistency"} or InferenceNetwork, optional, default: "consistency"
-        "consistency" builds a `bf.networks.StableConsistencyModel`
-        using `DEFAULT_INFERENCE_NETWORK`; otherwise, the given network
-        is used directly.
+    summary_network   : {"recurrent", "transformer"} or keras.Layer, optional, default: "recurrent".
+        String names build a default summary network; otherwise, an already-created Keras layer is used directly.
+    inference_network : {"coupling", "consistency"} or keras.Layer, optional, default: "coupling".
+        String names build a default inference network; otherwise, an already-created Keras
+        layer is used directly.
     checkpoint_filepath  : str or None, optional, default: None
         Directory for saving/restoring the approximator and training
         history.
@@ -71,8 +64,8 @@ class Workflow:
         self,
         simulator: GenerativeModel | None = None,
         adapter: Adapter | None = None,
-        summary_network: Literal["recurrent", "transformer"] | SummaryNetwork | None = "recurrent",
-        inference_network: Literal["consistency"] | InferenceNetwork = "coupling",
+        summary_network: Literal["recurrent", "transformer"] | keras.Layer = "recurrent",
+        inference_network: Literal["coupling", "coupling_flow"] | keras.Layer = "coupling",
         checkpoint_filepath: str | None = None,
         restore_approximator: bool = True,
         restore_history: bool = True,
@@ -80,17 +73,8 @@ class Workflow:
     ):
         self.simulator = simulator
 
-        if summary_network == "recurrent":
-            self.summary_network = RecurrentNet(**DEFAULT_SUMMARY_NETWORK)
-        elif summary_network == "transformer":
-            self.summary_network = bf.networks.TimeSeriesTransformer(**DEFAULT_SUMMARY_NETWORK)
-        else:
-            self.summary_network = summary_network
-
-        if inference_network == "coupling":
-            self.inference_network = bf.networks.CouplingFlow(**DEFAULT_INFERENCE_NETWORK)
-        else:
-            self.inference_network = inference_network
+        self.summary_network = find_summary_network(summary_network)
+        self.inference_network = find_inference_network(inference_network)
 
         if adapter is not None:
             self.adapter = adapter
