@@ -1,32 +1,124 @@
-# Neural Superstatistics for Bayesian Estimation of Time-Varying Parameters
+# Superstats
 
 [![Tests](https://img.shields.io/github/actions/workflow/status/LuSchumacher/superstats/tests.yml?branch=main&style=for-the-badge&label=Tests)](https://github.com/LuSchumacher/superstats/actions/workflows/tests.yml)
-[![Coverage](https://img.shields.io/codecov/c/github/LuSchumacher/superstats?style=for-the-badge&label=Coverage)](https://app.codecov.io/gh/LuSchumacher/superstats)
+[![Coverage](https://img.shields.io/codecov/c/github/LuSchumacher/superstats/main?style=for-the-badge&label=Coverage)](https://app.codecov.io/gh/LuSchumacher/superstats/tree/main)
 [![License](https://img.shields.io/github/license/LuSchumacher/superstats?style=for-the-badge)](LICENSE)
 [![Contributions Welcome](https://img.shields.io/badge/contributions-welcome-brightgreen?style=for-the-badge)](https://github.com/LuSchumacher/superstats/issues)
 
-This repository contains code, tools, and examples associated with **Neural Superstatistics**, a method for Bayesian inference in dynamic cognitive modeling introduced in *Schumacher et al.* (2023). ([nature.com](https://www.nature.com/articles/s41598-023-40278-3))
+**superstats** is a Python library for simulation and Bayesian estimation of models with time-varying parameter.
 
-## 📘 Overview
+The library is general, but for now focuses on cognitive modeling. It provides users with:
 
-Traditional cognitive models often assume that model parameters are **static** (unchanging over time). However, many cognitive processes are inherently **dynamic**, with parameters that evolve across time. Modeling these temporal dynamics can reveal richer structure and improve inferential accuracy. ([nature.com](https://www.nature.com/articles/s41598-023-40278-3))
+- A lean API for non-stationary models: specify which parameters change across time, and how.
+- A library of transition models: random walks, Ornstein–Uhlenbeck, autoregression, jump processes, mixtures, and Gaussian processes.
+- Built-in cognitive models, plus a plug-in interface for any simulator of your own.
+- Amortized Bayesian inference build on top of [BayesFlow](https://github.com/bayesflow-org/bayesflow): train once, then quickly fit every data set.
 
-**Neural superstatistics**:
-- Frames cognitive models as hierarchical systems with *observation-level* and *parameter-dynamics* components.
-- Uses **amortized Bayesian inference** to perform efficient parameter estimation.
-- Enables recovery of both *time-varying* and *time-invariant* parameters from data.
+## Conceptual overview
 
-The method is benchmarked against existing frameworks and applied to dynamic versions of cognitive models, demonstrating superior efficiency in capturing temporal structure in behavioral data. ([nature.com](https://www.nature.com/articles/s41598-023-40278-3))
+A superstatistical model has two levels. A **low-level observation model** $\mathcal{G}$ generates the data at each time step.
+A **high-level transition model** $\mathcal{T}$ describes how the parameters of that model evolve:
 
-## 🚀 Key Features
+$$\theta_t = \mathcal{T}(\theta_{0:t-1}; \eta) \qquad x_t = \mathcal{G}(x_{1:t-1}; \theta_t, \lambda)$$
 
-- **Dynamic Bayesian Inference:** Moves beyond static IID parameter assumptions to capture *temporal evolution* of latent model parameters.
-- **Amortized Deep Learning:** Trains neural networks on simulated data once, then reuses them for fast inference across multiple datasets.
-- **Broad Applicability:** Suitable for complex cognitive models where traditional Bayesian estimation is computationally expensive or infeasible.
+`superstats` trains a neural estimator on simulations from any generative model of this form and returns the joint posterior $p(\theta_{1:T}, \eta, \lambda \mid x_{1:T})$ over all time-varying parameters $\theta_{1:T}$ and time-invariant parameters $(\eta, \lambda)$.
 
 
-## 📄 Citation
+## Install
 
-If you use this repository in your research, please cite:
+We support Python 3.11 to 3.13. Install the latest version from source:
 
-> Schumacher L., Bürkner P.-C., Voss A., Köthe U., & Radev S. T. (2023). *Neural superstatistics for Bayesian estimation of dynamic cognitive models*. *Scientific Reports* 13:13778.
+```bash
+pip install superstats
+```
+
+If you want the latest features, you can install from source:
+
+```bash
+pip install git+https://github.com/LuSchumacher/superstats.git@dev"
+```
+
+## Getting started
+
+A complete workflow: a diffusion decision model whose drift rate and thresold are free to vary across time:
+
+```pythons
+import superstats as sup
+
+# 1. Assume which parameters move, and how
+joint_prior = sup.JointPrior(
+    v=sup.transition.RandomWalk(),
+    a=sup.transition.RandomWalk(),
+    tau=sup.Prior(dist="halfnormal", scale=0.15),
+    bias=0.5
+)
+
+# 2. Plug in an observation model (any simulator will do)
+generative_model = sup.GenerativeModel(
+    prior=joint_prior,
+    model=sup.simulation.sample_ddm,
+    missing="random",
+    contamination="random_choice"
+)
+
+# 3. Train a neural approximator
+workflow = sup.Workflow(simulator=generative_model)
+history = workflow.fit_online(num_steps=100, epochs=20, batch_size=16)
+
+# 4. Fit any number of data sets, instantly
+samples = workflow.sample(data=rt_data, num_samples=250)
+```
+
+It is highly recommended to use a GPU for fast training and inference. For an in-depth exposition, check out the examples below.
+
+## Examples
+
+| Notebook | What it covers |
+|---|---|
+| [Minimal workflow demo](examples/minimal_workflow_demo.ipynb) | Short path from prior to posterior |
+| [Extensive workflow demo](examples/extensive_workflow_demo.ipynb) | More indepth workflow, end to end, with all diagnostics |
+
+More examples are always welcome — if you have an application, please consider opening a pull request.
+
+
+## Contributing
+
+Contributions are welcome. Install from source and see [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+
+## Reporting issues
+
+Please open an issue on [GitHub](https://github.com/LuSchumacher/superstats/issues) for bug reports and
+feature requests. For questions about the underlying inference machinery, the
+[BayesFlow Forums](https://discuss.bayesflow.org/) are a good place to ask.
+
+## Citation
+
+If you use `superstats` in your research, please cite:
+
+```bibtex
+@article{schumacher2023neural,
+  title   = {Neural superstatistics for {B}ayesian estimation of dynamic cognitive models},
+  author  = {Schumacher, Lukas and B{\"u}rkner, Paul-Christian and Voss, Andreas and K{\"o}the, Ullrich and Radev, Stefan T.},
+  journal = {Scientific Reports},
+  volume  = {13},
+  number  = {1},
+  pages   = {13778},
+  year    = {2023},
+  doi     = {10.1038/s41598-023-40278-3}
+}
+
+@article{schumacher2025validation,
+  title   = {Validation and comparison of non-stationary cognitive models: A diffusion model application},
+  author  = {Schumacher, Lukas and Schnuerch, Martin and Voss, Andreas and Radev, Stefan T.},
+  journal = {Computational Brain \& Behavior},
+  volume  = {8},
+  number  = {2},
+  pages   = {191--210},
+  year    = {2025},
+  doi     = {10.1007/s42113-024-00218-4}
+}
+```
+
+## License
+
+MIT

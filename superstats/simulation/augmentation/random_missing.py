@@ -2,14 +2,14 @@
 
 from collections.abc import Mapping
 
-from .missing_process import MissingProcess
+from .missing import MissingProcess
 from superstats.defaults.augmentation_defaults import DEFAULT_P_MISSING_PRIOR
 from superstats.prior.prior import Prior
 
 import numpy as np
 
 
-class RandomMissing(MissingProcess):
+class RandomMissingProcess(MissingProcess):
     """MCAR missingness with a per-dataset missing probability.
 
     Missingness is drawn per (batch, step): whenever a time step is

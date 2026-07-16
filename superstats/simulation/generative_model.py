@@ -8,9 +8,9 @@ import matplotlib.pyplot as plt
 
 from superstats.prior.joint_prior import JointPrior
 from superstats.diagnostics.plots.prior_push_forward import plot_push_forward
-from superstats.simulation.augmentation.missing_process import MissingProcess
-from superstats.simulation.augmentation.contamination_process import ContaminationProcess
-from superstats.utils.dispatch import find_contamination_process, find_missing_process
+from superstats.simulation.augmentation.missing import MissingProcess
+from superstats.simulation.augmentation.contamination import ContaminationProcess
+from superstats.utils.dispatch import find_contamination, find_missing
 
 
 class GenerativeModel:
@@ -31,11 +31,11 @@ class GenerativeModel:
         The simulation function that takes parameter values and returns
         simulated data. The function signature determines the expected
         parameter names and order.
-    missing_process : MissingProcess, Callable, or None, optional
+    missing : MissingProcess, Callable, or None, optional
         Process applied to simulated data to introduce missingness.
         - Not provided (default) or `None`: disables missingness augmentation
           and `sample` will not include a `"missing_mask"` entry in its result.
-        - `"random"`: uses `RandomMissing()`, the default MCAR missingness
+        - `"random"`: uses `RandomMissingProcess()`, the default MCAR missingness
           process.
         - `MissingProcess` instance: used as-is.
         - Plain `Callable`: must follow the same contract as
@@ -45,7 +45,7 @@ class GenerativeModel:
     Raises
     ------
     TypeError
-        If `model` is not callable, or if `missing_process` is neither
+        If `model` is not callable, or if `missing` is neither
         `None`, `"random"`, nor callable.
     """
 
@@ -53,20 +53,20 @@ class GenerativeModel:
         self,
         prior: JointPrior,
         model: Callable,
-        missing_process: MissingProcess | Callable | Literal["random"] | None = None,
-        contamination_process: ContaminationProcess | Callable | Literal["random_choice"] | None = None,
+        missing: MissingProcess | Callable | Literal["random"] | None = None,
+        contamination: ContaminationProcess | Callable | Literal["random_choice"] | None = None,
     ):
         self.prior = prior
         self.model = model
 
-        self.missing_process = find_missing_process(missing_process)
+        self.missing = find_missing(missing)
 
-        if self.missing_process is not None:
+        if self.missing is not None:
             self.has_mask = True
         else:
             self.has_mask = False
 
-        self.contamination_process = find_contamination_process(contamination_process)
+        self.contamination = find_contamination(contamination)
 
         # Inspect simulator signature
         self.signature = inspect.signature(model)
@@ -400,12 +400,12 @@ class GenerativeModel:
 
         return normalized
 
-    def _apply_contamination_process(
+    def _apply_contamination(
         self,
         sim_data: Dict[str, np.ndarray],
         rng: np.random.Generator | None,
     ) -> tuple[Dict[str, np.ndarray], Dict[str, np.ndarray]]:
-        """Run `self.contamination_process` on `sim_data`, if configured.
+        """Run `self.contamination` on `sim_data`, if configured.
 
         Parameters
         ----------
@@ -425,17 +425,17 @@ class GenerativeModel:
             otherwise `sim_data` is returned unchanged.
         extra    : dict of np.ndarray - additional entries the process
             returned beyond the original `sim_data` keys (e.g.
-            `"p_contaminated"` for `RandomChoiceProcess`); empty dict if
-            `self.contamination_process` is None or the process returned no
+            `"p_contaminated"` for `RandomChoiceContamination`); empty dict if
+            `self.contamination` is None or the process returned no
             extra keys.
         """
-        if self.contamination_process is None:
+        if self.contamination is None:
             return sim_data, {}
 
-        if isinstance(self.contamination_process, ContaminationProcess):
-            out = self.contamination_process.apply(sim_data, rng=rng)
+        if isinstance(self.contamination, ContaminationProcess):
+            out = self.contamination.apply(sim_data, rng=rng)
         else:
-            out = self.contamination_process(sim_data, rng=rng)
+            out = self.contamination(sim_data, rng=rng)
 
         extra_keys = out.keys() - sim_data.keys()
         extra = {key: out[key] for key in extra_keys}
@@ -444,12 +444,12 @@ class GenerativeModel:
 
         return sim_data, extra
 
-    def _apply_missing_process(
+    def _apply_missing(
         self,
         sim_data: Dict[str, np.ndarray],
         rng: np.random.Generator | None,
     ) -> tuple[Dict[str, np.ndarray], Optional[np.ndarray], Dict[str, np.ndarray]]:
-        """Run `self.missing_process` on `sim_data`, if configured.
+        """Run `self.missing` on `sim_data`, if configured.
 
         Parameters
         ----------
@@ -465,24 +465,24 @@ class GenerativeModel:
         sim_data     : dict of np.ndarray - the (possibly corrupted)
             named simulated variables
         missing_mask : np.ndarray or None - mask from the process, or
-            None if `self.missing_process` is None
+            None if `self.missing` is None
         extra        : dict of np.ndarray - any additional entries the
             process returned beyond the simulator data keys and
-            `"missing_mask"` (e.g. `RandomMissing` also returns
-            `"p_missing"`); empty dict if `self.missing_process` is None
+            `"missing_mask"` (e.g. `RandomMissingProcess` also returns
+            `"p_missing"`); empty dict if `self.missing` is None
             or the process returned no extra keys
         """
-        if self.missing_process is None:
+        if self.missing is None:
             return sim_data, None, {}
 
         try:
-            params = inspect.signature(self.missing_process).parameters
+            params = inspect.signature(self.missing).parameters
             accepts_rng = "rng" in params or any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values())
         except (TypeError, ValueError):
             # signature introspection can fail for some callables/builtins
             accepts_rng = False
 
-        result = self.missing_process(sim_data, rng=rng) if accepts_rng else self.missing_process(sim_data)
+        result = self.missing(sim_data, rng=rng) if accepts_rng else self.missing(sim_data)
 
         sim_data = {key: result[key] for key in self.data_keys}
         missing_mask = result["missing_mask"]
@@ -504,7 +504,7 @@ class GenerativeModel:
         2. Prepares parameters for vectorized simulation
         3. Runs the simulation model
         4. Reshapes outputs back to trajectory format
-        5. Applies `self.missing_process` to the data, if configured
+        5. Applies `self.missing` to the data, if configured
 
         Parameters
         ----------
@@ -519,7 +519,7 @@ class GenerativeModel:
             (batch_size, 1) to (batch_size, num_steps, 1), aligning
             them with the time axis of local parameters.
         rng           : np.random.Generator or None, optional, default: None
-            Random generator forwarded to `self.missing_process`. If
+            Random generator forwarded to `self.missing`. If
             None, the missing process falls back to its own default
             (an unseeded generator).
 
@@ -528,16 +528,16 @@ class GenerativeModel:
         result : dict - flat dictionary with the following entries:
             - one entry per simulated observation variable, each with
             shape (batch_size, num_steps), corrupted by
-            `self.missing_process` if one is configured.
+            `self.missing` if one is configured.
             - `"time_steps"`: shape (batch_size, num_steps), each row
             equal to `np.arange(num_steps)`.
-            - `"missing_mask"`: included only if `self.missing_process`
+            - `"missing_mask"`: included only if `self.missing`
             is not None; shape matches the mask returned by the process
-            (for `RandomMissing`, (batch_size, num_steps)).
+            (for `RandomMissingProcess`, (batch_size, num_steps)).
             - any additional keys the missing process returns beyond the
             simulator data keys and `"missing_mask"` (e.g.
-            `RandomMissing` also returns `"p_missing"`, shape
-            (batch_size, 1)); omitted if `self.missing_process` is None
+            `RandomMissingProcess` also returns `"p_missing"`, shape
+            (batch_size, 1)); omitted if `self.missing` is None
             or returns no extra keys.
             - one entry per sampled parameter. Local (time-varying) params
               have shape (batch_size, num_steps); hyper and shared
@@ -582,10 +582,10 @@ class GenerativeModel:
         sim_data = self._reshape_model_output(model_output, batch_size, num_steps, expected_data_keys=self.data_keys)
 
         # Apply contamination augmentation, if configured
-        sim_data, contamination_extra = self._apply_contamination_process(sim_data, rng)
+        sim_data, contamination_extra = self._apply_contamination(sim_data, rng)
 
         # Apply missingness augmentation, if configured
-        sim_data, missing_mask, missing_extra = self._apply_missing_process(sim_data, rng)
+        sim_data, missing_mask, missing_extra = self._apply_missing(sim_data, rng)
 
         local_params = self._normalize_local_params(local_params, batch_size, num_steps)
         hyper_params = self._normalize_batch_params(prior_draws.get("hyper_params", {}), batch_size)

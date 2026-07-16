@@ -1,25 +1,25 @@
-"""Tests for GenerativeModel's contamination_process integration."""
+"""Tests for GenerativeModel's contamination integration."""
 
 import numpy as np
 import pytest
 
 from superstats.simulation.generative_model import GenerativeModel
-from superstats.simulation.augmentation.contamination_process import ContaminationProcess
-from superstats.simulation.augmentation.random_choice_process import RandomChoiceProcess
+from superstats.simulation.augmentation.contamination import ContaminationProcess
+from superstats.simulation.augmentation.random_choice_contamination import RandomChoiceContamination
 
 
-def _make_bare_model(contamination_process=None, missing_process=None, data_keys=("response_time", "choice")):
+def _make_bare_model(contamination=None, missing=None, data_keys=("response_time", "choice")):
     """Build a GenerativeModel-like object without running the real __init__.
 
     __init__ requires a JointPrior and simulator to do a pilot draw; the
-    contamination integration only depends on `self.contamination_process`,
-    `self.missing_process`, and `self.data_keys`, so we construct those
+    contamination integration only depends on `self.contamination`,
+    `self.missing`, and `self.data_keys`, so we construct those
     directly to keep these tests fast and independent of prior/simulator
     machinery.
     """
     model = object.__new__(GenerativeModel)
-    model.contamination_process = contamination_process
-    model.missing_process = missing_process
+    model.contamination = contamination
+    model.missing = missing
     model.data_keys = list(data_keys)
     return model
 
@@ -42,7 +42,7 @@ def constant_contamination_callable(data, rng=None):
     return out
 
 
-def make_missing_process(mask_value=False):
+def make_missing(mask_value=False):
     """Plain-callable missing process, matching MissingProcess.__call__'s contract."""
 
     def _missing(data, rng=None):
@@ -65,42 +65,34 @@ def sim_data():
 
 class TestConstructorValidation:
     def test_none_is_accepted(self):
-        contamination_process = None
-        if contamination_process == "random_choice":
-            result = RandomChoiceProcess()
-        elif (
-            contamination_process is None
-            or isinstance(contamination_process, ContaminationProcess)
-            or callable(contamination_process)
-        ):
-            result = contamination_process
+        contamination = None
+        if contamination == "random_choice":
+            result = RandomChoiceContamination()
+        elif contamination is None or isinstance(contamination, ContaminationProcess) or callable(contamination):
+            result = contamination
         else:
             pytest.fail("should not raise")
         assert result is None
 
-    def test_random_choice_literal_instantiates_random_choice_process(self):
-        contamination_process = "random_choice"
-        if contamination_process == "random_choice":
-            result = RandomChoiceProcess()
+    def test_random_choice_literal_instantiates_random_choice_contamination(self):
+        contamination = "random_choice"
+        if contamination == "random_choice":
+            result = RandomChoiceContamination()
         else:
             pytest.fail("should have matched the literal branch")
-        assert isinstance(result, RandomChoiceProcess)
+        assert isinstance(result, RandomChoiceContamination)
 
-    def test_bare_contamination_process_instance_is_accepted(self):
+    def test_bare_contamination_instance_is_accepted(self):
         """Regression test: a bare ContaminationProcess instance (not going
         through the "random_choice" string) must be accepted as-is, per the
         constructor's type hint and error message.
         """
         instance = ConstantContaminationProcess()
-        contamination_process = instance
-        if contamination_process == "random_choice":
+        contamination = instance
+        if contamination == "random_choice":
             pytest.fail("should not match the literal branch")
-        elif (
-            contamination_process is None
-            or isinstance(contamination_process, ContaminationProcess)
-            or callable(contamination_process)
-        ):
-            result = contamination_process
+        elif contamination is None or isinstance(contamination, ContaminationProcess) or callable(contamination):
+            result = contamination
         else:
             pytest.fail(
                 "bare ContaminationProcess instance was rejected; "
@@ -110,46 +102,38 @@ class TestConstructorValidation:
         assert result is instance
 
     def test_plain_callable_is_accepted(self):
-        contamination_process = constant_contamination_callable
-        if contamination_process == "random_choice":
+        contamination = constant_contamination_callable
+        if contamination == "random_choice":
             pytest.fail("should not match the literal branch")
-        elif (
-            contamination_process is None
-            or isinstance(contamination_process, ContaminationProcess)
-            or callable(contamination_process)
-        ):
-            result = contamination_process
+        elif contamination is None or isinstance(contamination, ContaminationProcess) or callable(contamination):
+            result = contamination
         else:
             pytest.fail("plain callable should be accepted")
         assert result is constant_contamination_callable
 
     def test_invalid_value_is_rejected(self):
-        contamination_process = "not_a_valid_option"
+        contamination = "not_a_valid_option"
         with pytest.raises(TypeError):
-            if contamination_process == "random_choice":
+            if contamination == "random_choice":
                 pass
-            elif (
-                contamination_process is None
-                or isinstance(contamination_process, ContaminationProcess)
-                or callable(contamination_process)
-            ):
+            elif contamination is None or isinstance(contamination, ContaminationProcess) or callable(contamination):
                 pass
             else:
                 raise TypeError(
-                    "contamination_process must be None, 'random_choice', a ContaminationProcess instance, or callable"
+                    "contamination must be None, 'random_choice', a ContaminationProcess instance, or callable"
                 )
 
 
 class TestApplyContaminationProcess:
     def test_none_process_returns_sim_data_unchanged(self, sim_data):
-        model = _make_bare_model(contamination_process=None)
-        out_data, extra = model._apply_contamination_process(sim_data, rng=None)
+        model = _make_bare_model(contamination=None)
+        out_data, extra = model._apply_contamination(sim_data, rng=None)
         assert out_data is sim_data
         assert extra == {}
 
-    def test_contamination_process_instance_dispatches_via_apply(self, sim_data):
-        model = _make_bare_model(contamination_process=ConstantContaminationProcess())
-        out_data, extra = model._apply_contamination_process(sim_data, rng=None)
+    def test_contamination_instance_dispatches_via_apply(self, sim_data):
+        model = _make_bare_model(contamination=ConstantContaminationProcess())
+        out_data, extra = model._apply_contamination(sim_data, rng=None)
 
         assert np.all(out_data["response_time"] == 999.0)
         assert set(out_data.keys()) == set(sim_data.keys())  # no leakage of extras into sim_data
@@ -159,24 +143,24 @@ class TestApplyContaminationProcess:
 
     def test_plain_callable_is_invoked_directly(self, sim_data):
         """Regression test for the AttributeError bug: a plain callable
-        contamination_process must not be routed through `.apply`.
+        contamination must not be routed through `.apply`.
         """
-        model = _make_bare_model(contamination_process=constant_contamination_callable)
-        out_data, extra = model._apply_contamination_process(sim_data, rng=None)
+        model = _make_bare_model(contamination=constant_contamination_callable)
+        out_data, extra = model._apply_contamination(sim_data, rng=None)
 
         assert np.all(out_data["response_time"] == 111.0)
         assert set(out_data.keys()) == set(sim_data.keys())
         assert np.allclose(extra["p_contaminated"], [0.25])
 
-    def test_random_choice_process_end_to_end(self, sim_data):
-        """Use the real RandomChoiceProcess with p=1.0 so every step is
+    def test_random_choice_contamination_end_to_end(self, sim_data):
+        """Use the real RandomChoiceContamination with p=1.0 so every step is
         guaranteed to be contaminated, making the effect deterministic
         enough to assert on.
         """
-        model = _make_bare_model(contamination_process=RandomChoiceProcess(p_contaminated=1.0))
+        model = _make_bare_model(contamination=RandomChoiceContamination(p_contaminated=1.0))
         rng = np.random.default_rng(0)
 
-        out_data, extra = model._apply_contamination_process(sim_data, rng=rng)
+        out_data, extra = model._apply_contamination(sim_data, rng=rng)
 
         assert "p_contaminated" in extra
         np.testing.assert_allclose(extra["p_contaminated"], [1.0])
@@ -188,26 +172,26 @@ class TestApplyContaminationProcess:
         assert out_data["response_time"].shape == sim_data["response_time"].shape
         assert np.all(out_data["response_time"] > 0)
 
-    def test_random_choice_process_p_zero_is_noop(self, sim_data):
-        model = _make_bare_model(contamination_process=RandomChoiceProcess(p_contaminated=0.0))
+    def test_random_choice_contamination_p_zero_is_noop(self, sim_data):
+        model = _make_bare_model(contamination=RandomChoiceContamination(p_contaminated=0.0))
         rng = np.random.default_rng(0)
 
-        out_data, extra = model._apply_contamination_process(sim_data, rng=rng)
+        out_data, extra = model._apply_contamination(sim_data, rng=rng)
 
         np.testing.assert_allclose(out_data["response_time"], sim_data["response_time"])
         np.testing.assert_allclose(out_data["choice"], sim_data["choice"])
         np.testing.assert_allclose(extra["p_contaminated"], [0.0])
 
-    def test_random_choice_process_ignores_nonpositive_response_times(self):
+    def test_random_choice_contamination_ignores_nonpositive_response_times(self):
         sim_data = {
             "response_time": np.array([[1.0, 0.0, -1.0, 2.0]]),
             "choice": np.array([[0.0, 99.0, -1.0, 1.0]]),
         }
         original_response_time = sim_data["response_time"].copy()
-        model = _make_bare_model(contamination_process=RandomChoiceProcess(p_contaminated=1.0))
+        model = _make_bare_model(contamination=RandomChoiceContamination(p_contaminated=1.0))
         rng = np.random.default_rng(0)
 
-        out_data, extra = model._apply_contamination_process(sim_data, rng=rng)
+        out_data, extra = model._apply_contamination(sim_data, rng=rng)
 
         np.testing.assert_allclose(sim_data["response_time"], original_response_time)
         np.testing.assert_allclose(extra["p_contaminated"], [1.0])
@@ -217,21 +201,21 @@ class TestApplyContaminationProcess:
         assert np.all(out_data["response_time"][sim_data["response_time"] > 0] > 0)
         assert set(out_data["choice"][sim_data["response_time"] > 0]) <= {0.0, 1.0}
 
-    def test_random_choice_process_supports_custom_data_keys(self):
+    def test_random_choice_contamination_supports_custom_data_keys(self):
         sim_data = {
             "rt": np.array([[1.0, 2.0, 3.0]]),
             "resp": np.array([[0.0, 1.0, 0.0]]),
             "metadata": np.array([42.0]),
         }
-        process = RandomChoiceProcess(
+        process = RandomChoiceContamination(
             p_contaminated=0.0,
             response_time_key="rt",
             choice_key="resp",
         )
-        model = _make_bare_model(contamination_process=process, data_keys=("rt", "resp", "metadata"))
+        model = _make_bare_model(contamination=process, data_keys=("rt", "resp", "metadata"))
         rng = np.random.default_rng(0)
 
-        out_data, extra = model._apply_contamination_process(sim_data, rng=rng)
+        out_data, extra = model._apply_contamination(sim_data, rng=rng)
 
         np.testing.assert_allclose(out_data["rt"], sim_data["rt"])
         np.testing.assert_allclose(out_data["resp"], sim_data["resp"])
@@ -239,9 +223,9 @@ class TestApplyContaminationProcess:
         np.testing.assert_allclose(extra["p_contaminated"], [0.0])
 
     def test_missing_required_keys_raises(self):
-        model = _make_bare_model(contamination_process=RandomChoiceProcess())
+        model = _make_bare_model(contamination=RandomChoiceContamination())
         with pytest.raises(KeyError):
-            model._apply_contamination_process({"response_time": np.array([[1.0]])}, rng=None)
+            model._apply_contamination({"response_time": np.array([[1.0]])}, rng=None)
 
 
 class TestSampleIntegrationOrdering:
@@ -252,13 +236,13 @@ class TestSampleIntegrationOrdering:
         without overwriting each other.
         """
         model = _make_bare_model(
-            contamination_process=ConstantContaminationProcess(),
-            missing_process=make_missing_process(mask_value=False),
+            contamination=ConstantContaminationProcess(),
+            missing=make_missing(mask_value=False),
             data_keys=("response_time", "choice"),
         )
 
-        data, contamination_extra = model._apply_contamination_process(sim_data, rng=None)
-        data, missing_mask, missing_extra = model._apply_missing_process(data, rng=None)
+        data, contamination_extra = model._apply_contamination(sim_data, rng=None)
+        data, missing_mask, missing_extra = model._apply_missing(data, rng=None)
 
         result = {**data}
         if contamination_extra:
@@ -277,7 +261,7 @@ class TestSampleIntegrationOrdering:
             result["p_contaminated"], result["p_missing"]
         )
 
-    def test_missing_process_sees_contaminated_data(self, sim_data):
+    def test_missing_sees_contaminated_data(self, sim_data):
         """The missing process runs second, so it should observe the
         already-contaminated response_time/choice, not the originals.
         """
@@ -290,19 +274,19 @@ class TestSampleIntegrationOrdering:
             return out
 
         model = _make_bare_model(
-            contamination_process=ConstantContaminationProcess(),
-            missing_process=spy_missing,
+            contamination=ConstantContaminationProcess(),
+            missing=spy_missing,
         )
 
-        data, _ = model._apply_contamination_process(sim_data, rng=None)
-        model._apply_missing_process(data, rng=None)
+        data, _ = model._apply_contamination(sim_data, rng=None)
+        model._apply_missing(data, rng=None)
 
         assert np.all(seen["response_time"] == 999.0)
 
     def test_no_contamination_no_missing_is_passthrough(self, sim_data):
-        model = _make_bare_model(contamination_process=None, missing_process=None)
-        data, extra = model._apply_contamination_process(sim_data, rng=None)
-        data, mask, missing_extra = model._apply_missing_process(data, rng=None)
+        model = _make_bare_model(contamination=None, missing=None)
+        data, extra = model._apply_contamination(sim_data, rng=None)
+        data, mask, missing_extra = model._apply_missing(data, rng=None)
 
         assert data is sim_data
         assert extra == {}

@@ -1,6 +1,6 @@
 """Wrapper for a contaminated random choice data augmentation process."""
 
-from .contamination_process import ContaminationProcess
+from .contamination import ContaminationProcess
 from superstats.prior.prior import Prior
 
 import numpy as np
@@ -8,7 +8,7 @@ import numpy as np
 DEFAULT_P_CONTAMINATED_PRIOR = Prior("beta", a=1.5, b=15)
 
 
-class RandomChoiceProcess(ContaminationProcess):
+class RandomChoiceContamination(ContaminationProcess):
     """Contamination at random for diffusion models with a per-dataset
     contamination probability.
 
