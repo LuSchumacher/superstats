@@ -1,6 +1,9 @@
 # Neural Superstatistics for Bayesian Estimation of Time-Varying Parameters
 
-[![Tests](https://github.com/LuSchumacher/superstats/actions/workflows/tests.yml/badge.svg)](https://github.com/LuSchumacher/superstats/actions/workflows/tests.yml)
+[![Tests](https://img.shields.io/github/actions/workflow/status/LuSchumacher/superstats/tests.yml?branch=main&style=for-the-badge&label=Tests)](https://github.com/LuSchumacher/superstats/actions/workflows/tests.yml)
+[![Coverage](https://img.shields.io/codecov/c/github/LuSchumacher/superstats?style=for-the-badge&label=Coverage)](https://app.codecov.io/gh/LuSchumacher/superstats)
+[![License](https://img.shields.io/github/license/LuSchumacher/superstats?style=for-the-badge)](LICENSE)
+[![Contributions Welcome](https://img.shields.io/badge/contributions-welcome-brightgreen?style=for-the-badge)](https://github.com/LuSchumacher/superstats/issues)
 
 This repository contains code, tools, and examples associated with **Neural Superstatistics**, a method for Bayesian inference in dynamic cognitive modeling introduced in *Schumacher et al.* (2023). ([nature.com](https://www.nature.com/articles/s41598-023-40278-3))
 
