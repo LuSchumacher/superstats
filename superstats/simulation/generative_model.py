@@ -9,9 +9,8 @@ import matplotlib.pyplot as plt
 from superstats.prior.joint_prior import JointPrior
 from superstats.diagnostics.plots.prior_push_forward import plot_push_forward
 from superstats.simulation.augmentation.missing_process import MissingProcess
-from superstats.simulation.augmentation.random_missing import RandomMissing
 from superstats.simulation.augmentation.contamination_process import ContaminationProcess
-from superstats.simulation.augmentation.random_choice_process import RandomChoiceProcess
+from superstats.utils.dispatch import find_contamination_process, find_missing_process
 
 
 class GenerativeModel:
@@ -60,33 +59,14 @@ class GenerativeModel:
         self.prior = prior
         self.model = model
 
-        if not callable(model):
-            raise TypeError("model must be callable")
-
-        if missing_process == "random":
-            self.missing_process = RandomMissing()
-        elif missing_process is None or callable(missing_process):
-            self.missing_process = missing_process
-        else:
-            raise TypeError("missing_process must be None, 'random', a MissingProcess instance, or callable")
+        self.missing_process = find_missing_process(missing_process)
 
         if self.missing_process is not None:
             self.has_mask = True
         else:
             self.has_mask = False
 
-        if contamination_process == "random_choice":
-            self.contamination_process = RandomChoiceProcess()
-        elif (
-            contamination_process is None
-            or isinstance(contamination_process, ContaminationProcess)
-            or callable(contamination_process)
-        ):
-            self.contamination_process = contamination_process
-        else:
-            raise TypeError(
-                "contamination_process must be None, 'random_choice', a ContaminationProcess instance, or callable"
-            )
+        self.contamination_process = find_contamination_process(contamination_process)
 
         # Inspect simulator signature
         self.signature = inspect.signature(model)

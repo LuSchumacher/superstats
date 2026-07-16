@@ -198,6 +198,46 @@ class TestApplyContaminationProcess:
         np.testing.assert_allclose(out_data["choice"], sim_data["choice"])
         np.testing.assert_allclose(extra["p_contaminated"], [0.0])
 
+    def test_random_choice_process_ignores_nonpositive_response_times(self):
+        sim_data = {
+            "response_time": np.array([[1.0, 0.0, -1.0, 2.0]]),
+            "choice": np.array([[0.0, 99.0, -1.0, 1.0]]),
+        }
+        original_response_time = sim_data["response_time"].copy()
+        model = _make_bare_model(contamination_process=RandomChoiceProcess(p_contaminated=1.0))
+        rng = np.random.default_rng(0)
+
+        out_data, extra = model._apply_contamination_process(sim_data, rng=rng)
+
+        np.testing.assert_allclose(sim_data["response_time"], original_response_time)
+        np.testing.assert_allclose(extra["p_contaminated"], [1.0])
+        np.testing.assert_allclose(out_data["response_time"][0, 1:3], [0.0, -1.0])
+        np.testing.assert_allclose(out_data["choice"][0, 1:3], [99.0, -1.0])
+        assert np.all(np.isfinite(out_data["response_time"][sim_data["response_time"] > 0]))
+        assert np.all(out_data["response_time"][sim_data["response_time"] > 0] > 0)
+        assert set(out_data["choice"][sim_data["response_time"] > 0]) <= {0.0, 1.0}
+
+    def test_random_choice_process_supports_custom_data_keys(self):
+        sim_data = {
+            "rt": np.array([[1.0, 2.0, 3.0]]),
+            "resp": np.array([[0.0, 1.0, 0.0]]),
+            "metadata": np.array([42.0]),
+        }
+        process = RandomChoiceProcess(
+            p_contaminated=0.0,
+            response_time_key="rt",
+            choice_key="resp",
+        )
+        model = _make_bare_model(contamination_process=process, data_keys=("rt", "resp", "metadata"))
+        rng = np.random.default_rng(0)
+
+        out_data, extra = model._apply_contamination_process(sim_data, rng=rng)
+
+        np.testing.assert_allclose(out_data["rt"], sim_data["rt"])
+        np.testing.assert_allclose(out_data["resp"], sim_data["resp"])
+        assert out_data["metadata"] is sim_data["metadata"]
+        np.testing.assert_allclose(extra["p_contaminated"], [0.0])
+
     def test_missing_required_keys_raises(self):
         model = _make_bare_model(contamination_process=RandomChoiceProcess())
         with pytest.raises(KeyError):

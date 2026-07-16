@@ -5,7 +5,7 @@ import pytest
 
 from superstats.prior import JointPrior, Prior
 from superstats.simulation import GenerativeModel, sample_ddm
-from superstats.simulation.augmentation import MissingProcess, RandomMissing
+from superstats.simulation.augmentation import ContaminationProcess, MissingProcess, RandomChoiceProcess, RandomMissing
 from superstats.transition import RandomWalk
 from superstats.workflow import Workflow
 
@@ -259,6 +259,18 @@ def test_generative_model_accepts_plain_callable_missing_process():
 def test_generative_model_rejects_non_callable_missing_process():
     with pytest.raises(TypeError):
         _build_generative_model(missing_process="not-callable")
+
+
+def test_generative_model_random_choice_contamination_process():
+    gm = _build_generative_model(contamination_process="random_choice")
+
+    assert isinstance(gm.contamination_process, RandomChoiceProcess)
+    assert isinstance(gm.contamination_process, ContaminationProcess)
+
+
+def test_generative_model_rejects_non_callable_contamination_process():
+    with pytest.raises(TypeError):
+        _build_generative_model(contamination_process="not-callable")
 
 
 def test_generative_model_propagates_missing_process_contract_errors():
