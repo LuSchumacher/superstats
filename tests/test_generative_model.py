@@ -86,26 +86,36 @@ def test_generative_model_sample_includes_time_steps():
     result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS)
 
     assert "time_steps" in result
-    assert result["time_steps"].shape == (BATCH_SIZE, NUM_STEPS, 1)
+    assert result["time_steps"].shape == (BATCH_SIZE, NUM_STEPS)
 
     expected_row = np.arange(NUM_STEPS)
-    for row in result["time_steps"][:, :, 0]:
+    for row in result["time_steps"]:
         assert np.array_equal(row, expected_row)
 
 
-def test_generative_model_defaults_missing_process_to_random_missing():
+def test_generative_model_defaults_to_no_missing_process():
     gm = _build_generative_model()
-    assert isinstance(gm.missing_process, RandomMissing)
-    assert isinstance(gm.missing_process, MissingProcess)
+    assert gm.missing_process is None
+    assert gm.has_mask is False
 
 
-def test_generative_model_sample_includes_missing_mask_by_default():
+def test_generative_model_sample_omits_missing_mask_by_default():
     gm = _build_generative_model()
     result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS, rng=np.random.default_rng(0))
 
+    assert "missing_mask" not in result
+
+
+def test_generative_model_random_missing_process_includes_mask():
+    gm = _build_generative_model(missing_process="random")
+    result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS, rng=np.random.default_rng(0))
+
+    assert isinstance(gm.missing_process, RandomMissing)
+    assert isinstance(gm.missing_process, MissingProcess)
+    assert gm.has_mask is True
     assert "missing_mask" in result
-    assert result["missing_mask"].shape == (BATCH_SIZE, NUM_STEPS, 1)
-    assert np.all(np.isin(result["missing_mask"], [0, 1]))
+    assert result["missing_mask"].shape == (BATCH_SIZE, NUM_STEPS)
+    assert result["missing_mask"].dtype == np.bool_
 
 
 def test_generative_model_missing_process_none_disables_mask():
@@ -157,8 +167,8 @@ def test_generative_model_missing_process_receives_rng_for_reproducibility():
 
 def test_generative_model_accepts_plain_callable_missing_process():
     def half_missing(data, rng=None):
-        mask = np.zeros(data.shape[:2] + (1,), dtype=np.int64)
-        mask[:, : data.shape[1] // 2, :] = 1
+        mask = np.zeros(data.shape[:2], dtype=bool)
+        mask[:, : data.shape[1] // 2] = True
         filled = data.copy()
         filled[:, : data.shape[1] // 2, :] = -1.0
         return {"data": filled, "missing_mask": mask}
@@ -166,8 +176,8 @@ def test_generative_model_accepts_plain_callable_missing_process():
     gm = _build_generative_model(missing_process=half_missing)
     result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS)
 
-    assert np.all(result["missing_mask"][:, : NUM_STEPS // 2, :] == 1)
-    assert np.all(result["missing_mask"][:, NUM_STEPS // 2 :, :] == 0)
+    assert np.all(result["missing_mask"][:, : NUM_STEPS // 2])
+    assert not np.any(result["missing_mask"][:, NUM_STEPS // 2 :])
     assert np.all(result["data"][:, : NUM_STEPS // 2, :] == -1.0)
 
 

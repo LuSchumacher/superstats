@@ -56,44 +56,34 @@ class RandomMissing(MissingProcess):
         """
         p = self.p_missing
         if isinstance(p, Prior):
-            vals = np.asarray(p.sample(n), dtype=float).reshape(-1)
+            vals = p.sample(n)
         else:
-            vals = np.full(n, float(p))
-        return np.clip(vals, 0.0, 1.0)
-
-    def _fill(self, data: np.ndarray, mask: np.ndarray) -> np.ndarray:
-        fill = np.asarray(self.missing_value)
-        if fill.dtype.kind in "iu" and data.dtype.kind in "iu":
-            fill = fill.astype(data.dtype)
-        out = data.astype(np.result_type(data.dtype, fill.dtype), copy=True)
-        out[mask] = np.broadcast_to(fill, out.shape)[mask]
-        return out
+            vals = np.full(n, p)
+        return vals
 
     def apply(self, data: np.ndarray, rng: np.random.Generator | None = None) -> dict:
         rng = self._default_rng(rng)
 
         batch_size, num_steps = data.shape[0], data.shape[1]
-        trailing = (1,) * (data.ndim - 2)
 
         if self.shared_across_batch:
             p = self._draw_p(1)[0]
-            m = rng.random((num_steps,)) < p
-            m = np.broadcast_to(m.reshape(1, num_steps), (batch_size, num_steps)).copy()
+            mask = rng.random(num_steps) < p
+            mask = np.broadcast_to(mask[None, :], (batch_size, num_steps))
             p_used = np.full((batch_size, 1), p)
         else:
             p = self._draw_p(batch_size)
-            m = rng.random((batch_size, num_steps)) < p[:, None]
+            mask = rng.random((batch_size, num_steps)) < p[:, None]
             p_used = p.reshape(batch_size, 1)
 
-        # full-shape bool mask, used only internally to fill `data`
-        fill_mask = np.broadcast_to(m.reshape((batch_size, num_steps) + trailing), data.shape)
-
-        # returned mask: 0/1 int, shape (batch_size, num_steps, 1)
-        missing_mask = m.reshape(batch_size, num_steps, 1).astype(np.int64)
+        try:
+            data[mask] = self.missing_value
+        except (TypeError, ValueError, OverflowError):
+            data = data.astype(np.result_type(data.dtype, self.missing_value), copy=True)
+            data[mask] = self.missing_value
 
         return {
-            "data": self._fill(data, fill_mask),
-            "missing_mask": missing_mask,
+            "data": data,
+            "missing_mask": mask,
             "p_missing": p_used,
-            "missing_value": np.asarray(self.missing_value),
         }

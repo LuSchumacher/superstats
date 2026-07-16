@@ -35,9 +35,9 @@ def test_call_and_apply_are_interchangeable_with_no_rng():
     via_apply = process.apply(data)
 
     for result in (via_call, via_apply):
-        assert set(result.keys()) == {"data", "missing_mask", "p_missing", "missing_value"}
+        assert set(result.keys()) == {"data", "missing_mask", "p_missing"}
         assert result["data"].shape == data.shape
-        assert result["missing_mask"].shape == (4, 10, 1)
+        assert result["missing_mask"].shape == (4, 10)
 
 
 def test_random_missing_shape_and_dtype():
@@ -48,8 +48,8 @@ def test_random_missing_shape_and_dtype():
     result = process.apply(data, rng=np.random.default_rng(42))
 
     assert result["data"].shape == data.shape
-    assert result["missing_mask"].shape == (batch_size, num_steps, 1)
-    assert result["missing_mask"].dtype == np.int64
+    assert result["missing_mask"].shape == (batch_size, num_steps)
+    assert result["missing_mask"].dtype == np.bool_
     assert np.all(np.isin(result["missing_mask"], [0, 1]))
 
 
@@ -58,17 +58,18 @@ def test_random_missing_whole_observation_is_dropped_together():
     # must carry missing_value -- not just some of them.
     batch_size, num_steps, dim = 5, 15, 4
     data = np.random.default_rng(1).normal(size=(batch_size, num_steps, dim)).astype(np.float32)
+    original = data.copy()
     missing_value = -1.0
 
     process = RandomMissing(p_missing=0.5, missing_value=missing_value)
     result = process.apply(data, rng=np.random.default_rng(7))
 
-    mask = result["missing_mask"][:, :, 0].astype(bool)  # (batch, steps)
+    mask = result["missing_mask"].astype(bool)
     filled = result["data"]
 
     assert np.all(filled[mask] == missing_value)
     # non-missing entries should be untouched
-    assert np.array_equal(filled[~mask], data[~mask])
+    assert np.array_equal(filled[~mask], original[~mask])
 
 
 def test_random_missing_probability_zero_means_no_missing():
@@ -96,7 +97,7 @@ def test_random_missing_shared_across_batch_uses_one_mask_for_all():
     process = RandomMissing(p_missing=0.5, missing_value=-1, shared_across_batch=True)
     result = process.apply(data, rng=np.random.default_rng(8))
 
-    mask = result["missing_mask"][:, :, 0]  # (batch, steps)
+    mask = result["missing_mask"]
     # every row (dataset) in the batch should have the identical mask
     assert np.all(mask == mask[0])
 
@@ -108,7 +109,7 @@ def test_random_missing_independent_across_batch_gives_different_masks():
     process = RandomMissing(p_missing=0.5, missing_value=-1, shared_across_batch=False)
     result = process.apply(data, rng=np.random.default_rng(10))
 
-    mask = result["missing_mask"][:, :, 0]
+    mask = result["missing_mask"]
     # with independent per-dataset masks at p=0.5 over many steps, it's
     # overwhelmingly unlikely every row is identical to the first
     assert not np.all(mask == mask[0])
@@ -121,7 +122,7 @@ def test_random_missing_accepts_prior_for_p_missing():
     process = RandomMissing(p_missing=prior, missing_value=-1)
     result = process.apply(data, rng=np.random.default_rng(12))
 
-    assert result["missing_mask"].shape == (5, 10, 1)
+    assert result["missing_mask"].shape == (5, 10)
     assert np.all(np.isin(result["missing_mask"], [0, 1]))
 
 

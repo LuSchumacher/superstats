@@ -1,6 +1,6 @@
 """Generative-model wrapper for joint priors and simulators."""
 
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, Optional, Literal
 import inspect
 import numpy as np
 import matplotlib.pyplot as plt
@@ -9,11 +9,6 @@ from superstats.prior.joint_prior import JointPrior
 from superstats.diagnostics.plots.prior_push_forward import plot_push_forward
 from superstats.simulation.augmentation.missing_process import MissingProcess
 from superstats.simulation.augmentation.random_missing import RandomMissing
-
-
-# Sentinel distinguishing "missing_process not provided" (-> default to
-# RandomMissing()) from "missing_process=None" (-> disable augmentation).
-_UNSET = object()
 
 
 class GenerativeModel:
@@ -36,27 +31,27 @@ class GenerativeModel:
         parameter names and order.
     missing_process : MissingProcess, Callable, or None, optional
         Process applied to simulated data to introduce missingness.
-        - Not provided (default): uses `RandomMissing()`, the default MCAR
-          missingness process.
+        - Not provided (default) or `None`: disables missingness augmentation
+          and `sample` will not include a `"missing_mask"` entry in its result.
+        - `"random"`: uses `RandomMissing()`, the default MCAR missingness
+          process.
         - `MissingProcess` instance: used as-is.
         - Plain `Callable`: must follow the same contract as
           `MissingProcess.__call__`, i.e. `(data, rng=None) -> dict` with
           keys `"data"` (the corrupted array) and `"missing_mask"`.
-        - `None`: disables missingness augmentation entirely; `sample`
-          will not include a `"missing_mask"` entry in its result.
 
     Raises
     ------
     TypeError
         If `model` is not callable, or if `missing_process` is neither
-        `None` nor callable.
+        `None`, `"random"`, nor callable.
     """
 
     def __init__(
         self,
         prior: JointPrior,
         model: Callable,
-        missing_process: MissingProcess | Callable | None = _UNSET,
+        missing_process: MissingProcess | Callable | Literal["random"] | None = None,
     ):
         self.prior = prior
         self.model = model
@@ -64,11 +59,17 @@ class GenerativeModel:
         if not callable(model):
             raise TypeError("model must be callable")
 
-        if missing_process is _UNSET:
-            missing_process = RandomMissing()
-        if missing_process is not None and not callable(missing_process):
-            raise TypeError("missing_process must be callable or None")
-        self.missing_process = missing_process
+        if missing_process == "random":
+            self.missing_process = RandomMissing()
+        elif missing_process is None or callable(missing_process):
+            self.missing_process = missing_process
+        else:
+            raise TypeError("missing_process must be None, 'random', a MissingProcess instance, or callable")
+
+        if self.missing_process is not None:
+            self.has_mask = True
+        else:
+            self.has_mask = False
 
         # Inspect simulator signature
         self.signature = inspect.signature(model)
@@ -384,22 +385,6 @@ class GenerativeModel:
         extra = {k: v for k, v in result.items() if k not in ("data", "missing_mask")}
         return result["data"], result["missing_mask"], extra
 
-        try:
-            params = inspect.signature(self.missing_process).parameters
-            accepts_rng = "rng" in params or any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values())
-        except (TypeError, ValueError):
-            # signature introspection can fail for some callables/builtins
-            accepts_rng = False
-
-        result = self.missing_process(sim_data, rng=rng) if accepts_rng else self.missing_process(sim_data)
-
-        if not isinstance(result, dict) or "data" not in result or "missing_mask" not in result:
-            raise TypeError(
-                f"missing_process must return a dict with 'data' and 'missing_mask' keys, got {type(result)}"
-            )
-
-        return result["data"], result["missing_mask"]
-
     def sample(
         self,
         batch_size: int,
@@ -439,18 +424,18 @@ class GenerativeModel:
         result : dict - flat dictionary with the following entries:
             - `"data"`: simulated data, shape (batch_size, num_steps, ...),
             corrupted by `self.missing_process` if one is configured.
-            - `"time_steps"`: shape (batch_size, num_steps, 1), each row
+            - `"time_steps"`: shape (batch_size, num_steps), each row
             equal to `np.arange(num_steps)`.
             - `"missing_mask"`: included only if `self.missing_process`
             is not None; shape matches the mask returned by the process
-            (for `RandomMissing`, (batch_size, num_steps, 1)).
+            (for `RandomMissing`, (batch_size, num_steps)).
             - any additional keys the missing process returns beyond
             `"data"`/`"missing_mask"` (e.g. `RandomMissing` also
-            returns `"p_missing"`, shape (batch_size, 1), and
-            `"missing_value"`); omitted if `self.missing_process` is
+            returns `"p_missing"`, shape (batch_size, 1)); omitted if
+            `self.missing_process` is
             None or returns no extra keys.
             - one entry per sampled parameter. Local (time-varying) params
-              have shape (batch_size, num_steps, 1); hyper and shared
+              have shape (batch_size, num_steps); hyper and shared
               params have shape (batch_size, 1), or (batch_size, num_steps, 1)
               when `tile_to_steps` is True.
             - fixed params are included only when `include_fixed` is True.
@@ -518,7 +503,7 @@ class GenerativeModel:
             if shared_params is not None:
                 shared_params = {k: np.tile(v[:, np.newaxis, :], (1, num_steps, 1)) for k, v in shared_params.items()}
 
-        time_steps = np.broadcast_to(np.arange(num_steps).reshape(1, num_steps, 1), (batch_size, num_steps, 1)).copy()
+        time_steps = np.broadcast_to(np.arange(num_steps)[None, :], (batch_size, num_steps))
 
         result = {"data": sim_data, "time_steps": time_steps}
         if missing_mask is not None:
