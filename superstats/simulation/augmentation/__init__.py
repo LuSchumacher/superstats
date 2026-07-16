@@ -2,8 +2,7 @@
 
 from .missing_process import MissingProcess
 from .random_missing import RandomMissing
+from .contamination_process import ContaminationProcess
+from .random_choice_process import RandomChoiceProcess
 
-__all__ = [
-    "MissingProcess",
-    "RandomMissing",
-]
+__all__ = ["MissingProcess", "RandomMissing", "ContaminationProcess", "RandomChoiceProcess"]

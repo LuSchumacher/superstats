@@ -10,6 +10,8 @@ from superstats.prior.joint_prior import JointPrior
 from superstats.diagnostics.plots.prior_push_forward import plot_push_forward
 from superstats.simulation.augmentation.missing_process import MissingProcess
 from superstats.simulation.augmentation.random_missing import RandomMissing
+from superstats.simulation.augmentation.contamination_process import ContaminationProcess
+from superstats.simulation.augmentation.random_choice_process import RandomChoiceProcess
 
 
 class GenerativeModel:
@@ -53,6 +55,7 @@ class GenerativeModel:
         prior: JointPrior,
         model: Callable,
         missing_process: MissingProcess | Callable | Literal["random"] | None = None,
+        contamination_process: ContaminationProcess | Callable | Literal["random_choice"] | None = None,
     ):
         self.prior = prior
         self.model = model
@@ -71,6 +74,15 @@ class GenerativeModel:
             self.has_mask = True
         else:
             self.has_mask = False
+
+        if contamination_process == "random_choice":
+            self.contamination_process = RandomChoiceProcess()
+        elif contamination_process is None or callable(contamination_process):
+            self.contamination_process = contamination_process
+        else:
+            raise TypeError(
+                "contamination_process must be None, 'random_choice', a ContaminationProcess instance, or callable"
+            )
 
         # Inspect simulator signature
         self.signature = inspect.signature(model)
