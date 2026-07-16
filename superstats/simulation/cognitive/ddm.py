@@ -13,7 +13,7 @@ def sample_ddm(
     sigma: float = 1.0,
     dt: float = 0.001,
     max_steps: int = 10000,
-) -> np.ndarray:
+) -> dict[str, np.ndarray]:
     """Sample from the Diffusion Decision Model (DDM) for decision making.
 
     This function simulates decision processes using the DDM, where evidence
@@ -43,14 +43,16 @@ def sample_ddm(
 
     Returns
     -------
-    data : np.ndarray of shape (num_steps, 2) - decision data, where
-        column 0 is the response time (or -1.0 on timeout) and column
-        1 is the choice (1.0 for the upper boundary, 0.0 for the
-        lower boundary, -1.0 on timeout)
+    data : dict of np.ndarray
+        Named decision data. `"response_time"` contains response times
+        (or -1.0 on timeout) and `"choice"` contains choices (1.0 for
+        the upper boundary, 0.0 for the lower boundary, -1.0 on timeout).
+        Each array has shape (num_steps,).
     """
 
     num_steps = v.shape[0]
-    data = np.empty((num_steps, 2), dtype=np.float32)
+    response_time = np.empty(num_steps, dtype=np.float32)
+    choice = np.empty(num_steps, dtype=np.float32)
     noise_scale = sigma * np.sqrt(dt)
 
     for i in prange(num_steps):
@@ -64,15 +66,15 @@ def sample_ddm(
             t += dt
             x += drift_dt + noise_scale * np.random.normal()
             if x >= a_t:
-                data[i, 0] = t
-                data[i, 1] = 1.0
+                response_time[i] = t
+                choice[i] = 1.0
                 break
             if x <= 0.0:
-                data[i, 0] = t
-                data[i, 1] = 0.0
+                response_time[i] = t
+                choice[i] = 0.0
                 break
         else:
-            data[i, 0] = -1.0
-            data[i, 1] = -1.0
+            response_time[i] = -1.0
+            choice[i] = -1.0
 
-    return data
+    return {"response_time": response_time, "choice": choice}

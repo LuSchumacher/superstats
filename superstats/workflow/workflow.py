@@ -3,23 +3,19 @@
 from typing import Literal, Callable
 from collections.abc import Mapping, Sequence
 
-import bayesflow as bf
-import numpy as np
-import keras
 import functools
 import os
 import pickle
-import warnings
+import numpy as np
+
+import bayesflow as bf
+import keras
 
 from bayesflow.adapters import Adapter
-from bayesflow.networks import SummaryNetwork, InferenceNetwork
 
 from superstats.simulation import GenerativeModel
-from superstats.networks import RecurrentNet
-from superstats.defaults.network_defaults import (
-    DEFAULT_SUMMARY_NETWORK,
-    DEFAULT_INFERENCE_NETWORK,
-)
+from superstats.utils.dispatch import find_inference_network, find_summary_network
+from superstats.utils.logging import warning as log_warning
 from superstats.diagnostics.plots import (
     plot_time_varying_verification,
     plot_recovery,
@@ -38,21 +34,18 @@ class Workflow:
 
     Parameters
     ----------
-    simulator            : GenerativeModel or None, optional, default: None
+    simulator         : GenerativeModel or None, optional, default: None
         The simulator used for training and, when `adapter` is not
         provided, for building a default adapter. Required in that case.
-    adapter              : Adapter or None, optional, default: None
+    adapter           : Adapter or None, optional, default: None
         Data adapter for the workflow. If None, a default adapter is
         built from `simulator.local_keys`, `simulator.hyper_keys`, and
         `simulator.shared_keys` (which requires `simulator` to be set).
-    summary_network      : {"recurrent"} or SummaryNetwork or None, optional, default: "recurrent"
-        "recurrent" builds a `RecurrentNet` using
-        `DEFAULT_SUMMARY_NETWORK`; otherwise, the given network (or
-        None) is used directly.
-    inference_network    : {"consistency"} or InferenceNetwork, optional, default: "consistency"
-        "consistency" builds a `bf.networks.StableConsistencyModel`
-        using `DEFAULT_INFERENCE_NETWORK`; otherwise, the given network
-        is used directly.
+    summary_network   : {"recurrent", "transformer"} or keras.Layer, optional, default: "recurrent".
+        String names build a default summary network; otherwise, an already-created Keras layer is used directly.
+    inference_network : {"coupling", "coupling_flow"} or keras.Layer, optional, default: "coupling".
+        String names build a default inference network; otherwise, an already-created Keras
+        layer is used directly.
     checkpoint_filepath  : str or None, optional, default: None
         Directory for saving/restoring the approximator and training
         history.
@@ -72,8 +65,8 @@ class Workflow:
         self,
         simulator: GenerativeModel | None = None,
         adapter: Adapter | None = None,
-        summary_network: Literal["recurrent"] | SummaryNetwork | None = "recurrent",
-        inference_network: Literal["consistency"] | InferenceNetwork = "consistency",
+        summary_network: Literal["recurrent", "transformer"] | keras.Layer = "recurrent",
+        inference_network: Literal["coupling", "coupling_flow"] | keras.Layer = "coupling",
         checkpoint_filepath: str | None = None,
         restore_approximator: bool = True,
         restore_history: bool = True,
@@ -81,39 +74,19 @@ class Workflow:
     ):
         self.simulator = simulator
 
-        if summary_network == "recurrent":
-            self.summary_network = RecurrentNet(**DEFAULT_SUMMARY_NETWORK)
-        else:
-            self.summary_network = summary_network
-
-        if inference_network == "consistency":
-            self.inference_network = bf.networks.StableConsistencyModel(**DEFAULT_INFERENCE_NETWORK)
-        else:
-            self.inference_network = inference_network
+        self.summary_network = find_summary_network(summary_network)
+        self.inference_network = find_inference_network(inference_network)
 
         if adapter is not None:
             self.adapter = adapter
         else:
-            self.local_keys = self.simulator.local_keys
-            self.hyper_keys = self.simulator.hyper_keys
-            self.shared_keys = self.simulator.shared_keys
-            self.adapter = (
-                bf.Adapter()
-                .convert_dtype("float64", "float32")
-                .concatenate(self.local_keys + self.hyper_keys + self.shared_keys, into="inference_variables")
-                .rename("data", "summary_variables")
-            )
+            self.adapter = self.default_adapter(simulator)
 
         self.checkpoint_filepath = checkpoint_filepath
 
         if restore_approximator and self.checkpoint_filepath is not None and os.path.isdir(self.checkpoint_filepath):
             restore = True
         elif restore_approximator:
-            warnings.warn(
-                f"restore_approximator=True but no model found at '{self.checkpoint_filepath}'. "
-                "Starting with no trained model.",
-                stacklevel=2,
-            )
             restore = False
         else:
             restore = False
@@ -131,11 +104,29 @@ class Workflow:
 
         if restore_history and self.checkpoint_filepath is not None and os.path.isdir(self.checkpoint_filepath):
             self._load_history()
-        elif restore_history:
-            warnings.warn(
-                f"restore_history=True but no history found at '{self.checkpoint_filepath}'. Starting with no history.",
-                stacklevel=2,
-            )
+
+    @staticmethod
+    def default_adapter(simulator):
+        local_keys = simulator.local_keys
+        hyper_keys = simulator.hyper_keys
+        shared_keys = simulator.shared_keys
+        data_keys = simulator.data_keys
+
+        adapter = (
+            bf.Adapter()
+            .convert_dtype("float64", "float32")
+            .as_time_series(["time_steps", *data_keys])
+            .concatenate(local_keys + hyper_keys + shared_keys, into="inference_variables")
+        )
+
+        summary_keys = ["time_steps", *data_keys]
+        if hasattr(simulator, "has_mask") and simulator.has_mask:
+            adapter = adapter.as_time_series("missing_mask")
+            adapter = adapter.concatenate([*summary_keys, "missing_mask"], into="summary_variables")
+        else:
+            adapter = adapter.concatenate(summary_keys, into="summary_variables")
+
+        return adapter
 
     def _load_history(self) -> None:
         """Load persisted training history from `checkpoint_filepath`, if present.
@@ -173,6 +164,46 @@ class Workflow:
         with open(os.path.join(self.checkpoint_filepath, "history.pkl"), "wb") as f:
             pickle.dump(new_history, f)
         self.workflow.history = new_history
+
+    def _prepare_conditions(self, data: Mapping[str, np.ndarray]) -> dict[str, np.ndarray]:
+        """Add adapter-required auxiliary condition keys to named observations."""
+        if not isinstance(data, Mapping):
+            raise TypeError(f"data must be a mapping of named arrays, got {type(data)}.")
+
+        conditions = dict(data)
+        if self.simulator is None:
+            return conditions
+
+        data_keys = self.simulator.data_keys
+        missing_keys = [key for key in data_keys if key not in conditions]
+        if missing_keys:
+            raise KeyError(f"Missing observed data keys {missing_keys!r}. Expected keys: {data_keys!r}.")
+
+        first = conditions[data_keys[0]]
+        num_datasets = first.shape[0]
+        num_steps = first.shape[1]
+
+        if "time_steps" not in conditions:
+            log_warning("No time_steps provided; adding contiguous default time steps.")
+            conditions["time_steps"] = np.broadcast_to(np.arange(num_steps)[None, :], (num_datasets, num_steps))
+
+        elif conditions["time_steps"].shape != (num_datasets, num_steps):
+            raise ValueError(
+                f"'time_steps' must have shape {(num_datasets, num_steps)}, got {conditions['time_steps'].shape}."
+            )
+
+        if getattr(self.simulator, "has_mask", False):
+            if "missing_mask" not in conditions:
+                log_warning("No missing_mask provided although simulator has missingness; assuming no missings.")
+                conditions["missing_mask"] = np.zeros((num_datasets, num_steps), dtype=bool)
+
+            elif conditions["missing_mask"].shape != (num_datasets, num_steps):
+                raise ValueError(
+                    f"'missing_mask' must have shape {(num_datasets, num_steps)}, "
+                    f"got {conditions['missing_mask'].shape}."
+                )
+
+        return conditions
 
     def fit_offline(
         self, data, validation_data, epochs: int = 100, batch_size: int = 32, save_history: bool = True, **kwargs
@@ -274,20 +305,25 @@ class Workflow:
 
     def sample(
         self,
-        data: np.ndarray,
-        num_samples: int = 1000,
-        inference_batch_size: int = 5,
+        data: dict[str, np.ndarray],
+        num_samples: int = 500,
+        batch_size: int = 4,
         **kwargs,
     ) -> dict[str, np.ndarray]:
         """Run inference on observed data.
 
         Parameters
         ----------
-        data                 : np.ndarray of shape (num_datasets, num_steps, data_dims)
-            Observed data to condition on.
-        num_samples          : int, optional, default: 1000
+        data                 : dict of np.ndarray
+            Observed data to condition on, keyed by the simulator's
+            named observation variables. Each value should have shape
+            (num_datasets, num_steps). If `time_steps` is omitted, it is
+            generated automatically. If the simulator was configured with
+            missingness and `missing_mask` is omitted, an all-observed
+            mask is generated automatically.
+        num_samples          : int, optional, default: 500
             Number of posterior samples per dataset.
-        inference_batch_size : int, optional, default: 5
+        batch_size : int, optional, default: 4
             Datasets per GPU batch, to avoid out-of-memory errors.
         **kwargs
             Forwarded to `self.approximator.sample`.
@@ -297,10 +333,11 @@ class Workflow:
         samples : dict of {param_name: np.ndarray} - posterior samples
             per parameter
         """
+        conditions = self._prepare_conditions(data)
         samples = self.approximator.sample(
-            conditions={"data": data},
+            conditions=conditions,
             num_samples=num_samples,
-            batch_size=inference_batch_size,
+            batch_size=batch_size,
             **kwargs,
         )
         return samples
@@ -310,7 +347,7 @@ class Workflow:
         posterior_samples: Mapping[str, np.ndarray],
         num_sims: int = 10,
         rng=None,
-    ) -> np.ndarray:
+    ) -> dict[str, np.ndarray]:
         """Generate posterior predictive simulations from posterior parameter draws.
 
         Parameters
@@ -327,8 +364,9 @@ class Workflow:
 
         Returns
         -------
-        sim_data : np.ndarray of shape (batch_size, num_sims,
-            num_steps, data_dim) - simulated data
+        sim_data : dict of np.ndarray
+            Named simulated variables. Each value has shape
+            (batch_size, num_sims, num_steps).
 
         Raises
         ------
@@ -404,7 +442,7 @@ class Workflow:
             num_steps=num_steps,
         )
 
-        return raw_sim.reshape(batch_size, num_sims, num_steps, *raw_sim.shape[2:])
+        return {name: value.reshape(batch_size, num_sims, num_steps) for name, value in raw_sim.items()}
 
     def plot_history(self, history):
         """Plot training loss curves.

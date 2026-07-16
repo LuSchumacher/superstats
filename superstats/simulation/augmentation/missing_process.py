@@ -1,17 +1,21 @@
 """Abstract base class for missing-data augmentation processes."""
 
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 import numpy as np
 
 
 class MissingProcess(ABC):
     """Introduces missingness into simulated data.
 
-    Contract: ``(data, rng) -> {"data": filled, "missing_mask": mask}``.
-    ``mask`` is a boolean array of ``data.shape`` (True = missing) and
-    ``filled`` is ``data`` with masked entries set to the process's
-    ``missing_value``. Instances are callable, so a MissingProcess, a
-    subclass, or a bare function with this signature are interchangeable.
+    Contract: ``(data, rng) -> filled | {"missing_mask": mask}``,
+    where ``data`` is a mapping of named arrays with shape
+    ``(batch_size, num_steps)``. ``mask`` is a boolean array of shape
+    ``(batch_size, num_steps)`` (True = missing), and the returned data
+    keys contain the masked entries set to the
+    process's ``missing_value``. Instances are callable, so a
+    MissingProcess, a subclass, or a bare function with this signature
+    are interchangeable.
     """
 
     @staticmethod
@@ -25,12 +29,12 @@ class MissingProcess(ABC):
         return np.random.default_rng() if rng is None else rng
 
     @abstractmethod
-    def apply(self, data: np.ndarray, rng: np.random.Generator | None = None) -> dict:
+    def apply(self, data: Mapping[str, np.ndarray], rng: np.random.Generator | None = None) -> dict:
         """Apply the missingness process.
 
         Parameters
         ----------
-        data : np.ndarray
+        data : mapping of np.ndarray
             Simulated data to corrupt with missingness.
         rng  : np.random.Generator or None, optional, default: None
             Random generator to use. If None, a fresh, unseeded generator
@@ -39,9 +43,9 @@ class MissingProcess(ABC):
 
         Returns
         -------
-        result : dict with keys "data" and "missing_mask"
+        result : flat dict with data keys, "missing_mask", and optional metadata
         """
         ...
 
-    def __call__(self, data: np.ndarray, rng: np.random.Generator | None = None) -> dict:
+    def __call__(self, data: Mapping[str, np.ndarray], rng: np.random.Generator | None = None) -> dict:
         return self.apply(data, self._default_rng(rng))

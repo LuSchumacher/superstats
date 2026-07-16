@@ -1,6 +1,9 @@
 # Superstats
 
-[![Tests](https://github.com/LuSchumacher/superstats/actions/workflows/tests.yml/badge.svg)](https://github.com/LuSchumacher/superstats/actions/workflows/tests.yml)
+[![Tests](https://img.shields.io/github/actions/workflow/status/LuSchumacher/superstats/tests.yml?branch=main&style=for-the-badge&label=Tests)](https://github.com/LuSchumacher/superstats/actions/workflows/tests.yml)
+[![Coverage](https://img.shields.io/codecov/c/github/LuSchumacher/superstats?style=for-the-badge&label=Coverage)](https://app.codecov.io/gh/LuSchumacher/superstats)
+[![License](https://img.shields.io/github/license/LuSchumacher/superstats?style=for-the-badge)](LICENSE)
+[![Contributions Welcome](https://img.shields.io/badge/contributions-welcome-brightgreen?style=for-the-badge)](https://github.com/LuSchumacher/superstats/issues)
 
 **superstats** is a Python library for simulation and Bayesian estimation of models with time-varying parameter.
 

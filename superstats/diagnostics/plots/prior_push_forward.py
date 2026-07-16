@@ -1,7 +1,7 @@
 """Prior push-forward plotting helpers."""
 
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Literal
 
 import numpy as np
@@ -29,9 +29,31 @@ BASE_COL_WIDTH = 6.0
 BASE_ROW_HEIGHT = 3.0
 
 
+def _select_data_variable(data: Mapping[str, np.ndarray], data_dim: int | str) -> np.ndarray:
+    """Resolve named data to a single (batch, steps) variable."""
+    if not isinstance(data, Mapping):
+        raise TypeError(f"data must be a mapping of named arrays, got {type(data)}.")
+
+    keys = list(data)
+    if isinstance(data_dim, int):
+        try:
+            key = keys[data_dim]
+        except IndexError as exc:
+            raise ValueError(f"data_dim index {data_dim} is out of range for data keys {keys!r}.") from exc
+    else:
+        key = data_dim
+        if key not in data:
+            raise KeyError(f"data key {key!r} not found. Available keys: {keys!r}.")
+
+    x = np.asarray(data[key])
+    if x.ndim != 2:
+        raise ValueError(f"Data variable {key!r} must have shape (batch_size, steps), got {x.shape}.")
+    return x
+
+
 def plot_push_forward(
-    data: np.ndarray,
-    data_dim: int = 0,
+    data: Mapping[str, np.ndarray],
+    data_dim: int | str = 0,
     kind: Literal["trajectory", "dist"] = "dist",
     aggregation: Callable | None = None,
     uncertainty_fun: Literal["std", "95ci", "mad", "95hdi"] | Callable | None = "95ci",
@@ -50,10 +72,12 @@ def plot_push_forward(
 
     Parameters
     ----------
-    data                : np.ndarray of shape (batch_size, steps, data_dims)
-        Simulation data from the generative model.
-    data_dim            : int, optional, default: 0
-        Which data dimension to plot.
+    data                : mapping of np.ndarray
+        Simulation data from the generative model, mapping observation
+        names to arrays of shape (batch_size, steps).
+    data_dim            : int or str, optional, default: 0
+        Which observation variable to plot. Strings select by key and
+        integers index the mapping's key order.
     kind                : {"dist", "trajectory"}, optional, default: "dist"
         Plot type: distribution of summary statistics or time-series
         trajectories.
@@ -94,12 +118,13 @@ def plot_push_forward(
     Raises
     ------
     ValueError
-        If `kind` is not "dist" or "trajectory".
+        If `kind` is not "dist" or "trajectory", or if `data` has an
+        unsupported shape.
     """
     if kind not in {"dist", "trajectory"}:
         raise ValueError("kind must be 'dist' or 'trajectory'.")
 
-    x = np.asarray(data)[:, :, data_dim]
+    x = _select_data_variable(data, data_dim)
     show_aggregate = aggregation is not None
     show_uncertainty = uncertainty_fun is not None
 
