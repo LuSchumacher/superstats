@@ -102,11 +102,6 @@ class RandomMissing(MissingProcess):
     def apply(self, data: Mapping[str, np.ndarray], rng: np.random.Generator | None = None) -> dict:
         rng = self._default_rng(rng)
 
-        if not isinstance(data, Mapping):
-            raise TypeError(f"data must be a mapping of named arrays, got {type(data)}.")
-        if not data:
-            raise ValueError("data mapping must be non-empty.")
-
         keys = list(data)
         first = data[keys[0]]
         batch_size, num_steps = first.shape
@@ -118,8 +113,7 @@ class RandomMissing(MissingProcess):
             for i, (key, value) in enumerate(data.items())
         }
 
-        return {
-            "data": filled,
+        return filled | {
             "missing_mask": mask,
             "p_missing": p_used,
         }

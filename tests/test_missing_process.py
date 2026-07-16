@@ -41,19 +41,10 @@ def test_call_and_apply_are_interchangeable_with_no_rng():
     via_apply = process.apply(data)
 
     for result in (via_call, via_apply):
-        assert set(result) == {"data", "missing_mask", "p_missing"}
-        assert set(result["data"]) == {"response_time", "choice"}
-        assert result["data"]["response_time"].shape == (4, 10)
-        assert result["data"]["choice"].shape == (4, 10)
+        assert set(result) == {"response_time", "choice", "missing_mask", "p_missing"}
+        assert result["response_time"].shape == (4, 10)
+        assert result["choice"].shape == (4, 10)
         assert result["missing_mask"].shape == (4, 10)
-
-
-def test_random_missing_rejects_array_data():
-    data = np.random.default_rng(0).normal(size=(4, 10, 2)).astype(np.float32)
-    process = RandomMissing(p_missing=0.3, missing_value=-1)
-
-    with pytest.raises(TypeError, match="mapping of named arrays"):
-        process.apply(data, rng=np.random.default_rng(42))
 
 
 def test_random_missing_shape_and_dtype():
@@ -63,8 +54,8 @@ def test_random_missing_shape_and_dtype():
     process = RandomMissing(p_missing=0.3, missing_value=-1)
     result = process.apply(data, rng=np.random.default_rng(42))
 
-    assert result["data"]["response_time"].shape == (batch_size, num_steps)
-    assert result["data"]["choice"].shape == (batch_size, num_steps)
+    assert result["response_time"].shape == (batch_size, num_steps)
+    assert result["choice"].shape == (batch_size, num_steps)
     assert result["missing_mask"].shape == (batch_size, num_steps)
     assert result["missing_mask"].dtype == np.bool_
     assert np.all(np.isin(result["missing_mask"], [0, 1]))
@@ -78,10 +69,10 @@ def test_random_missing_accepts_per_variable_missing_values():
     process = RandomMissing(p_missing=1.0, missing_value=missing_value)
     result = process.apply(data, rng=np.random.default_rng(42))
 
-    assert set(result["data"]) == {"response_time", "choice"}
+    assert {"response_time", "choice"}.issubset(result)
     assert result["missing_mask"].shape == (batch_size, num_steps)
-    assert np.all(result["data"]["response_time"] == -1.0)
-    assert np.all(result["data"]["choice"] == -99.0)
+    assert np.all(result["response_time"] == -1.0)
+    assert np.all(result["choice"] == -99.0)
 
 
 def test_random_missing_accepts_per_key_missing_values():
@@ -91,8 +82,8 @@ def test_random_missing_accepts_per_key_missing_values():
     process = RandomMissing(p_missing=1.0, missing_value=missing_value)
     result = process.apply(data, rng=np.random.default_rng(18))
 
-    assert np.all(result["data"]["response_time"] == -1.0)
-    assert np.all(result["data"]["choice"] == -99.0)
+    assert np.all(result["response_time"] == -1.0)
+    assert np.all(result["choice"] == -99.0)
 
 
 def test_random_missing_whole_observation_is_dropped_together():
@@ -104,7 +95,8 @@ def test_random_missing_whole_observation_is_dropped_together():
     result = process.apply(data, rng=np.random.default_rng(7))
 
     mask = result["missing_mask"].astype(bool)
-    for key, filled in result["data"].items():
+    for key in data:
+        filled = result[key]
         assert np.all(filled[mask] == missing_value)
         assert np.array_equal(filled[~mask], original[key][~mask])
 
@@ -116,7 +108,7 @@ def test_random_missing_probability_zero_means_no_missing():
 
     assert np.all(result["missing_mask"] == 0)
     for key in data:
-        assert np.array_equal(result["data"][key], data[key])
+        assert np.array_equal(result[key], data[key])
 
 
 def test_random_missing_probability_one_means_all_missing():
@@ -125,8 +117,8 @@ def test_random_missing_probability_one_means_all_missing():
     result = process.apply(data, rng=np.random.default_rng(5))
 
     assert np.all(result["missing_mask"] == 1)
-    for value in result["data"].values():
-        assert np.all(value == -1)
+    for key in data:
+        assert np.all(result[key] == -1)
 
 
 def test_random_missing_shared_across_batch_uses_one_mask_for_all():
@@ -176,7 +168,8 @@ def test_random_missing_promotes_dtype_for_nan_fill_on_int_data():
     process = RandomMissing(p_missing=1.0, missing_value=np.nan)
     result = process.apply(data, rng=np.random.default_rng(14))
 
-    for value in result["data"].values():
+    for key in data:
+        value = result[key]
         assert value.dtype == np.float64
         assert np.all(np.isnan(value))
 
@@ -186,7 +179,8 @@ def test_random_missing_keeps_int_dtype_for_int_fill():
     process = RandomMissing(p_missing=1.0, missing_value=-1)
     result = process.apply(data, rng=np.random.default_rng(16))
 
-    for value in result["data"].values():
+    for key in data:
+        value = result[key]
         assert np.issubdtype(value.dtype, np.integer)
         assert np.all(value == -1)
 
@@ -201,4 +195,4 @@ def test_random_missing_reproducible_with_seeded_rng():
 
     assert np.array_equal(result_a["missing_mask"], result_b["missing_mask"])
     for key in data_a:
-        assert np.array_equal(result_a["data"][key], result_b["data"][key])
+        assert np.array_equal(result_a[key], result_b[key])

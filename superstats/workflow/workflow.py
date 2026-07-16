@@ -15,6 +15,7 @@ from bayesflow.adapters import Adapter
 
 from superstats.simulation import GenerativeModel
 from superstats.utils.dispatch import find_inference_network, find_summary_network
+from superstats.utils.logging import warning as log_warning
 from superstats.diagnostics.plots import (
     plot_time_varying_verification,
     plot_recovery,
@@ -183,6 +184,7 @@ class Workflow:
         num_steps = first.shape[1]
 
         if "time_steps" not in conditions:
+            log_warning("No time_steps provided; adding contiguous default time steps.")
             conditions["time_steps"] = np.broadcast_to(np.arange(num_steps)[None, :], (num_datasets, num_steps))
 
         elif conditions["time_steps"].shape != (num_datasets, num_steps):
@@ -192,6 +194,7 @@ class Workflow:
 
         if getattr(self.simulator, "has_mask", False):
             if "missing_mask" not in conditions:
+                log_warning("No missing_mask provided although simulator has missingness; assuming no missings.")
                 conditions["missing_mask"] = np.zeros((num_datasets, num_steps), dtype=bool)
 
             elif conditions["missing_mask"].shape != (num_datasets, num_steps):

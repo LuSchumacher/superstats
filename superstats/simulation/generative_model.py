@@ -39,8 +39,7 @@ class GenerativeModel:
         - `MissingProcess` instance: used as-is.
         - Plain `Callable`: must follow the same contract as
           `MissingProcess.__call__`, i.e.
-          `(data_mapping, rng=None) -> {"data": filled_mapping,
-          "missing_mask": mask}`.
+          `(data_mapping, rng=None) -> filled_mapping | {"missing_mask": mask}`.
 
     Raises
     ------
@@ -428,16 +427,10 @@ class GenerativeModel:
         missing_mask : np.ndarray or None - mask from the process, or
             None if `self.missing_process` is None
         extra        : dict of np.ndarray - any additional entries the
-            process returned beyond `"data"` and `"missing_mask"` (e.g.
-            `RandomMissing` also returns `"p_missing"` and
-            `"missing_value"`); empty dict if `self.missing_process` is
-            None or the process returned no extra keys
-
-        Raises
-        ------
-        TypeError
-            If `missing_process` is a plain callable whose return value
-            is not a dict with `"data"` and `"missing_mask"` keys.
+            process returned beyond the simulator data keys and
+            `"missing_mask"` (e.g. `RandomMissing` also returns
+            `"p_missing"`); empty dict if `self.missing_process` is None
+            or the process returned no extra keys
         """
         if self.missing_process is None:
             return sim_data, None, {}
@@ -451,34 +444,9 @@ class GenerativeModel:
 
         result = self.missing_process(sim_data, rng=rng) if accepts_rng else self.missing_process(sim_data)
 
-        if not isinstance(result, dict) or "data" not in result or "missing_mask" not in result:
-            raise TypeError(
-                f"missing_process must return a dict with 'data' and 'missing_mask' keys, got {type(result)}"
-            )
-
-        corrupted = result["data"]
-        if not isinstance(corrupted, Mapping):
-            raise TypeError(f"missing_process must return named data under 'data', got {type(corrupted)}.")
-
-        expected_shape = next(iter(sim_data.values())).shape
-        data_keys = list(corrupted.keys())
-        if data_keys != self.data_keys:
-            raise ValueError(f"missing_process returned data keys {data_keys!r}, expected {self.data_keys!r}.")
-
-        sim_data = {}
-        for key in self.data_keys:
-            arr = np.asarray(corrupted[key])
-            if arr.shape != expected_shape:
-                raise ValueError(f"missing_process returned {key!r} with shape {arr.shape}, expected {expected_shape}.")
-            sim_data[key] = arr
-
-        missing_mask = np.asarray(result["missing_mask"])
-        if missing_mask.shape != expected_shape:
-            raise ValueError(
-                f"missing_process returned missing_mask with shape {missing_mask.shape}, expected {expected_shape}."
-            )
-
-        extra = {k: v for k, v in result.items() if k not in ("data", "missing_mask")}
+        sim_data = {key: result[key] for key in self.data_keys}
+        missing_mask = result.get("missing_mask")
+        extra = {k: v for k, v in result.items() if k not in (*self.data_keys, "missing_mask")}
         return sim_data, missing_mask, extra
 
     def sample(
@@ -526,11 +494,11 @@ class GenerativeModel:
             - `"missing_mask"`: included only if `self.missing_process`
             is not None; shape matches the mask returned by the process
             (for `RandomMissing`, (batch_size, num_steps)).
-            - any additional keys the missing process returns beyond
-            `"data"`/`"missing_mask"` (e.g. `RandomMissing` also
-            returns `"p_missing"`, shape (batch_size, 1)); omitted if
-            `self.missing_process` is
-            None or returns no extra keys.
+            - any additional keys the missing process returns beyond the
+            simulator data keys and `"missing_mask"` (e.g.
+            `RandomMissing` also returns `"p_missing"`, shape
+            (batch_size, 1)); omitted if `self.missing_process` is None
+            or returns no extra keys.
             - one entry per sampled parameter. Local (time-varying) params
               have shape (batch_size, num_steps); hyper and shared
               params have shape (batch_size, 1), or (batch_size, num_steps, 1)
@@ -546,9 +514,6 @@ class GenerativeModel:
         ValueError
             If required parameters are missing from the prior or have
             invalid shapes.
-        TypeError
-            If `missing_process` is a plain callable that doesn't return
-            the expected dict contract.
         """
         # Sample parameters
         prior_draws = self.prior.sample(batch_size=batch_size, num_steps=num_steps)

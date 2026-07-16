@@ -8,11 +8,11 @@ import numpy as np
 class MissingProcess(ABC):
     """Introduces missingness into simulated data.
 
-    Contract: ``(data, rng) -> {"data": filled, "missing_mask": mask}``,
+    Contract: ``(data, rng) -> filled | {"missing_mask": mask}``,
     where ``data`` is a mapping of named arrays with shape
     ``(batch_size, num_steps)``. ``mask`` is a boolean array of shape
-    ``(batch_size, num_steps)`` (True = missing), and ``filled`` is a
-    mapping with the same keys as ``data`` and masked entries set to the
+    ``(batch_size, num_steps)`` (True = missing), and the returned data
+    keys contain the masked entries set to the
     process's ``missing_value``. Instances are callable, so a
     MissingProcess, a subclass, or a bare function with this signature
     are interchangeable.
@@ -43,7 +43,7 @@ class MissingProcess(ABC):
 
         Returns
         -------
-        result : dict with keys "data" and "missing_mask"
+        result : flat dict with data keys, "missing_mask", and optional metadata
         """
         ...
 

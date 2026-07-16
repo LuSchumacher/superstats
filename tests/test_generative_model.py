@@ -1,3 +1,5 @@
+import logging
+
 import numpy as np
 import pytest
 
@@ -122,30 +124,34 @@ def test_workflow_default_adapter_uses_named_time_series_data_keys():
     assert adapted["inference_variables"].shape == (BATCH_SIZE, NUM_STEPS, 2)
 
 
-def test_workflow_prepare_conditions_adds_time_steps_for_named_data():
+def test_workflow_prepare_conditions_adds_time_steps_for_named_data(caplog):
     gm = _build_generative_model()
     workflow = object.__new__(Workflow)
     workflow.simulator = gm
     result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS)
 
-    conditions = workflow._prepare_conditions({key: result[key] for key in gm.data_keys})
+    with caplog.at_level(logging.WARNING, logger="superstats"):
+        conditions = workflow._prepare_conditions({key: result[key] for key in gm.data_keys})
 
     assert set(conditions) == {"response_time", "choice", "time_steps"}
     assert conditions["time_steps"].shape == (BATCH_SIZE, NUM_STEPS)
     assert np.array_equal(conditions["time_steps"][0], np.arange(NUM_STEPS))
+    assert "No time_steps provided" in caplog.text
 
 
-def test_workflow_prepare_conditions_adds_default_mask_when_configured():
+def test_workflow_prepare_conditions_adds_default_mask_when_configured(caplog):
     gm = _build_generative_model(missing_process="random")
     workflow = object.__new__(Workflow)
     workflow.simulator = gm
     result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS, rng=np.random.default_rng(0))
 
-    conditions = workflow._prepare_conditions({key: result[key] for key in gm.data_keys})
+    with caplog.at_level(logging.WARNING, logger="superstats"):
+        conditions = workflow._prepare_conditions({key: result[key] for key in gm.data_keys})
 
     assert set(conditions) == {"response_time", "choice", "time_steps", "missing_mask"}
     assert conditions["missing_mask"].shape == (BATCH_SIZE, NUM_STEPS)
     assert not np.any(conditions["missing_mask"])
+    assert "No missing_mask provided" in caplog.text
 
 
 def test_generative_model_defaults_to_no_missing_process():
@@ -227,7 +233,7 @@ def test_generative_model_missing_process_receives_rng_for_reproducibility():
 
     assert np.array_equal(result_a["missing_mask"], result_b["missing_mask"])
     for key in data_a:
-        assert np.array_equal(result_a["data"][key], result_b["data"][key])
+        assert np.array_equal(result_a[key], result_b[key])
 
 
 def test_generative_model_accepts_plain_callable_missing_process():
@@ -238,7 +244,7 @@ def test_generative_model_accepts_plain_callable_missing_process():
         filled = {key: value.copy() for key, value in data.items()}
         for value in filled.values():
             value[mask] = -1.0
-        return {"data": filled, "missing_mask": mask}
+        return filled | {"missing_mask": mask}
 
     gm = _build_generative_model(missing_process=half_missing)
     result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS)
@@ -255,10 +261,10 @@ def test_generative_model_rejects_non_callable_missing_process():
         _build_generative_model(missing_process="not-callable")
 
 
-def test_generative_model_rejects_missing_process_with_bad_return_contract():
+def test_generative_model_propagates_missing_process_contract_errors():
     def bad_process(data, rng=None):
-        return data  # not a dict with 'data'/'missing_mask'
+        return data
 
     gm = _build_generative_model(missing_process=bad_process)
-    with pytest.raises(TypeError):
+    with pytest.raises(KeyError):
         gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS)

@@ -1,6 +1,11 @@
 """Tools for neural superstatistics and dynamic Bayesian estimation."""
 
-from . import diagnostics, prior, simulation, workflow, transition, networks
+import logging as _logging
+
+_logging.basicConfig(level=_logging.INFO)
+_logging.getLogger(__name__).setLevel(_logging.INFO)
+
+from . import diagnostics, prior, simulation, workflow, transition, networks  # noqa: E402
 
 __all__ = [
     "diagnostics",
@@ -10,3 +15,5 @@ __all__ = [
     "transition",
     "networks",
 ]
+
+del _logging
