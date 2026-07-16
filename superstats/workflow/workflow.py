@@ -109,19 +109,21 @@ class Workflow:
         local_keys = simulator.local_keys
         hyper_keys = simulator.hyper_keys
         shared_keys = simulator.shared_keys
+        data_keys = simulator.data_keys
 
         adapter = (
             bf.Adapter()
             .convert_dtype("float64", "float32")
+            .as_time_series(["time_steps", *data_keys])
             .concatenate(local_keys + hyper_keys + shared_keys, into="inference_variables")
-            .as_time_series("time_steps")
         )
 
+        summary_keys = ["time_steps", *data_keys]
         if hasattr(simulator, "has_mask") and simulator.has_mask:
             adapter = adapter.as_time_series("missing_mask")
-            adapter = adapter.concatenate(["time_steps", "data", "missing_mask"], into="summary_variables")
+            adapter = adapter.concatenate([*summary_keys, "missing_mask"], into="summary_variables")
         else:
-            adapter = adapter.concatenate(["time_steps", "data"], into="summary_variables")
+            adapter = adapter.concatenate(summary_keys, into="summary_variables")
 
         return adapter
 
@@ -161,6 +163,44 @@ class Workflow:
         with open(os.path.join(self.checkpoint_filepath, "history.pkl"), "wb") as f:
             pickle.dump(new_history, f)
         self.workflow.history = new_history
+
+    def _prepare_conditions(self, data: Mapping[str, np.ndarray]) -> dict[str, np.ndarray]:
+        """Add adapter-required auxiliary condition keys to named observations."""
+        if not isinstance(data, Mapping):
+            raise TypeError(f"data must be a mapping of named arrays, got {type(data)}.")
+
+        conditions = dict(data)
+        if self.simulator is None:
+            return conditions
+
+        data_keys = self.simulator.data_keys
+        missing_keys = [key for key in data_keys if key not in conditions]
+        if missing_keys:
+            raise KeyError(f"Missing observed data keys {missing_keys!r}. Expected keys: {data_keys!r}.")
+
+        first = conditions[data_keys[0]]
+        num_datasets = first.shape[0]
+        num_steps = first.shape[1]
+
+        if "time_steps" not in conditions:
+            conditions["time_steps"] = np.broadcast_to(np.arange(num_steps)[None, :], (num_datasets, num_steps))
+
+        elif conditions["time_steps"].shape != (num_datasets, num_steps):
+            raise ValueError(
+                f"'time_steps' must have shape {(num_datasets, num_steps)}, got {conditions['time_steps'].shape}."
+            )
+
+        if getattr(self.simulator, "has_mask", False):
+            if "missing_mask" not in conditions:
+                conditions["missing_mask"] = np.zeros((num_datasets, num_steps), dtype=bool)
+
+            elif conditions["missing_mask"].shape != (num_datasets, num_steps):
+                raise ValueError(
+                    f"'missing_mask' must have shape {(num_datasets, num_steps)}, "
+                    f"got {conditions['missing_mask'].shape}."
+                )
+
+        return conditions
 
     def fit_offline(
         self, data, validation_data, epochs: int = 100, batch_size: int = 32, save_history: bool = True, **kwargs
@@ -271,8 +311,13 @@ class Workflow:
 
         Parameters
         ----------
-        data                 : np.ndarray of shape (num_datasets, num_steps, data_dims)
-            Observed data to condition on.
+        data                 : dict of np.ndarray
+            Observed data to condition on, keyed by the simulator's
+            named observation variables. Each value should have shape
+            (num_datasets, num_steps). If `time_steps` is omitted, it is
+            generated automatically. If the simulator was configured with
+            missingness and `missing_mask` is omitted, an all-observed
+            mask is generated automatically.
         num_samples          : int, optional, default: 500
             Number of posterior samples per dataset.
         batch_size : int, optional, default: 4
@@ -285,7 +330,13 @@ class Workflow:
         samples : dict of {param_name: np.ndarray} - posterior samples
             per parameter
         """
-        samples = self.approximator.sample(conditions=data, num_samples=num_samples, batch_size=batch_size, **kwargs)
+        conditions = self._prepare_conditions(data)
+        samples = self.approximator.sample(
+            conditions=conditions,
+            num_samples=num_samples,
+            batch_size=batch_size,
+            **kwargs,
+        )
         return samples
 
     def resimulate_posterior(
@@ -293,7 +344,7 @@ class Workflow:
         posterior_samples: Mapping[str, np.ndarray],
         num_sims: int = 10,
         rng=None,
-    ) -> np.ndarray:
+    ) -> dict[str, np.ndarray]:
         """Generate posterior predictive simulations from posterior parameter draws.
 
         Parameters
@@ -310,8 +361,9 @@ class Workflow:
 
         Returns
         -------
-        sim_data : np.ndarray of shape (batch_size, num_sims,
-            num_steps, data_dim) - simulated data
+        sim_data : dict of np.ndarray
+            Named simulated variables. Each value has shape
+            (batch_size, num_sims, num_steps).
 
         Raises
         ------
@@ -387,7 +439,7 @@ class Workflow:
             num_steps=num_steps,
         )
 
-        return raw_sim.reshape(batch_size, num_sims, num_steps, *raw_sim.shape[2:])
+        return {name: value.reshape(batch_size, num_sims, num_steps) for name, value in raw_sim.items()}
 
     def plot_history(self, history):
         """Plot training loss curves.

@@ -1,6 +1,6 @@
 """Posterior predictive resimulation plots."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Literal
 
 import numpy as np
@@ -21,6 +21,39 @@ BAND_LABELS = {"std": "±1 SD", "95ci": "95% CI", "mad": "±1.48 MAD", "95hdi": 
 
 BASE_COL_WIDTH = 4.0
 BASE_ROW_HEIGHT = 3.0
+
+
+def _select_resimulation_variable(
+    pred_data: Mapping[str, np.ndarray],
+    real_data: Mapping[str, np.ndarray],
+    data_dim: int | str,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Resolve named posterior predictive data to one variable."""
+    if not isinstance(pred_data, Mapping) or not isinstance(real_data, Mapping):
+        raise TypeError("pred_data and real_data must be mappings of named arrays.")
+
+    keys = list(pred_data)
+    if isinstance(data_dim, int):
+        try:
+            key = keys[data_dim]
+        except IndexError as exc:
+            raise ValueError(f"data_dim index {data_dim} is out of range for data keys {keys!r}.") from exc
+    else:
+        key = data_dim
+        if key not in pred_data:
+            raise KeyError(f"pred_data key {key!r} not found. Available keys: {keys!r}.")
+    if key not in real_data:
+        raise KeyError(f"real_data key {key!r} not found. Available keys: {list(real_data)!r}.")
+
+    pred_x = np.asarray(pred_data[key])
+    real_x = np.asarray(real_data[key])
+    if pred_x.ndim != 3:
+        raise ValueError(
+            f"Predictive variable {key!r} must have shape (num_datasets, num_resims, num_steps), got {pred_x.shape}."
+        )
+    if real_x.ndim != 2:
+        raise ValueError(f"Observed variable {key!r} must have shape (num_datasets, num_steps), got {real_x.shape}.")
+    return pred_x, real_x
 
 
 def _smooth_trajectory(arr: np.ndarray, smoothing: str, window: int) -> np.ndarray:
@@ -184,9 +217,9 @@ def _is_discrete(values: np.ndarray, max_discrete_values: int) -> tuple[np.ndarr
 
 
 def plot_posterior_resimulation(
-    pred_data: np.ndarray,
-    real_data: np.ndarray,
-    data_dim: int = 0,
+    pred_data: Mapping[str, np.ndarray],
+    real_data: Mapping[str, np.ndarray],
+    data_dim: int | str = 0,
     kind: Literal["trajectory", "dist"] = "trajectory",
     aggregation: Callable | None = None,
     aggregate_strategy: Literal["full_uncertainty", "no_epistemic"] = "full_uncertainty",
@@ -208,12 +241,15 @@ def plot_posterior_resimulation(
 
     Parameters
     ----------
-    pred_data           : np.ndarray of shape (num_datasets, num_resims, num_steps, data_dims)
-        Posterior resimulated data.
-    real_data           : np.ndarray of shape (num_datasets, num_steps, data_dims)
-        Observed data.
-    data_dim            : int, optional, default: 0
-        Which data dimension to plot.
+    pred_data           : mapping of np.ndarray
+        Posterior resimulated data, mapping observation names to arrays
+        of shape (num_datasets, num_resims, num_steps).
+    real_data           : mapping of np.ndarray
+        Observed data, mapping observation names to arrays of shape
+        (num_datasets, num_steps).
+    data_dim            : int or str, optional, default: 0
+        Which observation variable to plot. Strings select by key and
+        integers index the predictive mapping's key order.
     kind                : {"trajectory", "dist"}, optional, default: "trajectory"
         "trajectory": band/center over steps.
         "dist": distribution across steps.
@@ -278,27 +314,18 @@ def plot_posterior_resimulation(
     ------
     ValueError
         If `kind` is not "trajectory" or "dist", if `pred_data` or
-        `real_data` don't have the expected number of dimensions, if
-        their (num_datasets, num_steps) don't match, or if
-        `aggregate_strategy` is not "full_uncertainty" or "no_epistemic".
+        `real_data` don't have the expected shape, if their
+        (num_datasets, num_steps) don't match, or if `aggregate_strategy`
+        is not "full_uncertainty" or "no_epistemic".
     """
     if kind not in {"trajectory", "dist"}:
         raise ValueError("kind must be 'trajectory' or 'dist'.")
 
-    pred = np.asarray(pred_data)
-    real = np.asarray(real_data)
+    pred_x, real_x = _select_resimulation_variable(pred_data, real_data, data_dim)
 
-    if pred.ndim != 4:
-        raise ValueError("pred_data must have shape (num_datasets, num_resims, num_steps, data_dims).")
-    if real.ndim != 3:
-        raise ValueError("real_data must have shape (num_datasets, num_steps, data_dims).")
-
-    D, S, T, _ = pred.shape
-    if real.shape[0] != D or real.shape[1] != T:
+    D, S, T = pred_x.shape
+    if real_x.shape[0] != D or real_x.shape[1] != T:
         raise ValueError("real_data's (num_datasets, num_steps) must match pred_data's.")
-
-    pred_x = pred[..., data_dim]
-    real_x = real[..., data_dim]
 
     if kind == "trajectory" and smoothing is not None:
         real_x = _smooth_trajectory(real_x, smoothing, smoothing_window)
