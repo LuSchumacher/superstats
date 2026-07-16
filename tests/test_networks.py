@@ -65,7 +65,8 @@ def test_recurrent_net_invalid_merge_mode_raises():
 def test_recurrent_net_layer_norm_can_be_disabled():
     net = RecurrentNet(layer_norm=False)
 
-    assert net.normalization_layers == [None]
+    assert len(net.normalization_layers) == len(net.recurrent_layers)
+    assert all(layer is None for layer in net.normalization_layers)
 
 
 def test_recurrent_net_adds_normalization_per_recurrent_layer():
