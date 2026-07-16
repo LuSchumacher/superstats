@@ -9,7 +9,8 @@ import matplotlib.pyplot as plt
 from superstats.prior.joint_prior import JointPrior
 from superstats.diagnostics.plots.prior_push_forward import plot_push_forward
 from superstats.simulation.augmentation.missing_process import MissingProcess
-from superstats.simulation.augmentation.random_missing import RandomMissing
+from superstats.simulation.augmentation.contamination_process import ContaminationProcess
+from superstats.utils.dispatch import find_contamination_process, find_missing_process
 
 
 class GenerativeModel:
@@ -53,24 +54,19 @@ class GenerativeModel:
         prior: JointPrior,
         model: Callable,
         missing_process: MissingProcess | Callable | Literal["random"] | None = None,
+        contamination_process: ContaminationProcess | Callable | Literal["random_choice"] | None = None,
     ):
         self.prior = prior
         self.model = model
 
-        if not callable(model):
-            raise TypeError("model must be callable")
-
-        if missing_process == "random":
-            self.missing_process = RandomMissing()
-        elif missing_process is None or callable(missing_process):
-            self.missing_process = missing_process
-        else:
-            raise TypeError("missing_process must be None, 'random', a MissingProcess instance, or callable")
+        self.missing_process = find_missing_process(missing_process)
 
         if self.missing_process is not None:
             self.has_mask = True
         else:
             self.has_mask = False
+
+        self.contamination_process = find_contamination_process(contamination_process)
 
         # Inspect simulator signature
         self.signature = inspect.signature(model)
@@ -404,6 +400,50 @@ class GenerativeModel:
 
         return normalized
 
+    def _apply_contamination_process(
+        self,
+        sim_data: Dict[str, np.ndarray],
+        rng: np.random.Generator | None,
+    ) -> tuple[Dict[str, np.ndarray], Dict[str, np.ndarray]]:
+        """Run `self.contamination_process` on `sim_data`, if configured.
+
+        Parameters
+        ----------
+        sim_data : dict of np.ndarray
+            Named simulated variables. Must include "response_time" and
+            "choice" (each shape (batch_size, num_steps)) if a contamination
+            process is configured, since `ContaminationProcess.apply`
+            requires both. Any additional keys are passed through unchanged.
+        rng      : np.random.Generator or None
+            Generator forwarded to the contamination process.
+
+        Returns
+        -------
+        sim_data : dict of np.ndarray - the (possibly contaminated) named
+            simulated variables. "response_time" and "choice" are replaced
+            by their contaminated versions if a process is configured;
+            otherwise `sim_data` is returned unchanged.
+        extra    : dict of np.ndarray - additional entries the process
+            returned beyond the original `sim_data` keys (e.g.
+            `"p_contaminated"` for `RandomChoiceProcess`); empty dict if
+            `self.contamination_process` is None or the process returned no
+            extra keys.
+        """
+        if self.contamination_process is None:
+            return sim_data, {}
+
+        if isinstance(self.contamination_process, ContaminationProcess):
+            out = self.contamination_process.apply(sim_data, rng=rng)
+        else:
+            out = self.contamination_process(sim_data, rng=rng)
+
+        extra_keys = out.keys() - sim_data.keys()
+        extra = {key: out[key] for key in extra_keys}
+
+        sim_data = {key: out[key] for key in sim_data.keys()}
+
+        return sim_data, extra
+
     def _apply_missing_process(
         self,
         sim_data: Dict[str, np.ndarray],
@@ -541,6 +581,9 @@ class GenerativeModel:
         model_output = self.model(*ordered_params)
         sim_data = self._reshape_model_output(model_output, batch_size, num_steps, expected_data_keys=self.data_keys)
 
+        # Apply contamination augmentation, if configured
+        sim_data, contamination_extra = self._apply_contamination_process(sim_data, rng)
+
         # Apply missingness augmentation, if configured
         sim_data, missing_mask, missing_extra = self._apply_missing_process(sim_data, rng)
 
@@ -557,6 +600,8 @@ class GenerativeModel:
         time_steps = np.broadcast_to(np.arange(num_steps)[None, :], (batch_size, num_steps))
 
         result = {**sim_data, "time_steps": time_steps}
+        if contamination_extra:
+            result.update(contamination_extra)
         if missing_mask is not None:
             result["missing_mask"] = missing_mask
         if missing_extra:
