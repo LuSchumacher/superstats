@@ -26,6 +26,15 @@ The library aims to be domain-agnostic, but for now focuses on cognitive modelin
 
 ## Conceptual overview
 
+<div align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="img/superstats-arch-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="img/superstats-arch-light.svg">
+  <img alt="Overview graphic  of superstats" src="./img/superstats-arch-light.svg">
+</picture>
+</div>
+<br>
+
 A superstatistical model has two levels. A **low-level observation model** $\mathcal{G}$ generates the data at each time step.
 A **high-level transition model** $\mathcal{T}$ describes how the parameters of that model evolve:
 
