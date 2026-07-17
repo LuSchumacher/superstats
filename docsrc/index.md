@@ -22,7 +22,7 @@ $$\theta_t = \mathcal{T}(\theta_{0:t-1}; \eta) \qquad x_t = \mathcal{G}(x_{1:t-1
 
 ## Install
 
-We support Python 3.11 to 3.13. Install the latest version from source:
+We support Python 3.12 to 3.14. Install the latest version from source:
 
 ```bash
 pip install superstats

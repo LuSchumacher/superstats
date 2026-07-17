@@ -1,25 +1,28 @@
-# Superstats
+<div align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="img/superstats-long-light.svg">
+  <source media="(prefers-color-scheme: light)" srcset="img/superstats-long-dark.svg">
+  <img alt="Overview graphic  of superstats" src="./img/superstats-long-light.svg">
+</picture>
+</div>
+<br>
 
 [![Tests](https://img.shields.io/github/actions/workflow/status/LuSchumacher/superstats/tests.yml?branch=main&style=for-the-badge&label=Tests)](https://github.com/LuSchumacher/superstats/actions/workflows/tests.yml)
 [![Coverage](https://img.shields.io/codecov/c/github/LuSchumacher/superstats/main?style=for-the-badge&label=Coverage)](https://app.codecov.io/gh/LuSchumacher/superstats/tree/main)
 [![License](https://img.shields.io/github/license/LuSchumacher/superstats?style=for-the-badge)](LICENSE)
 [![Contributions Welcome](https://img.shields.io/badge/contributions-welcome-brightgreen?style=for-the-badge)](https://github.com/LuSchumacher/superstats/issues)
 
-**superstats** is a Python library for simulation and Bayesian estimation of models with time-varying parameters.
+## What is Superstats?
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="img/superstats-square-light.svg">
-  <source media="(prefers-color-scheme: light)" srcset="img/superstats-square-dark.svg">
-  <img align="right" src="img/superstats-square-dark.svg" alt="Superstats logo" width="180">
-</picture>
+Superstats is a Python library for simulation and Bayesian estimation of dynamic models with time-varying parameters.
 
-The library is general, but for now focuses on cognitive modeling. It provides users with:
+The library aims to be domain-agnostic, but for now focuses on cognitive modeling. It provides users with:
 
 - A lean API for non-stationary models: specify which parameters change across time, and how.
-- A library of transition models: random walks, Ornstein–Uhlenbeck, autoregression, jump processes, mixtures, and Gaussian processes.
+- A library of transition models: random walks, ARs, jump processes, mixtures, and Gaussian processes.
 - Built-in cognitive models, plus a plug-in interface for any simulator of your own.
-- Amortized Bayesian inference build on top of [BayesFlow](https://github.com/bayesflow-org/bayesflow): train once, then quickly fit every data set.
-- Diagnostic and visualization tools for every critical step in a principled Bayesian workflow.
+- Amortized Bayesian inference built on top of [BayesFlow](https://github.com/bayesflow-org/bayesflow): train once, then quickly fit every data set.
+- Diagnostics and visualization tools for every critical step in a principled Bayesian workflow.
 
 ## Conceptual overview
 
@@ -33,7 +36,7 @@ $$\theta_t = \mathcal{T}(\theta_{0:t-1}; \eta) \qquad x_t = \mathcal{G}(x_{1:t-1
 
 ## Install
 
-We support Python 3.11 to 3.13. Install the latest version from source:
+We support Python 3.12 to 3.14. Install the latest version from source:
 
 ```bash
 pip install superstats
@@ -85,7 +88,7 @@ It is highly recommended to use a GPU for fast training and inference. For an in
 | [Minimal workflow demo](examples/minimal_workflow_demo.ipynb) | Short path from prior to posterior |
 | Extensive workflow demo | Comming soon |
 
-More examples are always welcome — if you have an application, please consider opening a pull request.
+More examples are always welcome. If you have an application, please consider opening a pull request.
 
 
 ## Contributing
