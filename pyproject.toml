@@ -14,18 +14,18 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 description = "Estimating time-varying parameters with deep learning"
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { file = "LICENSE" }
 
-requires-python = ">= 3.11, < 3.14"
+requires-python = ">= 3.12"
 dependencies = [
-    "jax >= 0.10.2",
+    "jax >= 0.11.0",
     "bayesflow>=2.0.12",
     "numba >= 0.63.1",
     "ipywidgets>=8.1.8",
@@ -64,7 +64,7 @@ dev = [
     "ruff",
 ]
 cuda = [
-    "jax[cuda12] >= 0.10.2",
+    "jax[cuda13] >= 0.11.0",
 ]
 docs = [
     "myst-nb ~= 1.2",
@@ -123,7 +123,7 @@ line-length = 120
 indent-width = 4
 
 # minimum target python version
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 # Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.

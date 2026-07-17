@@ -3,23 +3,20 @@
 from typing import Literal, Callable
 from collections.abc import Mapping, Sequence
 
-import bayesflow as bf
-import numpy as np
-import keras
 import functools
 import os
 import pickle
-import warnings
+import numpy as np
+import pandas as pd
+
+import bayesflow as bf
+import keras
 
 from bayesflow.adapters import Adapter
-from bayesflow.networks import SummaryNetwork, InferenceNetwork
 
 from superstats.simulation import GenerativeModel
-from superstats.networks import RecurrentNet
-from superstats.defaults.network_defaults import (
-    DEFAULT_SUMMARY_NETWORK,
-    DEFAULT_INFERENCE_NETWORK,
-)
+from superstats.utils.dispatch import find_inference_network, find_summary_network
+from superstats.utils.logging import warning as log_warning
 from superstats.diagnostics.plots import (
     plot_time_varying_verification,
     plot_recovery,
@@ -38,21 +35,18 @@ class Workflow:
 
     Parameters
     ----------
-    simulator            : GenerativeModel or None, optional, default: None
+    simulator         : GenerativeModel or None, optional, default: None
         The simulator used for training and, when `adapter` is not
         provided, for building a default adapter. Required in that case.
-    adapter              : Adapter or None, optional, default: None
+    adapter           : Adapter or None, optional, default: None
         Data adapter for the workflow. If None, a default adapter is
         built from `simulator.local_keys`, `simulator.hyper_keys`, and
         `simulator.shared_keys` (which requires `simulator` to be set).
-    summary_network      : {"recurrent"} or SummaryNetwork or None, optional, default: "recurrent"
-        "recurrent" builds a `RecurrentNet` using
-        `DEFAULT_SUMMARY_NETWORK`; otherwise, the given network (or
-        None) is used directly.
-    inference_network    : {"consistency"} or InferenceNetwork, optional, default: "consistency"
-        "consistency" builds a `bf.networks.StableConsistencyModel`
-        using `DEFAULT_INFERENCE_NETWORK`; otherwise, the given network
-        is used directly.
+    summary_network   : {"recurrent", "transformer"} or keras.Layer, optional, default: "recurrent".
+        String names build a default summary network; otherwise, an already-created Keras layer is used directly.
+    inference_network : {"coupling", "coupling_flow"} or keras.Layer, optional, default: "coupling".
+        String names build a default inference network; otherwise, an already-created Keras
+        layer is used directly.
     checkpoint_filepath  : str or None, optional, default: None
         Directory for saving/restoring the approximator and training
         history.
@@ -72,8 +66,8 @@ class Workflow:
         self,
         simulator: GenerativeModel | None = None,
         adapter: Adapter | None = None,
-        summary_network: Literal["recurrent"] | SummaryNetwork | None = "recurrent",
-        inference_network: Literal["consistency"] | InferenceNetwork = "consistency",
+        summary_network: Literal["recurrent", "transformer"] | keras.Layer = "recurrent",
+        inference_network: Literal["coupling", "coupling_flow"] | keras.Layer = "coupling",
         checkpoint_filepath: str | None = None,
         restore_approximator: bool = True,
         restore_history: bool = True,
@@ -81,39 +75,19 @@ class Workflow:
     ):
         self.simulator = simulator
 
-        if summary_network == "recurrent":
-            self.summary_network = RecurrentNet(**DEFAULT_SUMMARY_NETWORK)
-        else:
-            self.summary_network = summary_network
-
-        if inference_network == "consistency":
-            self.inference_network = bf.networks.StableConsistencyModel(**DEFAULT_INFERENCE_NETWORK)
-        else:
-            self.inference_network = inference_network
+        self.summary_network = find_summary_network(summary_network)
+        self.inference_network = find_inference_network(inference_network)
 
         if adapter is not None:
             self.adapter = adapter
         else:
-            self.local_keys = self.simulator.local_keys
-            self.hyper_keys = self.simulator.hyper_keys
-            self.shared_keys = self.simulator.shared_keys
-            self.adapter = (
-                bf.Adapter()
-                .convert_dtype("float64", "float32")
-                .concatenate(self.local_keys + self.hyper_keys + self.shared_keys, into="inference_variables")
-                .rename("data", "summary_variables")
-            )
+            self.adapter = self.default_adapter(simulator)
 
         self.checkpoint_filepath = checkpoint_filepath
 
         if restore_approximator and self.checkpoint_filepath is not None and os.path.isdir(self.checkpoint_filepath):
             restore = True
         elif restore_approximator:
-            warnings.warn(
-                f"restore_approximator=True but no model found at '{self.checkpoint_filepath}'. "
-                "Starting with no trained model.",
-                stacklevel=2,
-            )
             restore = False
         else:
             restore = False
@@ -131,11 +105,29 @@ class Workflow:
 
         if restore_history and self.checkpoint_filepath is not None and os.path.isdir(self.checkpoint_filepath):
             self._load_history()
-        elif restore_history:
-            warnings.warn(
-                f"restore_history=True but no history found at '{self.checkpoint_filepath}'. Starting with no history.",
-                stacklevel=2,
-            )
+
+    @staticmethod
+    def default_adapter(simulator):
+        local_keys = simulator.local_keys
+        hyper_keys = simulator.hyper_keys
+        shared_keys = simulator.shared_keys
+        data_keys = simulator.data_keys
+
+        adapter = (
+            bf.Adapter()
+            .convert_dtype("float64", "float32")
+            .as_time_series(["time_steps", *data_keys])
+            .concatenate(local_keys + hyper_keys + shared_keys, into="inference_variables")
+        )
+
+        summary_keys = ["time_steps", *data_keys]
+        if hasattr(simulator, "has_mask") and simulator.has_mask:
+            adapter = adapter.as_time_series("missing_mask")
+            adapter = adapter.concatenate([*summary_keys, "missing_mask"], into="summary_variables")
+        else:
+            adapter = adapter.concatenate(summary_keys, into="summary_variables")
+
+        return adapter
 
     def _load_history(self) -> None:
         """Load persisted training history from `checkpoint_filepath`, if present.
@@ -173,6 +165,49 @@ class Workflow:
         with open(os.path.join(self.checkpoint_filepath, "history.pkl"), "wb") as f:
             pickle.dump(new_history, f)
         self.workflow.history = new_history
+
+    def _prepare_conditions(self, data: Mapping[str, np.ndarray]) -> dict[str, np.ndarray]:
+        """Add adapter-required auxiliary condition keys to named observations."""
+        if not isinstance(data, Mapping):
+            raise TypeError(f"data must be a mapping of named arrays, got {type(data)}.")
+
+        conditions = dict(data)
+        if self.simulator is None:
+            return conditions
+
+        data_keys = self.simulator.data_keys
+        missing_keys = [key for key in data_keys if key not in conditions]
+        if missing_keys:
+            raise KeyError(f"Missing observed data keys {missing_keys!r}. Expected keys: {data_keys!r}.")
+
+        first = conditions[data_keys[0]]
+        num_datasets = first.shape[0]
+        num_steps = first.shape[1]
+
+        if "time_steps" not in conditions:
+            log_warning("No time_steps provided; adding contiguous default time steps.")
+            conditions["time_steps"] = np.broadcast_to(np.arange(1, num_steps + 1)[None, :], (num_datasets, num_steps))
+
+        elif conditions["time_steps"].shape != (num_datasets, num_steps):
+            raise ValueError(
+                f"'time_steps' must have shape {(num_datasets, num_steps)}, got {conditions['time_steps'].shape}."
+            )
+
+        if getattr(self.simulator, "has_mask", False):
+            if "missing_mask" not in conditions:
+                log_warning("No missing_mask provided although simulator has missingness; assuming no missings.")
+                conditions["missing_mask"] = np.zeros((num_datasets, num_steps), dtype=bool)
+
+            elif conditions["missing_mask"].shape != (num_datasets, num_steps):
+                raise ValueError(
+                    f"'missing_mask' must have shape {(num_datasets, num_steps)}, "
+                    f"got {conditions['missing_mask'].shape}."
+                )
+
+        remaining_keys = data_keys + ["missing_mask", "time_steps"]
+        conditions = {k: v for k, v in conditions.items() if k in remaining_keys}
+
+        return conditions
 
     def fit_offline(
         self, data, validation_data, epochs: int = 100, batch_size: int = 32, save_history: bool = True, **kwargs
@@ -274,20 +309,25 @@ class Workflow:
 
     def sample(
         self,
-        data: np.ndarray,
-        num_samples: int = 1000,
-        inference_batch_size: int = 5,
+        data: dict[str, np.ndarray],
+        num_samples: int = 500,
+        batch_size: int = 4,
         **kwargs,
     ) -> dict[str, np.ndarray]:
         """Run inference on observed data.
 
         Parameters
         ----------
-        data                 : np.ndarray of shape (num_datasets, num_steps, data_dims)
-            Observed data to condition on.
-        num_samples          : int, optional, default: 1000
+        data                 : dict of np.ndarray
+            Observed data to condition on, keyed by the simulator's
+            named observation variables. Each value should have shape
+            (num_datasets, num_steps). If `time_steps` is omitted, it is
+            generated automatically. If the simulator was configured with
+            missingness and `missing_mask` is omitted, an all-observed
+            mask is generated automatically.
+        num_samples          : int, optional, default: 500
             Number of posterior samples per dataset.
-        inference_batch_size : int, optional, default: 5
+        batch_size : int, optional, default: 4
             Datasets per GPU batch, to avoid out-of-memory errors.
         **kwargs
             Forwarded to `self.approximator.sample`.
@@ -297,10 +337,11 @@ class Workflow:
         samples : dict of {param_name: np.ndarray} - posterior samples
             per parameter
         """
+        conditions = self._prepare_conditions(data)
         samples = self.approximator.sample(
-            conditions={"data": data},
+            conditions=conditions,
             num_samples=num_samples,
-            batch_size=inference_batch_size,
+            batch_size=batch_size,
             **kwargs,
         )
         return samples
@@ -310,7 +351,7 @@ class Workflow:
         posterior_samples: Mapping[str, np.ndarray],
         num_sims: int = 10,
         rng=None,
-    ) -> np.ndarray:
+    ) -> dict[str, np.ndarray]:
         """Generate posterior predictive simulations from posterior parameter draws.
 
         Parameters
@@ -327,8 +368,9 @@ class Workflow:
 
         Returns
         -------
-        sim_data : np.ndarray of shape (batch_size, num_sims,
-            num_steps, data_dim) - simulated data
+        sim_data : dict of np.ndarray
+            Named simulated variables. Each value has shape
+            (batch_size, num_sims, num_steps).
 
         Raises
         ------
@@ -404,7 +446,7 @@ class Workflow:
             num_steps=num_steps,
         )
 
-        return raw_sim.reshape(batch_size, num_sims, num_steps, *raw_sim.shape[2:])
+        return {name: value.reshape(batch_size, num_sims, num_steps) for name, value in raw_sim.items()}
 
     def plot_history(self, history):
         """Plot training loss curves.
@@ -772,3 +814,147 @@ class Workflow:
             mixture_names=mixture_names,
             **kwargs,
         )
+
+    def df_to_dict(
+        self,
+        df: pd.DataFrame,
+        id_col: str,
+        data_mapping: Mapping[str, str],
+        missing_value: int | float | None = None,
+        time_col: str | None = None,
+    ) -> dict[str, np.ndarray]:
+        """Convert a long-format DataFrame into the model's dict-of-arrays format.
+
+        Groups `df` by `id_col` and reshapes the columns named in
+        `data_mapping` into arrays of shape (batch_size, num_steps).
+
+        If `time_col` is given, it must contain discrete integer-like
+        values. The actual labels may be negative or non-contiguous; they
+        are normalized to positions `1..num_steps` in sorted time order.
+        Otherwise, rows are placed by order of appearance within each
+        `id_col` group. Missing or padded positions are flagged in
+        `"missing_mask"` and filled with the simulator's missing-value
+        convention when one exists.
+
+        Parameters
+        ----------
+        df           : pd.DataFrame
+            Long-format data with one row per (dataset, step). Must contain
+            `id_col`, `time_col` (if given), and every key in
+            `data_mapping`.
+        id_col       : str
+            Name of the column in `df` identifying which dataset/sequence
+            each row belongs to. Rows are grouped by this column, in order
+            of first appearance, to form the batch dimension.
+        data_mapping : Mapping[str, str]
+            Maps a column name in `df` to the corresponding key expected by
+            the generative model, e.g. `{"rt": "response_time", "correct":
+            "choice"}`. The set of values (not keys) must exactly match
+            `self.simulator.data_keys`.
+        missing_value : int or float
+            Sentinel value marking a missing observation, and used to
+            initialize/pad positions with no corresponding row.
+        time_col     : str or None, optional, default: None
+            Name of the column in `df` giving each row's discrete time
+            label. If None, rows are placed by order of appearance within
+            their `id_col` group instead.
+
+        Returns
+        -------
+        data : dict of np.ndarray
+            One entry per generative-model data key, each of shape
+            (batch_size, num_steps), plus `"missing_mask"` (1 where any
+            mapped column equals `missing_value` at that step, 0 otherwise)
+            and `"time_steps"` (each row equal to `1..num_steps`).
+        """
+        simulator = getattr(self, "simulator", None)
+        if simulator is None:
+            raise AttributeError("df_to_dict needs a Workflow with a simulator.")
+
+        required_cols = [id_col, *data_mapping]
+        if time_col is not None:
+            required_cols.append(time_col)
+        missing_cols = [col for col in required_cols if col not in df.columns]
+
+        if missing_cols:
+            raise KeyError(f"df is missing required column(s): {missing_cols}")
+        if df.empty:
+            raise ValueError("df_to_dict requires at least one row.")
+
+        mapped_keys = list(data_mapping.values())
+        expected_keys = list(simulator.data_keys)
+        if sorted(mapped_keys) != sorted(expected_keys):
+            raise ValueError(
+                f"data_mapping values {sorted(mapped_keys)!r} do not match "
+                f"simulator.data_keys {sorted(expected_keys)!r}."
+            )
+
+        if missing_value is None:
+            missing_value = -1
+
+        groups = df.groupby(id_col, sort=False)
+        dataset_ids = list(groups.groups.keys())
+
+        if time_col is not None:
+            time_float = pd.to_numeric(df[time_col], errors="coerce").to_numpy(dtype=float)
+            if not np.all(np.isfinite(time_float)) or not np.all(np.isclose(time_float, np.rint(time_float))):
+                raise ValueError(f"time_col '{time_col}' must contain discrete integer-like values.")
+
+            # Map arbitrary discrete labels, including negatives, onto dense columns.
+            time_values = pd.Series(np.rint(time_float).astype(np.int64), index=df.index)
+            time_lookup = {value: idx for idx, value in enumerate(sorted(time_values.unique()))}
+            num_steps = len(time_lookup)
+        else:
+            time_values = None
+            time_lookup = None
+            num_steps = int(groups.size().max())
+
+        batch_size = len(dataset_ids)
+        data = {data_key: np.full((batch_size, num_steps), missing_value, dtype=float) for data_key in expected_keys}
+
+        def _col_idx(group: pd.DataFrame, dataset_id) -> np.ndarray:
+            if time_col is None:
+                return np.arange(len(group))
+            idx = np.array([time_lookup[value] for value in time_values.loc[group.index]], dtype=int)
+            if len(np.unique(idx)) != len(idx):
+                raise ValueError(f"Duplicate '{time_col}' values found within id '{dataset_id}'.")
+            return idx
+
+        def _as_float_values(group: pd.DataFrame, col: str) -> np.ndarray:
+            try:
+                return group[col].to_numpy(dtype=float)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"Column '{col}' must be numeric.") from exc
+
+        for i, dataset_id in enumerate(dataset_ids):
+            group = groups.get_group(dataset_id)
+            col_idx = _col_idx(group, dataset_id)
+            for col, data_key in data_mapping.items():
+                data[data_key][i, col_idx] = _as_float_values(group, col)
+
+        missing_mask = np.zeros((batch_size, num_steps), dtype=bool)
+        for data_key in expected_keys:
+            missing_mask |= pd.isna(data[data_key])
+            if not pd.isna(missing_value):
+                missing_mask |= data[data_key] == missing_value
+
+        model_missing_value = getattr(getattr(simulator, "missing", None), "missing_value", missing_value)
+
+        def _missing_fill(data_key: str, index: int):
+            if isinstance(model_missing_value, Mapping):
+                return model_missing_value[data_key]
+            value = np.asarray(model_missing_value)
+            if value.ndim == 0:
+                return model_missing_value
+            if value.shape == (len(expected_keys),):
+                return value[index]
+            raise ValueError(f"simulator missing_value must be scalar, mapping, or shape ({len(expected_keys)},).")
+
+        # A missing value in any observed variable drops the whole time step.
+        for i, data_key in enumerate(expected_keys):
+            data[data_key][missing_mask] = _missing_fill(data_key, i)
+
+        data["missing_mask"] = missing_mask
+        data["time_steps"] = np.broadcast_to(np.arange(1, num_steps + 1)[None, :], (batch_size, num_steps))
+
+        return data
