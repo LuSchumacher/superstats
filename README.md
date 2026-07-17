@@ -9,7 +9,7 @@
 
 [![Tests](https://img.shields.io/github/actions/workflow/status/LuSchumacher/superstats/tests.yml?branch=main&style=for-the-badge&label=Tests)](https://github.com/LuSchumacher/superstats/actions/workflows/tests.yml)
 [![Coverage](https://img.shields.io/codecov/c/github/LuSchumacher/superstats/main?style=for-the-badge&label=Coverage)](https://app.codecov.io/gh/LuSchumacher/superstats/tree/main)
-[![License](https://img.shields.io/github/license/LuSchumacher/superstats?style=for-the-badge)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)](LICENSE)
 [![Contributions Welcome](https://img.shields.io/badge/contributions-welcome-brightgreen?style=for-the-badge)](https://github.com/LuSchumacher/superstats/issues)
 
 ## What is Superstats?
@@ -50,9 +50,9 @@ pip install git+https://github.com/LuSchumacher/superstats.git@dev"
 
 ## Getting started
 
-A complete workflow: a diffusion decision model whose drift rate and thresold are free to vary across time:
+A complete workflow using a diffusion decision model whose drift rate and thresold are free to vary across time:
 
-```pythons
+```python
 import superstats as sup
 
 # 1. Assume which parameters move, and how
@@ -86,7 +86,7 @@ It is highly recommended to use a GPU for fast training and inference. For an in
 | Notebook | What it covers |
 |---|---|
 | [Minimal workflow demo](examples/minimal_workflow_demo.ipynb) | Short path from prior to posterior |
-| Extensive workflow demo | Comming soon |
+| Extensive workflow demo | Coming soon |
 
 More examples are always welcome. If you have an application, please consider opening a pull request.
 
