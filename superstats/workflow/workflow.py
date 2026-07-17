@@ -7,6 +7,7 @@ import functools
 import os
 import pickle
 import numpy as np
+import pandas as pd
 
 import bayesflow as bf
 import keras
@@ -185,7 +186,7 @@ class Workflow:
 
         if "time_steps" not in conditions:
             log_warning("No time_steps provided; adding contiguous default time steps.")
-            conditions["time_steps"] = np.broadcast_to(np.arange(num_steps)[None, :], (num_datasets, num_steps))
+            conditions["time_steps"] = np.broadcast_to(np.arange(1, num_steps + 1)[None, :], (num_datasets, num_steps))
 
         elif conditions["time_steps"].shape != (num_datasets, num_steps):
             raise ValueError(
@@ -813,3 +814,147 @@ class Workflow:
             mixture_names=mixture_names,
             **kwargs,
         )
+
+    def df_to_dict(
+        self,
+        df: pd.DataFrame,
+        id_col: str,
+        data_mapping: Mapping[str, str],
+        missing_value: int | float | None = None,
+        time_col: str | None = None,
+    ) -> dict[str, np.ndarray]:
+        """Convert a long-format DataFrame into the model's dict-of-arrays format.
+
+        Groups `df` by `id_col` and reshapes the columns named in
+        `data_mapping` into arrays of shape (batch_size, num_steps).
+
+        If `time_col` is given, it must contain discrete integer-like
+        values. The actual labels may be negative or non-contiguous; they
+        are normalized to positions `1..num_steps` in sorted time order.
+        Otherwise, rows are placed by order of appearance within each
+        `id_col` group. Missing or padded positions are flagged in
+        `"missing_mask"` and filled with the simulator's missing-value
+        convention when one exists.
+
+        Parameters
+        ----------
+        df           : pd.DataFrame
+            Long-format data with one row per (dataset, step). Must contain
+            `id_col`, `time_col` (if given), and every key in
+            `data_mapping`.
+        id_col       : str
+            Name of the column in `df` identifying which dataset/sequence
+            each row belongs to. Rows are grouped by this column, in order
+            of first appearance, to form the batch dimension.
+        data_mapping : Mapping[str, str]
+            Maps a column name in `df` to the corresponding key expected by
+            the generative model, e.g. `{"rt": "response_time", "correct":
+            "choice"}`. The set of values (not keys) must exactly match
+            `self.simulator.data_keys`.
+        missing_value : int or float
+            Sentinel value marking a missing observation, and used to
+            initialize/pad positions with no corresponding row.
+        time_col     : str or None, optional, default: None
+            Name of the column in `df` giving each row's discrete time
+            label. If None, rows are placed by order of appearance within
+            their `id_col` group instead.
+
+        Returns
+        -------
+        data : dict of np.ndarray
+            One entry per generative-model data key, each of shape
+            (batch_size, num_steps), plus `"missing_mask"` (1 where any
+            mapped column equals `missing_value` at that step, 0 otherwise)
+            and `"time_steps"` (each row equal to `1..num_steps`).
+        """
+        simulator = getattr(self, "simulator", None)
+        if simulator is None:
+            raise AttributeError("df_to_dict needs a Workflow with a simulator.")
+
+        required_cols = [id_col, *data_mapping]
+        if time_col is not None:
+            required_cols.append(time_col)
+        missing_cols = [col for col in required_cols if col not in df.columns]
+
+        if missing_cols:
+            raise KeyError(f"df is missing required column(s): {missing_cols}")
+        if df.empty:
+            raise ValueError("df_to_dict requires at least one row.")
+
+        mapped_keys = list(data_mapping.values())
+        expected_keys = list(simulator.data_keys)
+        if sorted(mapped_keys) != sorted(expected_keys):
+            raise ValueError(
+                f"data_mapping values {sorted(mapped_keys)!r} do not match "
+                f"simulator.data_keys {sorted(expected_keys)!r}."
+            )
+
+        if missing_value is None:
+            missing_value = -1
+
+        groups = df.groupby(id_col, sort=False)
+        dataset_ids = list(groups.groups.keys())
+
+        if time_col is not None:
+            time_float = pd.to_numeric(df[time_col], errors="coerce").to_numpy(dtype=float)
+            if not np.all(np.isfinite(time_float)) or not np.all(np.isclose(time_float, np.rint(time_float))):
+                raise ValueError(f"time_col '{time_col}' must contain discrete integer-like values.")
+
+            # Map arbitrary discrete labels, including negatives, onto dense columns.
+            time_values = pd.Series(np.rint(time_float).astype(np.int64), index=df.index)
+            time_lookup = {value: idx for idx, value in enumerate(sorted(time_values.unique()))}
+            num_steps = len(time_lookup)
+        else:
+            time_values = None
+            time_lookup = None
+            num_steps = int(groups.size().max())
+
+        batch_size = len(dataset_ids)
+        data = {data_key: np.full((batch_size, num_steps), missing_value, dtype=float) for data_key in expected_keys}
+
+        def _col_idx(group: pd.DataFrame, dataset_id) -> np.ndarray:
+            if time_col is None:
+                return np.arange(len(group))
+            idx = np.array([time_lookup[value] for value in time_values.loc[group.index]], dtype=int)
+            if len(np.unique(idx)) != len(idx):
+                raise ValueError(f"Duplicate '{time_col}' values found within id '{dataset_id}'.")
+            return idx
+
+        def _as_float_values(group: pd.DataFrame, col: str) -> np.ndarray:
+            try:
+                return group[col].to_numpy(dtype=float)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"Column '{col}' must be numeric.") from exc
+
+        for i, dataset_id in enumerate(dataset_ids):
+            group = groups.get_group(dataset_id)
+            col_idx = _col_idx(group, dataset_id)
+            for col, data_key in data_mapping.items():
+                data[data_key][i, col_idx] = _as_float_values(group, col)
+
+        missing_mask = np.zeros((batch_size, num_steps), dtype=bool)
+        for data_key in expected_keys:
+            missing_mask |= pd.isna(data[data_key])
+            if not pd.isna(missing_value):
+                missing_mask |= data[data_key] == missing_value
+
+        model_missing_value = getattr(getattr(simulator, "missing", None), "missing_value", missing_value)
+
+        def _missing_fill(data_key: str, index: int):
+            if isinstance(model_missing_value, Mapping):
+                return model_missing_value[data_key]
+            value = np.asarray(model_missing_value)
+            if value.ndim == 0:
+                return model_missing_value
+            if value.shape == (len(expected_keys),):
+                return value[index]
+            raise ValueError(f"simulator missing_value must be scalar, mapping, or shape ({len(expected_keys)},).")
+
+        # A missing value in any observed variable drops the whole time step.
+        for i, data_key in enumerate(expected_keys):
+            data[data_key][missing_mask] = _missing_fill(data_key, i)
+
+        data["missing_mask"] = missing_mask
+        data["time_steps"] = np.broadcast_to(np.arange(1, num_steps + 1)[None, :], (batch_size, num_steps))
+
+        return data

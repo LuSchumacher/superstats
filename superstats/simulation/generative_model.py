@@ -31,12 +31,12 @@ class GenerativeModel:
         The simulation function that takes parameter values and returns
         simulated data. The function signature determines the expected
         parameter names and order.
-    missing : MissingProcess, Callable, or None, optional
+    missing : MissingProcess, Callable, "random", or None, optional, default: "random"
         Process applied to simulated data to introduce missingness.
-        - Not provided (default) or `None`: disables missingness augmentation
-          and `sample` will not include a `"missing_mask"` entry in its result.
-        - `"random"`: uses `RandomMissingProcess()`, the default MCAR missingness
-          process.
+        - Not provided (default) or `"random"`: uses `RandomMissingProcess()`,
+          the default MCAR missingness process.
+        - `None`: disables missingness augmentation and `sample` will not include
+          a `"missing_mask"` entry in its result.
         - `MissingProcess` instance: used as-is.
         - Plain `Callable`: must follow the same contract as
           `MissingProcess.__call__`, i.e.
@@ -53,7 +53,7 @@ class GenerativeModel:
         self,
         prior: JointPrior,
         model: Callable,
-        missing: MissingProcess | Callable | Literal["random"] | None = None,
+        missing: MissingProcess | Callable | Literal["random"] | None = "random",
         contamination: ContaminationProcess | Callable | Literal["random_choice"] | None = None,
     ):
         self.prior = prior
@@ -530,7 +530,7 @@ class GenerativeModel:
             shape (batch_size, num_steps), corrupted by
             `self.missing` if one is configured.
             - `"time_steps"`: shape (batch_size, num_steps), each row
-            equal to `np.arange(num_steps)`.
+            equal to `1..num_steps`.
             - `"missing_mask"`: included only if `self.missing`
             is not None; shape matches the mask returned by the process
             (for `RandomMissingProcess`, (batch_size, num_steps)).
@@ -597,7 +597,7 @@ class GenerativeModel:
             if shared_params is not None:
                 shared_params = {k: np.tile(v[:, np.newaxis, :], (1, num_steps, 1)) for k, v in shared_params.items()}
 
-        time_steps = np.broadcast_to(np.arange(num_steps)[None, :], (batch_size, num_steps))
+        time_steps = np.broadcast_to(np.arange(1, num_steps + 1)[None, :], (batch_size, num_steps))
 
         result = {**sim_data, "time_steps": time_steps}
         if contamination_extra:

@@ -1,6 +1,7 @@
 import logging
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from superstats.prior import JointPrior, Prior
@@ -110,7 +111,7 @@ def test_generative_model_sample_includes_time_steps():
     assert "time_steps" in result
     assert result["time_steps"].shape == (BATCH_SIZE, NUM_STEPS)
 
-    expected_row = np.arange(NUM_STEPS)
+    expected_row = np.arange(1, NUM_STEPS + 1)
     for row in result["time_steps"]:
         assert np.array_equal(row, expected_row)
 
@@ -125,7 +126,7 @@ def test_workflow_default_adapter_uses_named_time_series_data_keys():
     assert "data" not in adapted
     assert "response_time" not in adapted
     assert "choice" not in adapted
-    assert adapted["summary_variables"].shape == (BATCH_SIZE, NUM_STEPS, 3)
+    assert adapted["summary_variables"].shape == (BATCH_SIZE, NUM_STEPS, 4)
     assert adapted["inference_variables"].shape == (BATCH_SIZE, NUM_STEPS, 2)
 
 
@@ -138,10 +139,12 @@ def test_workflow_prepare_conditions_adds_time_steps_for_named_data(caplog):
     with caplog.at_level(logging.WARNING, logger="superstats"):
         conditions = workflow._prepare_conditions({key: result[key] for key in gm.data_keys})
 
-    assert set(conditions) == {"response_time", "choice", "time_steps"}
+    assert set(conditions) == {"response_time", "choice", "time_steps", "missing_mask"}
     assert conditions["time_steps"].shape == (BATCH_SIZE, NUM_STEPS)
-    assert np.array_equal(conditions["time_steps"][0], np.arange(NUM_STEPS))
+    assert np.array_equal(conditions["time_steps"][0], np.arange(1, NUM_STEPS + 1))
+    assert not np.any(conditions["missing_mask"])
     assert "No time_steps provided" in caplog.text
+    assert "No missing_mask provided" in caplog.text
 
 
 def test_workflow_prepare_conditions_adds_default_mask_when_configured(caplog):
@@ -159,17 +162,95 @@ def test_workflow_prepare_conditions_adds_default_mask_when_configured(caplog):
     assert "No missing_mask provided" in caplog.text
 
 
-def test_generative_model_defaults_to_no_missing():
+def test_workflow_df_to_dict_normalizes_negative_discrete_time():
     gm = _build_generative_model()
-    assert gm.missing is None
-    assert gm.has_mask is False
+    workflow = object.__new__(Workflow)
+    workflow.simulator = gm
+    df = pd.DataFrame(
+        {
+            "participant": ["a", "a", "a", "b", "b"],
+            "time": [-2, 0, 2, -2, 2],
+            "rt": [1.0, 2.0, 3.0, 4.0, 5.0],
+            "choice": [0, 1, 0, 1, 1],
+        }
+    )
+
+    data = workflow.df_to_dict(
+        df,
+        id_col="participant",
+        time_col="time",
+        data_mapping={"rt": "response_time", "choice": "choice"},
+        missing_value=-1,
+    )
+
+    assert set(data) == {"response_time", "choice", "missing_mask", "time_steps"}
+    assert np.array_equal(data["time_steps"], np.array([[1, 2, 3], [1, 2, 3]]))
+    assert np.array_equal(data["response_time"], np.array([[1.0, 2.0, 3.0], [4.0, -1.0, 5.0]]))
+    assert np.array_equal(data["missing_mask"], np.array([[False, False, False], [False, True, False]]))
 
 
-def test_generative_model_sample_omits_missing_mask_by_default():
+def test_workflow_df_to_dict_rejects_continuous_time():
+    gm = _build_generative_model()
+    workflow = object.__new__(Workflow)
+    workflow.simulator = gm
+    df = pd.DataFrame(
+        {
+            "participant": ["a", "a"],
+            "time": [0.0, 0.5],
+            "rt": [1.0, 2.0],
+            "choice": [0, 1],
+        }
+    )
+
+    with pytest.raises(ValueError, match="discrete integer-like"):
+        workflow.df_to_dict(
+            df,
+            id_col="participant",
+            time_col="time",
+            data_mapping={"rt": "response_time", "choice": "choice"},
+        )
+
+
+def test_workflow_df_to_dict_uses_simulator_missing_value():
+    gm = _build_generative_model(missing=RandomMissingProcess(p_missing=0.0, missing_value=-999.0))
+    workflow = object.__new__(Workflow)
+    workflow.simulator = gm
+    df = pd.DataFrame(
+        {
+            "participant": ["a", "a"],
+            "rt": [1.0, -1.0],
+            "choice": [0, 1],
+        }
+    )
+
+    data = workflow.df_to_dict(
+        df,
+        id_col="participant",
+        data_mapping={"rt": "response_time", "choice": "choice"},
+        missing_value=-1,
+    )
+
+    assert np.array_equal(data["time_steps"], np.array([[1, 2]]))
+    assert np.array_equal(data["missing_mask"], np.array([[False, True]]))
+    assert data["response_time"][0, 1] == -999.0
+    assert data["choice"][0, 1] == -999.0
+
+
+def test_generative_model_defaults_to_random_missing():
+    gm = _build_generative_model()
+    assert isinstance(gm.missing, RandomMissingProcess)
+    assert isinstance(gm.missing, MissingProcess)
+    assert gm.has_mask is True
+
+
+def test_generative_model_sample_includes_missing_mask_by_default():
     gm = _build_generative_model()
     result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS, rng=np.random.default_rng(0))
 
-    assert "missing_mask" not in result
+    assert "missing_mask" in result
+    assert result["missing_mask"].shape == (BATCH_SIZE, NUM_STEPS)
+    assert result["missing_mask"].dtype == np.bool_
+    assert "p_missing" in result
 
 
 def test_generative_model_random_missing_includes_mask():
