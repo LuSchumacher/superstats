@@ -1,0 +1,15 @@
+superstats.utils.logging
+========================
+
+.. automodule:: superstats.utils.logging
+
+   
+   .. rubric:: Functions
+
+   .. autosummary::
+   
+      error
+      info
+      warn_once
+      warning
+   

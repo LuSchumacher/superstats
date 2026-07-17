@@ -161,7 +161,7 @@
 
 <li class="nav-item ">
   <a class="nav-link nav-internal" href="../../../../contributing.html">
-    Contributing to superstats
+    Contributing
   </a>
 </li>
 
@@ -288,7 +288,7 @@
 
 <li class="nav-item ">
   <a class="nav-link nav-internal" href="../../../../contributing.html">
-    Contributing to superstats
+    Contributing
   </a>
 </li>
 
@@ -395,7 +395,7 @@
 <span></span><span class="sd">&quot;&quot;&quot;Prior push-forward plotting helpers.&quot;&quot;&quot;</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Callable</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">Mapping</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Literal</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
@@ -423,11 +423,33 @@
 <span class="n">BASE_ROW_HEIGHT</span> <span class="o">=</span> <span class="mf">3.0</span>
 
 
+<span class="k">def</span><span class="w"> </span><span class="nf">_select_data_variable</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span> <span class="n">data_dim</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Resolve named data to a single (batch, steps) variable.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;data must be a mapping of named arrays, got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">data</span><span class="p">)</span><span class="si">}</span><span class="s2">.&quot;</span><span class="p">)</span>
+
+    <span class="n">keys</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data_dim</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">key</span> <span class="o">=</span> <span class="n">keys</span><span class="p">[</span><span class="n">data_dim</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">IndexError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;data_dim index </span><span class="si">{</span><span class="n">data_dim</span><span class="si">}</span><span class="s2"> is out of range for data keys </span><span class="si">{</span><span class="n">keys</span><span class="si">!r}</span><span class="s2">.&quot;</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">key</span> <span class="o">=</span> <span class="n">data_dim</span>
+        <span class="k">if</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;data key </span><span class="si">{</span><span class="n">key</span><span class="si">!r}</span><span class="s2"> not found. Available keys: </span><span class="si">{</span><span class="n">keys</span><span class="si">!r}</span><span class="s2">.&quot;</span><span class="p">)</span>
+
+    <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="n">key</span><span class="p">])</span>
+    <span class="k">if</span> <span class="n">x</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Data variable </span><span class="si">{</span><span class="n">key</span><span class="si">!r}</span><span class="s2"> must have shape (batch_size, steps), got </span><span class="si">{</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">.&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">x</span>
+
+
 <div class="viewcode-block" id="plot_push_forward">
 <a class="viewcode-back" href="../../../../api/generated/superstats.diagnostics.plots.prior_push_forward.html#superstats.diagnostics.plot_push_forward">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">plot_push_forward</span><span class="p">(</span>
-    <span class="n">data</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
-    <span class="n">data_dim</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+    <span class="n">data</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
+    <span class="n">data_dim</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
     <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;trajectory&quot;</span><span class="p">,</span> <span class="s2">&quot;dist&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;dist&quot;</span><span class="p">,</span>
     <span class="n">aggregation</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">uncertainty_fun</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;std&quot;</span><span class="p">,</span> <span class="s2">&quot;95ci&quot;</span><span class="p">,</span> <span class="s2">&quot;mad&quot;</span><span class="p">,</span> <span class="s2">&quot;95hdi&quot;</span><span class="p">]</span> <span class="o">|</span> <span class="n">Callable</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="s2">&quot;95ci&quot;</span><span class="p">,</span>
@@ -446,10 +468,12 @@
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
-<span class="sd">    data                : np.ndarray of shape (batch_size, steps, data_dims)</span>
-<span class="sd">        Simulation data from the generative model.</span>
-<span class="sd">    data_dim            : int, optional, default: 0</span>
-<span class="sd">        Which data dimension to plot.</span>
+<span class="sd">    data                : mapping of np.ndarray</span>
+<span class="sd">        Simulation data from the generative model, mapping observation</span>
+<span class="sd">        names to arrays of shape (batch_size, steps).</span>
+<span class="sd">    data_dim            : int or str, optional, default: 0</span>
+<span class="sd">        Which observation variable to plot. Strings select by key and</span>
+<span class="sd">        integers index the mapping&#39;s key order.</span>
 <span class="sd">    kind                : {&quot;dist&quot;, &quot;trajectory&quot;}, optional, default: &quot;dist&quot;</span>
 <span class="sd">        Plot type: distribution of summary statistics or time-series</span>
 <span class="sd">        trajectories.</span>
@@ -490,12 +514,13 @@
 <span class="sd">    Raises</span>
 <span class="sd">    ------</span>
 <span class="sd">    ValueError</span>
-<span class="sd">        If `kind` is not &quot;dist&quot; or &quot;trajectory&quot;.</span>
+<span class="sd">        If `kind` is not &quot;dist&quot; or &quot;trajectory&quot;, or if `data` has an</span>
+<span class="sd">        unsupported shape.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">kind</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">&quot;dist&quot;</span><span class="p">,</span> <span class="s2">&quot;trajectory&quot;</span><span class="p">}:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;kind must be &#39;dist&#39; or &#39;trajectory&#39;.&quot;</span><span class="p">)</span>
 
-    <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">data</span><span class="p">)[:,</span> <span class="p">:,</span> <span class="n">data_dim</span><span class="p">]</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="n">_select_data_variable</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">data_dim</span><span class="p">)</span>
     <span class="n">show_aggregate</span> <span class="o">=</span> <span class="n">aggregation</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
     <span class="n">show_uncertainty</span> <span class="o">=</span> <span class="n">uncertainty_fun</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
 

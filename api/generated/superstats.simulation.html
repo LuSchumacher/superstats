@@ -48,7 +48,7 @@
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
-    <link rel="next" title="superstats.simulation.cognitive" href="superstats.simulation.cognitive.html" />
+    <link rel="next" title="superstats.simulation.augmentation" href="superstats.simulation.augmentation.html" />
     <link rel="prev" title="superstats.transition.transition" href="superstats.transition.transition.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -164,7 +164,7 @@
 
 <li class="nav-item ">
   <a class="nav-link nav-internal" href="../../contributing.html">
-    Contributing to superstats
+    Contributing
   </a>
 </li>
 
@@ -293,7 +293,7 @@
 
 <li class="nav-item ">
   <a class="nav-link nav-internal" href="../../contributing.html">
-    Contributing to superstats
+    Contributing
   </a>
 </li>
 
@@ -386,15 +386,26 @@
 </ul>
 </details></li>
 <li class="toctree-l1 current active has-children"><a class="current reference internal" href="#">superstats.simulation</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="superstats.simulation.augmentation.html">superstats.simulation.augmentation</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="superstats.simulation.augmentation.contamination.html">superstats.simulation.augmentation.contamination</a></li>
+<li class="toctree-l3"><a class="reference internal" href="superstats.simulation.augmentation.missing.html">superstats.simulation.augmentation.missing</a></li>
+<li class="toctree-l3"><a class="reference internal" href="superstats.simulation.augmentation.random_choice_contamination.html">superstats.simulation.augmentation.random_choice_contamination</a></li>
+<li class="toctree-l3"><a class="reference internal" href="superstats.simulation.augmentation.random_missing.html">superstats.simulation.augmentation.random_missing</a></li>
+</ul>
+</details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="superstats.simulation.cognitive.html">superstats.simulation.cognitive</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="superstats.simulation.cognitive.cdm.html">superstats.simulation.cognitive.cdm</a></li>
 <li class="toctree-l3"><a class="reference internal" href="superstats.simulation.cognitive.ddm.html">superstats.simulation.cognitive.ddm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="superstats.simulation.cognitive.rdm.html">superstats.simulation.cognitive.rdm</a></li>
 </ul>
 </details></li>
 <li class="toctree-l2"><a class="reference internal" href="superstats.simulation.generative_model.html">superstats.simulation.generative_model</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="superstats.simulation.cognitive.html">superstats.simulation.cognitive</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="superstats.simulation.cognitive.cdm.html">superstats.simulation.cognitive.cdm</a></li>
 <li class="toctree-l2"><a class="reference internal" href="superstats.simulation.cognitive.ddm.html">superstats.simulation.cognitive.ddm</a></li>
+<li class="toctree-l2"><a class="reference internal" href="superstats.simulation.cognitive.rdm.html">superstats.simulation.cognitive.rdm</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="superstats.workflow.html">superstats.workflow</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -429,12 +440,15 @@
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="superstats.defaults.html">superstats.defaults</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="superstats.defaults.augmentation_defaults.html">superstats.defaults.augmentation_defaults</a></li>
 <li class="toctree-l2"><a class="reference internal" href="superstats.defaults.color_palette.html">superstats.defaults.color_palette</a></li>
 <li class="toctree-l2"><a class="reference internal" href="superstats.defaults.network_defaults.html">superstats.defaults.network_defaults</a></li>
 <li class="toctree-l2"><a class="reference internal" href="superstats.defaults.transition_defaults.html">superstats.defaults.transition_defaults</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="superstats.utils.html">superstats.utils</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="superstats.utils.dispatch.html">superstats.utils.dispatch</a></li>
+<li class="toctree-l2"><a class="reference internal" href="superstats.utils.logging.html">superstats.utils.logging</a></li>
 <li class="toctree-l2"><a class="reference internal" href="superstats.utils.plotting.html">superstats.utils.plotting</a></li>
 <li class="toctree-l2"><a class="reference internal" href="superstats.utils.transformations.html">superstats.utils.transformations</a></li>
 </ul>
@@ -504,13 +518,14 @@
 <p>Simulation models and built-in cognitive simulators.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="superstats.simulation.GenerativeModel">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">superstats.simulation.</span></span><span class="sig-name descname"><span class="pre">GenerativeModel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prior</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../_modules/superstats/simulation/generative_model.html#GenerativeModel"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#superstats.simulation.GenerativeModel" title="Link to this definition">#</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">superstats.simulation.</span></span><span class="sig-name descname"><span class="pre">GenerativeModel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prior</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">missing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'random'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">contamination</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../_modules/superstats/simulation/generative_model.html#GenerativeModel"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#superstats.simulation.GenerativeModel" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>A generative model that combines a joint prior with a simulation function.</p>
 <p>This class facilitates sampling parameters from a joint prior distribution
 and generating simulated data using a user-provided model function. It handles
 parameter broadcasting, flattening, and reshaping to support batched simulations
-with time-varying parameters.</p>
+with time-varying parameters. Optionally, a missing-data process can be applied
+to the simulated data to introduce and record missingness.</p>
 <dl class="field-list">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><dl>
@@ -521,11 +536,26 @@ include both time-varying transitions and time-invariant priors.</p>
 simulated data. The function signature determines the expected
 parameter names and order.</p>
 </dd>
+<dt><strong>missing</strong><span class="classifier"><code class="xref py py-obj docutils literal notranslate"><span class="pre">MissingProcess</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">Callable</span></code>, “random”, <code class="xref py py-obj docutils literal notranslate"><span class="pre">or</span></code> <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">None</span></code></a>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code>, default: “random”</span></dt><dd><p>Process applied to simulated data to introduce missingness.
+- Not provided (default) or <cite>“random”</cite>: uses <cite>RandomMissingProcess()</cite>,</p>
+<blockquote>
+<div><p>the default MCAR missingness process.</p>
+</div></blockquote>
+<ul class="simple">
+<li><p><cite>None</cite>: disables missingness augmentation and <cite>sample</cite> will not include
+a <cite>“missing_mask”</cite> entry in its result.</p></li>
+<li><p><cite>MissingProcess</cite> instance: used as-is.</p></li>
+<li><p>Plain <cite>Callable</cite>: must follow the same contract as
+<cite>MissingProcess.__call__</cite>, i.e.
+<cite>(data_mapping, rng=None) -&gt; filled_mapping | {“missing_mask”: mask}</cite>.</p></li>
+</ul>
+</dd>
 </dl>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
 <dd class="field-even"><dl class="simple">
-<dt><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.14)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">TypeError</span></code></a></dt><dd><p>If <cite>model</cite> is not callable.</p>
+<dt><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.14)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">TypeError</span></code></a></dt><dd><p>If <cite>model</cite> is not callable, or if <cite>missing</cite> is neither
+<cite>None</cite>, <cite>“random”</cite>, nor callable.</p>
 </dd>
 </dl>
 </dd>
@@ -533,6 +563,8 @@ parameter names and order.</p>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>prior</strong> (<a class="reference internal" href="superstats.prior.joint_prior.html#superstats.prior.joint_prior.JointPrior" title="superstats.prior.joint_prior.JointPrior"><em>JointPrior</em></a>)</p></li>
 <li><p><strong>model</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Callable" title="(in Python v3.14)"><em>Callable</em></a>)</p></li>
+<li><p><strong>missing</strong> (<a class="reference internal" href="superstats.simulation.augmentation.missing.html#superstats.simulation.augmentation.missing.MissingProcess" title="superstats.simulation.augmentation.missing.MissingProcess"><em>MissingProcess</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Callable" title="(in Python v3.14)"><em>Callable</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'random'</em><em>] </em><em>| </em><em>None</em>)</p></li>
+<li><p><strong>contamination</strong> (<a class="reference internal" href="superstats.simulation.augmentation.contamination.html#superstats.simulation.augmentation.contamination.ContaminationProcess" title="superstats.simulation.augmentation.contamination.ContaminationProcess"><em>ContaminationProcess</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Callable" title="(in Python v3.14)"><em>Callable</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'random_choice'</em><em>] </em><em>| </em><em>None</em>)</p></li>
 </ul>
 </dd>
 </dl>
@@ -566,7 +598,8 @@ fixed-parameter entries that the model actually consumes.</p>
 </dd>
 <dt><strong>num_steps</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">int</span></code></a>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code>, default: 200</span></dt><dd><p>Number of time steps per simulation.</p>
 </dd>
-<dt><strong>data_dim</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">int</span></code></a>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code>, default: 0</span></dt><dd><p>Data dimension to plot.</p>
+<dt><strong>data_dim</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">int</span></code></a> or <a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">str</span></code></a>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code>, default: 0</span></dt><dd><p>Observation variable to plot. Integers index
+<cite>self.data_keys</cite>; strings select a variable by name.</p>
 </dd>
 <dt><strong>kind</strong><span class="classifier">{“dist”, “trajectory”}, <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code>, default: “dist”</span></dt><dd><p>Plot type.</p>
 </dd>
@@ -596,7 +629,7 @@ match that function’s own supported set.</p>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>num_sim</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>)</p></li>
 <li><p><strong>num_steps</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>)</p></li>
-<li><p><strong>data_dim</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>)</p></li>
+<li><p><strong>data_dim</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>)</p></li>
 <li><p><strong>kind</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>)</p></li>
 <li><p><strong>aggregation</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Callable" title="(in Python v3.14)"><em>Callable</em></a><em> | </em><em>None</em>)</p></li>
 <li><p><strong>uncertainty_fun</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Callable" title="(in Python v3.14)"><em>Callable</em></a><em> | </em><em>None</em>)</p></li>
@@ -612,13 +645,14 @@ match that function’s own supported set.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="superstats.simulation.GenerativeModel.sample">
-<span class="sig-name descname"><span class="pre">sample</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">batch_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_steps</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">include_fixed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tile_to_steps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../_modules/superstats/simulation/generative_model.html#GenerativeModel.sample"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#superstats.simulation.GenerativeModel.sample" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">sample</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">batch_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_steps</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">include_fixed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tile_to_steps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rng</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../_modules/superstats/simulation/generative_model.html#GenerativeModel.sample"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#superstats.simulation.GenerativeModel.sample" title="Link to this definition">#</a></dt>
 <dd><p>Sample parameters from the prior and generate simulated data.</p>
 <p>This method performs a complete generative process:
 1. Samples parameters from the joint prior distribution
 2. Prepares parameters for vectorized simulation
 3. Runs the simulation model
-4. Reshapes outputs back to trajectory format</p>
+4. Reshapes outputs back to trajectory format
+5. Applies <cite>self.missing</cite> to the data, if configured</p>
 <dl class="field-list">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><dl>
@@ -632,19 +666,41 @@ match that function’s own supported set.</p>
 (batch_size, 1) to (batch_size, num_steps, 1), aligning
 them with the time axis of local parameters.</p>
 </dd>
+<dt><strong>rng</strong><span class="classifier"><code class="xref py py-obj docutils literal notranslate"><span class="pre">np.random.Generator</span></code> or <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">None</span></code></a>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code>, default: <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">None</span></code></a></span></dt><dd><p>Random generator forwarded to <cite>self.missing</cite>. If
+None, the missing process falls back to its own default
+(an unseeded generator).</p>
+</dd>
 </dl>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><dl>
-<dt><strong>result</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">dict</span></code></a> - <code class="xref py py-obj docutils literal notranslate"><span class="pre">flat</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">dictionary</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">with</span></code> <cite>‘data’</cite> <code class="xref py py-obj docutils literal notranslate"><span class="pre">plus</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">one</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">entry</span></code></span></dt><dd><p>per sampled parameter.
-Local (time-varying) params have shape
-(batch_size, num_steps, 1); hyper and shared params have
-shape (batch_size, 1), or (batch_size, num_steps, 1) when
-<cite>tile_to_steps</cite> is True.
-Fixed params are included only when <cite>include_fixed</cite> is True.</p>
+<dt><strong>result</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">dict</span></code></a> - <code class="xref py py-obj docutils literal notranslate"><span class="pre">flat</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">dictionary</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">with</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">the</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">following</span></code> entries:</span></dt><dd><ul class="simple">
+<li><p>one entry per simulated observation variable, each with</p></li>
+</ul>
+<p>shape (batch_size, num_steps), corrupted by
+<cite>self.missing</cite> if one is configured.
+- <cite>“time_steps”</cite>: shape (batch_size, num_steps), each row
+equal to <cite>1..num_steps</cite>.
+- <cite>“missing_mask”</cite>: included only if <cite>self.missing</cite>
+is not None; shape matches the mask returned by the process
+(for <cite>RandomMissingProcess</cite>, (batch_size, num_steps)).
+- any additional keys the missing process returns beyond the
+simulator data keys and <cite>“missing_mask”</cite> (e.g.
+<cite>RandomMissingProcess</cite> also returns <cite>“p_missing”</cite>, shape
+(batch_size, 1)); omitted if <cite>self.missing</cite> is None
+or returns no extra keys.
+- one entry per sampled parameter. Local (time-varying) params</p>
+<blockquote>
+<div><p>have shape (batch_size, num_steps); hyper and shared
+params have shape (batch_size, 1), or (batch_size, num_steps, 1)
+when <cite>tile_to_steps</cite> is True.</p>
+</div></blockquote>
+<ul class="simple">
+<li><p>fixed params are included only when <cite>include_fixed</cite> is True.</p></li>
+</ul>
 <p>The instance attributes <cite>local_keys</cite>, <cite>hyper_keys</cite>,
-<cite>shared_keys</cite>, and <cite>fixed_keys</cite> are updated each call to
-record which keys belong to which parameter group.</p>
+<cite>shared_keys</cite>, <cite>fixed_keys</cite>, and <cite>data_keys</cite> record which
+keys belong to which group.</p>
 </dd>
 </dl>
 </dd>
@@ -661,6 +717,7 @@ invalid shapes.</p>
 <li><p><strong>num_steps</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>)</p></li>
 <li><p><strong>include_fixed</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>)</p></li>
 <li><p><strong>tile_to_steps</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>)</p></li>
+<li><p><strong>rng</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/random/generator.html#numpy.random.Generator" title="(in NumPy v2.5)"><em>Generator</em></a><em> | </em><em>None</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
@@ -687,8 +744,8 @@ name. See <cite>_prepare_flat_params</cite> for the accepted shapes.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><dl>
-<dt><strong>sim_data</strong><span class="classifier"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">np.ndarray</span></code></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">shape</span></code> (<code class="xref py py-obj docutils literal notranslate"><span class="pre">batch_size</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">num_steps</span></code>, …) -</span></dt><dd><p>simulated data reshaped to trajectory format, where any
-trailing dimensions match <cite>self.model</cite>’s own output shape</p>
+<dt><strong>sim_data</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">dict</span></code></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">np.ndarray</span></code></a></span></dt><dd><p>Named simulated variables. Each value has shape
+(batch_size, num_steps).</p>
 </dd>
 </dl>
 </dd>
@@ -707,11 +764,144 @@ default in the model signature, or has an unsupported shape.</p>
 </ul>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Dict" title="(in Python v3.14)"><em>Dict</em></a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)">str</a>, <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>]</p>
 </dd>
 </dl>
 </dd></dl>
 
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="superstats.simulation.RandomMissingProcess">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">superstats.simulation.</span></span><span class="sig-name descname"><span class="pre">RandomMissingProcess</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">p_missing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">missing_value</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">shared_across_batch</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../_modules/superstats/simulation/augmentation/random_missing.html#RandomMissingProcess"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#superstats.simulation.RandomMissingProcess" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference internal" href="superstats.simulation.augmentation.missing.html#superstats.simulation.augmentation.missing.MissingProcess" title="superstats.simulation.augmentation.missing.MissingProcess"><code class="xref py py-class docutils literal notranslate"><span class="pre">MissingProcess</span></code></a></p>
+<p>MCAR missingness with a per-dataset missing probability.</p>
+<p>Missingness is drawn per (batch, step): whenever a time step is
+selected as missing, all data dimensions at that step are set to
+<cite>missing_value</cite> (an entire observation is dropped, not individual
+features within it).</p>
+<dl class="field-list">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><dl>
+<dt><strong>p_missing</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">float</span></code></a>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">Prior</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">or</span></code> <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">None</span></code></a>, default: <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">None</span></code></a></span></dt><dd><p>Probability that a time step is missing.
+- None (default): drawn from <cite>DEFAULT_P_MISSING_PRIOR</cite>, a
+Beta(2, 18) prior with mean 0.1.
+- float: fixed probability, shared across the whole batch.
+- Prior: sampled to obtain the probability. Sampled once for
+the whole batch if <cite>shared_across_batch=True</cite>, or once per
+dataset (default) otherwise.
+Prior draws (including the default) are clipped to [0, 1].</p>
+</dd>
+<dt><strong>missing_value</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">float</span></code></a> or <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">np.ndarray</span></code></a>, default: -1</span></dt><dd><p>Value written into masked entries. A scalar fills every observed
+variable; a mapping sets a per-variable sentinel; an array of
+shape <code class="docutils literal notranslate"><span class="pre">(num_variables,)</span></code> sets sentinels in data-key order.
+Output dtype is promoted as needed (e.g. <code class="docutils literal notranslate"><span class="pre">np.nan</span></code> forces
+float; <code class="docutils literal notranslate"><span class="pre">-1</span></code> stays int on int data).</p>
+</dd>
+<dt><strong>shared_across_batch</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#bltin-boolean-values" title="(in Python v3.14)"><span class="xref std std-ref">bool</span></a>, default: <a class="reference external" href="https://docs.python.org/3/library/constants.html#False" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">False</span></code></a></span></dt><dd><p>If True, one probability and one mask are drawn and applied to
+every dataset in the batch. If False (default), each dataset
+gets its own probability draw and its own mask.</p>
+</dd>
+</dl>
+</dd>
+<dt class="field-even">Parameters<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>p_missing</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em> | </em><a class="reference internal" href="superstats.prior.prior.html#superstats.prior.prior.Prior" title="superstats.prior.prior.Prior"><em>Prior</em></a><em> | </em><em>None</em>)</p></li>
+<li><p><strong>missing_value</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a>)</p></li>
+<li><p><strong>shared_across_batch</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>)</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="superstats.simulation.RandomMissingProcess.apply">
+<span class="sig-name descname"><span class="pre">apply</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rng</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../_modules/superstats/simulation/augmentation/random_missing.html#RandomMissingProcess.apply"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#superstats.simulation.RandomMissingProcess.apply" title="Link to this definition">#</a></dt>
+<dd><p>Apply the missingness process.</p>
+<dl class="field-list">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><dl>
+<dt><strong>data</strong><span class="classifier"><code class="xref py py-obj docutils literal notranslate"><span class="pre">mapping</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">np.ndarray</span></code></a></span></dt><dd><p>Simulated data to corrupt with missingness.</p>
+</dd>
+<dt><strong>rng</strong><span class="classifier"><code class="xref py py-obj docutils literal notranslate"><span class="pre">np.random.Generator</span></code> or <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">None</span></code></a>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code>, default: <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">None</span></code></a></span></dt><dd><p>Random generator to use. If None, a fresh, unseeded generator
+is created via <cite>_default_rng</cite>, so calling <cite>apply</cite> directly is
+safe but not reproducible unless a seeded <cite>rng</cite> is supplied.</p>
+</dd>
+</dl>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><dl>
+<dt><strong>result</strong><span class="classifier"><code class="xref py py-obj docutils literal notranslate"><span class="pre">flat</span></code> <a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">dict</span></code></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">with</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">data</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">keys</span></code>, “missing_mask”, <code class="xref py py-obj docutils literal notranslate"><span class="pre">and</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">metadata</span></code></span></dt><dd></dd>
+</dl>
+</dd>
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a><em>]</em>)</p></li>
+<li><p><strong>rng</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/random/generator.html#numpy.random.Generator" title="(in NumPy v2.5)"><em>Generator</em></a><em> | </em><em>None</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)">dict</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="superstats.simulation.sample_cdm">
+<span class="sig-prename descclassname"><span class="pre">superstats.simulation.</span></span><span class="sig-name descname"><span class="pre">sample_cdm</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">v_angle</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">v_length</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">a</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tau</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dt</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.001</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_steps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">10000</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../_modules/superstats/simulation/cognitive/cdm.html#sample_cdm"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#superstats.simulation.sample_cdm" title="Link to this definition">#</a></dt>
+<dd><p>Sample from the Circular Diffusion Model (CDM).</p>
+<p>Simulates a 2D diffusion process starting from the origin, with a
+constant drift specified in polar form, evolving until it crosses a
+circular boundary of radius <cite>a</cite>. The crossing point determines the
+response angle and the number of steps determines the response time.
+On each trial the drift vector has length <cite>v_length</cite> and points in
+direction <cite>v_angle</cite>; the two Cartesian components diffuse independently
+with noise SD <cite>sigma</cite> until the squared radius reaches <cite>a ** 2</cite>.</p>
+<dl class="field-list">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><dl>
+<dt><strong>v_angle</strong><span class="classifier"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">np.ndarray</span></code></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">shape</span></code> (num_trials,)</span></dt><dd><p>Direction of the drift vector (in radians) for each trial.</p>
+</dd>
+<dt><strong>v_length</strong><span class="classifier"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">np.ndarray</span></code></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">shape</span></code> (num_trials,)</span></dt><dd><p>Magnitude of the drift vector for each trial. The Cartesian drift
+components are <cite>v_length * cos(v_angle)</cite> and <cite>v_length * sin(v_angle)</cite>.</p>
+</dd>
+<dt><strong>a</strong><span class="classifier"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">np.ndarray</span></code></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">shape</span></code> (num_trials,)</span></dt><dd><p>Radius of the circular decision boundary for each trial.</p>
+</dd>
+<dt><strong>tau</strong><span class="classifier"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">np.ndarray</span></code></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">shape</span></code> (num_trials,)</span></dt><dd><p>Non-decision times for each trial.</p>
+</dd>
+<dt><strong>sigma</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">float</span></code></a>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code>, default: 1.0</span></dt><dd><p>Diffusion noise standard deviation, shared by both Cartesian
+components. Fixed (not estimated per trial) for identifiability,
+since the boundary radius <cite>a</cite> and drift set the overall scale.</p>
+</dd>
+<dt><strong>dt</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">float</span></code></a>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code>, default: 0.001</span></dt><dd><p>Time step size.</p>
+</dd>
+<dt><strong>max_steps</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">int</span></code></a>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code>, default: 10000</span></dt><dd><p>Maximum number of diffusion steps per trial before timing out.</p>
+</dd>
+</dl>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><dl>
+<dt><strong>data</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">dict</span></code></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">np.ndarray</span></code></a></span></dt><dd><p>Named decision data. <cite>“response_time”</cite> contains response times
+(or -5.0 on timeout) and <cite>“choice”</cite> contains response angles in
+radians (or -5.0 on timeout). Each array has shape (num_trials,).</p>
+</dd>
+</dl>
+</dd>
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>v_angle</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>)</p></li>
+<li><p><strong>v_length</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>)</p></li>
+<li><p><strong>a</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>)</p></li>
+<li><p><strong>tau</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>)</p></li>
+<li><p><strong>sigma</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a>)</p></li>
+<li><p><strong>dt</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a>)</p></li>
+<li><p><strong>max_steps</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)">dict</a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)">str</a>, <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>]</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -724,17 +914,17 @@ The simulation stops when a boundary is reached or max_steps is exceeded.</p>
 <dl class="field-list">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><dl>
-<dt><strong>v</strong><span class="classifier"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">np.ndarray</span></code></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">shape</span></code> (num_trials,)</span></dt><dd><p>Drift rates for each trial.</p>
+<dt><strong>v</strong><span class="classifier"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">np.ndarray</span></code></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">shape</span></code> (num_steps,)</span></dt><dd><p>Drift rates for each trial.</p>
 </dd>
-<dt><strong>a</strong><span class="classifier"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">np.ndarray</span></code></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">shape</span></code> (num_trials,)</span></dt><dd><p>Boundary distance from the origin for each trial; decision
-boundaries are at +a and -a.</p>
+<dt><strong>a</strong><span class="classifier"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">np.ndarray</span></code></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">shape</span></code> (num_steps,)</span></dt><dd><p>Boundary separation for each trial; decision boundaries are at
+0 (lower) and a (upper).</p>
 </dd>
-<dt><strong>tau</strong><span class="classifier"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">np.ndarray</span></code></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">shape</span></code> (num_trials,)</span></dt><dd><p>Non-decision times for each trial.</p>
+<dt><strong>tau</strong><span class="classifier"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">np.ndarray</span></code></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">shape</span></code> (num_steps,)</span></dt><dd><p>Non-decision times for each trial.</p>
 </dd>
-<dt><strong>bias</strong><span class="classifier"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">np.ndarray</span></code></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">shape</span></code> (num_trials,)</span></dt><dd><p>Starting point offset, as a fraction of <cite>a</cite> (i.e. the initial
-evidence is <cite>bias * a</cite>). 0 starts at the midpoint between the
-two boundaries; positive values start closer to the upper
-boundary, negative values closer to the lower one.</p>
+<dt><strong>bias</strong><span class="classifier"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">np.ndarray</span></code></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">shape</span></code> (num_steps,)</span></dt><dd><p>Starting point, as a fraction of <cite>a</cite> (i.e. the initial evidence
+is <cite>bias * a</cite>). 0.5 starts at the midpoint between the two
+boundaries; values &gt; 0.5 start closer to the upper boundary,
+values &lt; 0.5 closer to the lower one. Must lie in (0, 1).</p>
 </dd>
 <dt><strong>sigma</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">float</span></code></a>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code>, default: 1.0</span></dt><dd><p>Diffusion noise standard deviation.</p>
 </dd>
@@ -746,9 +936,10 @@ boundary, negative values closer to the lower one.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><dl>
-<dt><strong>data</strong><span class="classifier"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">np.ndarray</span></code></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">shape</span></code> (<code class="xref py py-obj docutils literal notranslate"><span class="pre">num_trials</span></code>, 2) - <code class="xref py py-obj docutils literal notranslate"><span class="pre">decision</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">data</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">where</span></code></span></dt><dd><p>column 0 is the response time (or -1.0 on timeout) and column
-1 is the choice (1.0 for the upper boundary, 0.0 for the
-lower boundary, -1.0 on timeout)</p>
+<dt><strong>data</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">dict</span></code></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">np.ndarray</span></code></a></span></dt><dd><p>Named decision data. <cite>“response_time”</cite> contains response times
+(or -1.0 on timeout) and <cite>“choice”</cite> contains choices (1.0 for
+the upper boundary, 0.0 for the lower boundary, -1.0 on timeout).
+Each array has shape (num_steps,).</p>
 </dd>
 </dl>
 </dd>
@@ -764,7 +955,86 @@ lower boundary, -1.0 on timeout)</p>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a></p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)">dict</a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)">str</a>, <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="superstats.simulation.sample_rdm">
+<span class="sig-prename descclassname"><span class="pre">superstats.simulation.</span></span><span class="sig-name descname"><span class="pre">sample_rdm</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">v_base</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">v_diff</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">a_base</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tau</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bias</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma_diff</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_accumulators</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">correct_idx</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma_base</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dt</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.001</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_steps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">10000</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../_modules/superstats/simulation/cognitive/rdm.html#sample_rdm"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#superstats.simulation.sample_rdm" title="Link to this definition">#</a></dt>
+<dd><p>Sample from the Racing Diffusion Model (RDM).</p>
+<p>Simulates <cite>num_accumulators</cite> independent diffusion accumulators racing
+from a starting point of 0 toward their own threshold; the first to
+cross wins and determines the response and response time. On each
+trial, the accumulator at index <cite>correct_idx[i]</cite> is treated as the
+correct/target accumulator: it receives a drift advantage of
+<cite>v_diff</cite>, a bias-scaled threshold, and noise scaled by <cite>sigma_diff</cite>.
+All other accumulators on that trial share the disadvantaged drift,
+an unscaled threshold, and noise fixed at <cite>sigma_base</cite>.</p>
+<dl class="field-list">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><dl>
+<dt><strong>v_base</strong><span class="classifier"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">np.ndarray</span></code></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">shape</span></code> (num_trials,)</span></dt><dd><p>Base drift rate shared by all accumulators before the
+correct/incorrect adjustment.</p>
+</dd>
+<dt><strong>v_diff</strong><span class="classifier"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">np.ndarray</span></code></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">shape</span></code> (num_trials,)</span></dt><dd><p>Drift rate difference between the correct and incorrect
+accumulators. The correct accumulator gets <cite>v_base + v_diff / 2</cite>;
+all other accumulators get <cite>v_base - v_diff / 2</cite>.</p>
+</dd>
+<dt><strong>a_base</strong><span class="classifier"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">np.ndarray</span></code></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">shape</span></code> (num_trials,)</span></dt><dd><p>Base threshold distance from the origin for each trial.</p>
+</dd>
+<dt><strong>tau</strong><span class="classifier"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">np.ndarray</span></code></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">shape</span></code> (num_trials,)</span></dt><dd><p>Non-decision times for each trial.</p>
+</dd>
+<dt><strong>bias</strong><span class="classifier"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">np.ndarray</span></code></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">shape</span></code> (num_trials,)</span></dt><dd><p>Threshold scaling factor in [0, 1] for the correct/target
+accumulator: its threshold is <cite>a_base * bias</cite>. All other
+accumulators use the unscaled threshold <cite>a_base</cite>.</p>
+</dd>
+<dt><strong>sigma_diff</strong><span class="classifier"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">np.ndarray</span></code></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">shape</span></code> (num_trials,)</span></dt><dd><p>Noise scaling factor in [0, +inf) for the correct/target
+accumulator: its noise SD is <cite>sigma_base * sigma_diff</cite>. All other
+accumulators always use <cite>sigma_base</cite> directly.</p>
+</dd>
+<dt><strong>num_accumulators</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">int</span></code></a></span></dt><dd><p>Number of racing accumulators per trial (fixed across trials).</p>
+</dd>
+<dt><strong>correct_idx</strong><span class="classifier"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">np.ndarray</span></code></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <code class="xref py py-obj docutils literal notranslate"><span class="pre">shape</span></code> (num_trials,), <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code></span></dt><dd><p>Index (into <cite>0 .. num_accumulators - 1</cite>) of the correct/target
+accumulator for each trial. If left empty, accumulator 0 is
+treated as correct on every trial.</p>
+</dd>
+<dt><strong>sigma_base</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">float</span></code></a>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code>, default: 1.0</span></dt><dd><p>Diffusion noise standard deviation of the non-correct
+accumulators. Fixed (not estimated per trial) for identifiability.</p>
+</dd>
+<dt><strong>dt</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">float</span></code></a>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code>, default: 0.001</span></dt><dd><p>Time step size.</p>
+</dd>
+<dt><strong>max_steps</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">int</span></code></a>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code>, default: 10000</span></dt><dd><p>Maximum number of diffusion steps per trial before timing out.</p>
+</dd>
+</dl>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><dl>
+<dt><strong>data</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">dict</span></code></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">np.ndarray</span></code></a></span></dt><dd><p>Named decision data. <cite>“response_time”</cite> contains response times
+(or -1.0 on timeout) and <cite>“choice”</cite> contains the index of the
+winning accumulator (or -1.0 on timeout). Each array has shape
+(num_trials,).</p>
+</dd>
+</dl>
+</dd>
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>v_base</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>)</p></li>
+<li><p><strong>v_diff</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>)</p></li>
+<li><p><strong>a_base</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>)</p></li>
+<li><p><strong>tau</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>)</p></li>
+<li><p><strong>bias</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>)</p></li>
+<li><p><strong>sigma_diff</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>)</p></li>
+<li><p><strong>num_accumulators</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>)</p></li>
+<li><p><strong>correct_idx</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a><em> | </em><em>None</em>)</p></li>
+<li><p><strong>sigma_base</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a>)</p></li>
+<li><p><strong>dt</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a>)</p></li>
+<li><p><strong>max_steps</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)">dict</a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)">str</a>, <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -772,10 +1042,13 @@ lower boundary, -1.0 on timeout)</p>
 <p class="rubric">Modules</p>
 <div class="pst-scrollable-table-container"><table class="autosummary longtable table autosummary">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="superstats.simulation.cognitive.html#module-superstats.simulation.cognitive" title="superstats.simulation.cognitive"><code class="xref py py-obj docutils literal notranslate"><span class="pre">cognitive</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="superstats.simulation.augmentation.html#module-superstats.simulation.augmentation" title="superstats.simulation.augmentation"><code class="xref py py-obj docutils literal notranslate"><span class="pre">augmentation</span></code></a></p></td>
+<td><p>Data-augmentation processes for generative models.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="superstats.simulation.cognitive.html#module-superstats.simulation.cognitive" title="superstats.simulation.cognitive"><code class="xref py py-obj docutils literal notranslate"><span class="pre">cognitive</span></code></a></p></td>
 <td><p>Cognitive-model simulators.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="superstats.simulation.generative_model.html#module-superstats.simulation.generative_model" title="superstats.simulation.generative_model"><code class="xref py py-obj docutils literal notranslate"><span class="pre">generative_model</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="superstats.simulation.generative_model.html#module-superstats.simulation.generative_model" title="superstats.simulation.generative_model"><code class="xref py py-obj docutils literal notranslate"><span class="pre">generative_model</span></code></a></p></td>
 <td><p>Generative-model wrapper for joint priors and simulators.</p></td>
 </tr>
 </tbody>
@@ -803,11 +1076,11 @@ lower boundary, -1.0 on timeout)</p>
       </div>
     </a>
     <a class="right-next"
-       href="superstats.simulation.cognitive.html"
+       href="superstats.simulation.augmentation.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">superstats.simulation.cognitive</p>
+        <p class="prev-next-title">superstats.simulation.augmentation</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -837,7 +1110,13 @@ lower boundary, -1.0 on timeout)</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#superstats.simulation.GenerativeModel.simulate_from_parameters"><code class="docutils literal notranslate"><span class="pre">GenerativeModel.simulate_from_parameters()</span></code></a></li>
 </ul>
 </li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#superstats.simulation.RandomMissingProcess"><code class="docutils literal notranslate"><span class="pre">RandomMissingProcess</span></code></a><ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#superstats.simulation.RandomMissingProcess.apply"><code class="docutils literal notranslate"><span class="pre">RandomMissingProcess.apply()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#superstats.simulation.sample_cdm"><code class="docutils literal notranslate"><span class="pre">sample_cdm()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#superstats.simulation.sample_ddm"><code class="docutils literal notranslate"><span class="pre">sample_ddm()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#superstats.simulation.sample_rdm"><code class="docutils literal notranslate"><span class="pre">sample_rdm()</span></code></a></li>
 </ul>
   </nav></div>
 

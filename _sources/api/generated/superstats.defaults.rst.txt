@@ -10,6 +10,7 @@
    :toctree:
    :recursive:
 
+   augmentation_defaults
    color_palette
    network_defaults
    transition_defaults

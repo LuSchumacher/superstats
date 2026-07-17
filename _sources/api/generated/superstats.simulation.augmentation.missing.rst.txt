@@ -1,0 +1,12 @@
+superstats.simulation.augmentation.missing
+==========================================
+
+.. automodule:: superstats.simulation.augmentation.missing
+
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      MissingProcess
+   

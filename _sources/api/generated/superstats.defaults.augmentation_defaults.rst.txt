@@ -1,0 +1,6 @@
+superstats.defaults.augmentation\_defaults
+==========================================
+
+.. automodule:: superstats.defaults.augmentation_defaults
+
+   

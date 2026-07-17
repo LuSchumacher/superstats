@@ -164,7 +164,7 @@
 
 <li class="nav-item ">
   <a class="nav-link nav-internal" href="../../contributing.html">
-    Contributing to superstats
+    Contributing
   </a>
 </li>
 
@@ -293,7 +293,7 @@
 
 <li class="nav-item ">
   <a class="nav-link nav-internal" href="../../contributing.html">
-    Contributing to superstats
+    Contributing
   </a>
 </li>
 
@@ -386,15 +386,26 @@
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="superstats.simulation.html">superstats.simulation</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="superstats.simulation.augmentation.html">superstats.simulation.augmentation</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="superstats.simulation.augmentation.contamination.html">superstats.simulation.augmentation.contamination</a></li>
+<li class="toctree-l3"><a class="reference internal" href="superstats.simulation.augmentation.missing.html">superstats.simulation.augmentation.missing</a></li>
+<li class="toctree-l3"><a class="reference internal" href="superstats.simulation.augmentation.random_choice_contamination.html">superstats.simulation.augmentation.random_choice_contamination</a></li>
+<li class="toctree-l3"><a class="reference internal" href="superstats.simulation.augmentation.random_missing.html">superstats.simulation.augmentation.random_missing</a></li>
+</ul>
+</details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="superstats.simulation.cognitive.html">superstats.simulation.cognitive</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="superstats.simulation.cognitive.cdm.html">superstats.simulation.cognitive.cdm</a></li>
 <li class="toctree-l3"><a class="reference internal" href="superstats.simulation.cognitive.ddm.html">superstats.simulation.cognitive.ddm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="superstats.simulation.cognitive.rdm.html">superstats.simulation.cognitive.rdm</a></li>
 </ul>
 </details></li>
 <li class="toctree-l2"><a class="reference internal" href="superstats.simulation.generative_model.html">superstats.simulation.generative_model</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="superstats.simulation.cognitive.html">superstats.simulation.cognitive</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="superstats.simulation.cognitive.cdm.html">superstats.simulation.cognitive.cdm</a></li>
 <li class="toctree-l2"><a class="reference internal" href="superstats.simulation.cognitive.ddm.html">superstats.simulation.cognitive.ddm</a></li>
+<li class="toctree-l2"><a class="reference internal" href="superstats.simulation.cognitive.rdm.html">superstats.simulation.cognitive.rdm</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="superstats.workflow.html">superstats.workflow</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -429,12 +440,15 @@
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="superstats.defaults.html">superstats.defaults</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="superstats.defaults.augmentation_defaults.html">superstats.defaults.augmentation_defaults</a></li>
 <li class="toctree-l2"><a class="reference internal" href="superstats.defaults.color_palette.html">superstats.defaults.color_palette</a></li>
 <li class="toctree-l2"><a class="reference internal" href="superstats.defaults.network_defaults.html">superstats.defaults.network_defaults</a></li>
 <li class="toctree-l2"><a class="reference internal" href="superstats.defaults.transition_defaults.html">superstats.defaults.transition_defaults</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="superstats.utils.html">superstats.utils</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="superstats.utils.dispatch.html">superstats.utils.dispatch</a></li>
+<li class="toctree-l2"><a class="reference internal" href="superstats.utils.logging.html">superstats.utils.logging</a></li>
 <li class="toctree-l2"><a class="reference internal" href="superstats.utils.plotting.html">superstats.utils.plotting</a></li>
 <li class="toctree-l2"><a class="reference internal" href="superstats.utils.transformations.html">superstats.utils.transformations</a></li>
 </ul>
@@ -512,15 +526,21 @@
 <dd class="field-odd"><dl>
 <dt><strong>summary_dim</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">int</span></code></a>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code>, default: 64</span></dt><dd><p>Per-timestep output dimensionality.</p>
 </dd>
-<dt><strong>hidden_dim</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">int</span></code></a> or <a class="reference external" href="https://docs.python.org/3/glossary.html#term-sequence" title="(in Python v3.14)"><span>sequence</span></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">int</span></code></a>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code>, default: 256</span></dt><dd><p>Dimensionality of the hidden state in each recurrent layer.</p>
+<dt><strong>hidden_dim</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">int</span></code></a> or <a class="reference external" href="https://docs.python.org/3/glossary.html#term-sequence" title="(in Python v3.14)"><span>sequence</span></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">int</span></code></a>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code>, default: (64, 64)</span></dt><dd><p>Dimensionality of the hidden state in each recurrent layer.</p>
 </dd>
-<dt><strong>recurrent_type</strong><span class="classifier">{“lstm”, “gru”} <code class="xref py py-obj docutils literal notranslate"><span class="pre">or</span></code> <a class="reference external" href="https://docs.python.org/3/glossary.html#term-sequence" title="(in Python v3.14)"><span>sequence</span></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">thereof</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code>, default: “lstm”</span></dt><dd><p>Type of recurrent unit to use in each layer.</p>
+<dt><strong>recurrent_type</strong><span class="classifier">{“lstm”, “gru”} <code class="xref py py-obj docutils literal notranslate"><span class="pre">or</span></code> <a class="reference external" href="https://docs.python.org/3/glossary.html#term-sequence" title="(in Python v3.14)"><span>sequence</span></a>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code>, default: “gru”</span></dt><dd><p>Type of recurrent unit to use in each layer.</p>
 </dd>
 <dt><strong>bidirectional</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#bltin-boolean-values" title="(in Python v3.14)"><span class="xref std std-ref">bool</span></a> or <a class="reference external" href="https://docs.python.org/3/glossary.html#term-sequence" title="(in Python v3.14)"><span>sequence</span></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#bltin-boolean-values" title="(in Python v3.14)"><span class="xref std std-ref">bool</span></a>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code>, default: <a class="reference external" href="https://docs.python.org/3/library/constants.html#True" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">True</span></code></a></span></dt><dd><p>If True, the layer is processed bidirectionally and the two
-directions are summed. If False, the layer processes the
-sequence forward only.</p>
+directions are merged according to <cite>merge_mode</cite>. If False,
+the layer processes the sequence forward only.</p>
 </dd>
-<dt><strong>dropout</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">float</span></code></a> or <a class="reference external" href="https://docs.python.org/3/glossary.html#term-sequence" title="(in Python v3.14)"><span>sequence</span></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">float</span></code></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">in</span></code> [0, 1], <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code>, default: 0.05</span></dt><dd><p>Dropout rate applied within each recurrent layer.</p>
+<dt><strong>merge_mode</strong><span class="classifier">{“sum”, “mul”, “ave”, “concat”} <code class="xref py py-obj docutils literal notranslate"><span class="pre">or</span></code> <a class="reference external" href="https://docs.python.org/3/glossary.html#term-sequence" title="(in Python v3.14)"><span>sequence</span></a>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code>, default: “sum”</span></dt><dd><p>Mode used to merge forward and backward outputs in bidirectional layers.</p>
+</dd>
+<dt><strong>layer_norm</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#bltin-boolean-values" title="(in Python v3.14)"><span class="xref std std-ref">bool</span></a> or <a class="reference external" href="https://docs.python.org/3/glossary.html#term-sequence" title="(in Python v3.14)"><span>sequence</span></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#bltin-boolean-values" title="(in Python v3.14)"><span class="xref std std-ref">bool</span></a>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code>, default: <a class="reference external" href="https://docs.python.org/3/library/constants.html#True" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">True</span></code></a></span></dt><dd><p>Whether to apply layer normalization after each recurrent layer.</p>
+</dd>
+<dt><strong>time_embed_dim</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">int</span></code></a>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code>, default: 16</span></dt><dd><p>The number of features learned by the time2vec preprocessing layer.</p>
+</dd>
+<dt><strong>dropout</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">float</span></code></a> or <a class="reference external" href="https://docs.python.org/3/glossary.html#term-sequence" title="(in Python v3.14)"><span>sequence</span></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">float</span></code></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">in</span></code> [0, 1], <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code>, default: 0.05</span></dt><dd><p>Dropout rate applied after the recurrent layer(s).</p>
 </dd>
 <dt><strong>**kwargs</strong></dt><dd><p>Additional keyword arguments passed to the parent class
 constructor.</p>
@@ -540,7 +560,11 @@ contain invalid values.</p>
 <li><p><strong>hidden_dim</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>]</em>)</p></li>
 <li><p><strong>recurrent_type</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>]</em>)</p></li>
 <li><p><strong>bidirectional</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em>]</em>)</p></li>
-<li><p><strong>dropout</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em>]</em>)</p></li>
+<li><p><strong>merge_mode</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>]</em>)</p></li>
+<li><p><strong>layer_norm</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em>]</em>)</p></li>
+<li><p><strong>time_axis</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>)</p></li>
+<li><p><strong>time_embed_dim</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>)</p></li>
+<li><p><strong>dropout</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a>)</p></li>
 </ul>
 </dd>
 </dl>
@@ -548,8 +572,8 @@ contain invalid values.</p>
 <p>All recurrent layers are built with <cite>return_sequences=True</cite>, so
 the projection is applied per timestep and the sequence-length
 axis is retained. If any of <cite>hidden_dim</cite>, <cite>recurrent_type</cite>,
-<cite>bidirectional</cite>, or <cite>dropout</cite> is a sequence with more than one
-element, all single values are expanded to that length. Multiple
+<cite>bidirectional</cite>, <cite>merge_mode</cite>, or <cite>layer_norm</cite> is a sequence with
+more than one element, all single values are expanded to that length. Multiple
 multi-element sequences must have the same length.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="superstats.networks.RecurrentNet.call">

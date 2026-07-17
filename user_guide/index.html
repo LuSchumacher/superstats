@@ -48,7 +48,7 @@
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Examples" href="../examples/index.html" />
+    <link rel="next" title="1. Introduction" href="introduction.html" />
     <link rel="prev" title="Getting Started" href="../getting_started.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -164,7 +164,7 @@
 
 <li class="nav-item ">
   <a class="nav-link nav-internal" href="../contributing.html">
-    Contributing to superstats
+    Contributing
   </a>
 </li>
 
@@ -293,7 +293,7 @@
 
 <li class="nav-item ">
   <a class="nav-link nav-internal" href="../contributing.html">
-    Contributing to superstats
+    Contributing
   </a>
 </li>
 
@@ -353,7 +353,10 @@
 <nav class="bd-docs-nav bd-links"
      aria-label="Section Navigation">
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
-  <div class="bd-toc-item navbar-nav"></div>
+  <div class="bd-toc-item navbar-nav"><ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="introduction.html">1. Introduction</a></li>
+</ul>
+</div>
 </nav></div>
     </div>
   
@@ -411,21 +414,12 @@
                   
   <section id="user-guide">
 <h1>User Guide<a class="headerlink" href="#user-guide" title="Link to this heading">#</a></h1>
-<p>The core workflow has four pieces:</p>
-<ol class="arabic simple">
-<li><p>Define priors for static parameters with <a class="reference internal" href="../api/generated/superstats.prior.html#superstats.prior.Prior" title="superstats.prior.Prior"><code class="xref py py-class docutils literal notranslate"><span class="pre">superstats.prior.Prior</span></code></a>.</p></li>
-<li><p>Define time-varying dynamics with transition models such as
-<a class="reference internal" href="../api/generated/superstats.transition.html#superstats.transition.RandomWalk" title="superstats.transition.RandomWalk"><code class="xref py py-class docutils literal notranslate"><span class="pre">superstats.transition.RandomWalk</span></code></a>,
-<a class="reference internal" href="../api/generated/superstats.transition.html#superstats.transition.AutoRegression" title="superstats.transition.AutoRegression"><code class="xref py py-class docutils literal notranslate"><span class="pre">superstats.transition.AutoRegression</span></code></a>, or
-<a class="reference internal" href="../api/generated/superstats.transition.html#superstats.transition.GaussianProcess" title="superstats.transition.GaussianProcess"><code class="xref py py-class docutils literal notranslate"><span class="pre">superstats.transition.GaussianProcess</span></code></a>.</p></li>
-<li><p>Combine parameters in <a class="reference internal" href="../api/generated/superstats.prior.html#superstats.prior.JointPrior" title="superstats.prior.JointPrior"><code class="xref py py-class docutils literal notranslate"><span class="pre">superstats.prior.JointPrior</span></code></a>.</p></li>
-<li><p>Connect the prior and simulator through
-<a class="reference internal" href="../api/generated/superstats.simulation.html#superstats.simulation.GenerativeModel" title="superstats.simulation.GenerativeModel"><code class="xref py py-class docutils literal notranslate"><span class="pre">superstats.simulation.GenerativeModel</span></code></a> and train a
-<a class="reference internal" href="../api/generated/superstats.workflow.html#superstats.workflow.Workflow" title="superstats.workflow.Workflow"><code class="xref py py-class docutils literal notranslate"><span class="pre">superstats.workflow.Workflow</span></code></a>.</p></li>
-</ol>
-<p>This page is the seed for the conceptual documentation. As the package grows,
-the guide can expand into focused sections on transition models, simulators,
-workflow training, and diagnostic interpretation.</p>
+<p>This guide is currently under construction and will provide an entry point for building and estimating time-varying models with <strong>Superstats</strong>. End-to-end workflow examples can be found under <span class="xref std std-doc">../examples</span>.</p>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="introduction.html">1. Introduction</a></li>
+</ul>
+</div>
 </section>
 
 
@@ -448,11 +442,11 @@ workflow training, and diagnostic interpretation.</p>
       </div>
     </a>
     <a class="right-next"
-       href="../examples/index.html"
+       href="introduction.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Examples</p>
+        <p class="prev-next-title"><span class="section-number">1. </span>Introduction</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>

@@ -10,5 +10,6 @@
    :toctree:
    :recursive:
 
+   augmentation
    cognitive
    generative_model

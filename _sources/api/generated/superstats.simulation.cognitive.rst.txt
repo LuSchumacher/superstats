@@ -10,4 +10,6 @@ superstats.simulation.cognitive
    :toctree:
    :recursive:
 
+   cdm
    ddm
+   rdm

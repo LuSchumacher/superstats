@@ -161,7 +161,7 @@
 
 <li class="nav-item ">
   <a class="nav-link nav-internal" href="../../../contributing.html">
-    Contributing to superstats
+    Contributing
   </a>
 </li>
 
@@ -288,7 +288,7 @@
 
 <li class="nav-item ">
   <a class="nav-link nav-internal" href="../../../contributing.html">
-    Contributing to superstats
+    Contributing
   </a>
 </li>
 
@@ -397,23 +397,20 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Literal</span><span class="p">,</span> <span class="n">Callable</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Mapping</span><span class="p">,</span> <span class="n">Sequence</span>
 
-<span class="kn">import</span><span class="w"> </span><span class="nn">bayesflow</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">bf</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">keras</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">functools</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">pickle</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">bayesflow</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">bf</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">keras</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">bayesflow.adapters</span><span class="w"> </span><span class="kn">import</span> <span class="n">Adapter</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">bayesflow.networks</span><span class="w"> </span><span class="kn">import</span> <span class="n">SummaryNetwork</span><span class="p">,</span> <span class="n">InferenceNetwork</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">superstats.simulation</span><span class="w"> </span><span class="kn">import</span> <span class="n">GenerativeModel</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">superstats.networks</span><span class="w"> </span><span class="kn">import</span> <span class="n">RecurrentNet</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">superstats.defaults.network_defaults</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-    <span class="n">DEFAULT_SUMMARY_NETWORK</span><span class="p">,</span>
-    <span class="n">DEFAULT_INFERENCE_NETWORK</span><span class="p">,</span>
-<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">superstats.utils.dispatch</span><span class="w"> </span><span class="kn">import</span> <span class="n">find_inference_network</span><span class="p">,</span> <span class="n">find_summary_network</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">superstats.utils.logging</span><span class="w"> </span><span class="kn">import</span> <span class="n">warning</span> <span class="k">as</span> <span class="n">log_warning</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">superstats.diagnostics.plots</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">plot_time_varying_verification</span><span class="p">,</span>
     <span class="n">plot_recovery</span><span class="p">,</span>
@@ -434,21 +431,18 @@
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
-<span class="sd">    simulator            : GenerativeModel or None, optional, default: None</span>
+<span class="sd">    simulator         : GenerativeModel or None, optional, default: None</span>
 <span class="sd">        The simulator used for training and, when `adapter` is not</span>
 <span class="sd">        provided, for building a default adapter. Required in that case.</span>
-<span class="sd">    adapter              : Adapter or None, optional, default: None</span>
+<span class="sd">    adapter           : Adapter or None, optional, default: None</span>
 <span class="sd">        Data adapter for the workflow. If None, a default adapter is</span>
 <span class="sd">        built from `simulator.local_keys`, `simulator.hyper_keys`, and</span>
 <span class="sd">        `simulator.shared_keys` (which requires `simulator` to be set).</span>
-<span class="sd">    summary_network      : {&quot;recurrent&quot;} or SummaryNetwork or None, optional, default: &quot;recurrent&quot;</span>
-<span class="sd">        &quot;recurrent&quot; builds a `RecurrentNet` using</span>
-<span class="sd">        `DEFAULT_SUMMARY_NETWORK`; otherwise, the given network (or</span>
-<span class="sd">        None) is used directly.</span>
-<span class="sd">    inference_network    : {&quot;consistency&quot;} or InferenceNetwork, optional, default: &quot;consistency&quot;</span>
-<span class="sd">        &quot;consistency&quot; builds a `bf.networks.StableConsistencyModel`</span>
-<span class="sd">        using `DEFAULT_INFERENCE_NETWORK`; otherwise, the given network</span>
-<span class="sd">        is used directly.</span>
+<span class="sd">    summary_network   : {&quot;recurrent&quot;, &quot;transformer&quot;} or keras.Layer, optional, default: &quot;recurrent&quot;.</span>
+<span class="sd">        String names build a default summary network; otherwise, an already-created Keras layer is used directly.</span>
+<span class="sd">    inference_network : {&quot;coupling&quot;, &quot;coupling_flow&quot;} or keras.Layer, optional, default: &quot;coupling&quot;.</span>
+<span class="sd">        String names build a default inference network; otherwise, an already-created Keras</span>
+<span class="sd">        layer is used directly.</span>
 <span class="sd">    checkpoint_filepath  : str or None, optional, default: None</span>
 <span class="sd">        Directory for saving/restoring the approximator and training</span>
 <span class="sd">        history.</span>
@@ -468,8 +462,8 @@
         <span class="bp">self</span><span class="p">,</span>
         <span class="n">simulator</span><span class="p">:</span> <span class="n">GenerativeModel</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">adapter</span><span class="p">:</span> <span class="n">Adapter</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-        <span class="n">summary_network</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;recurrent&quot;</span><span class="p">]</span> <span class="o">|</span> <span class="n">SummaryNetwork</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="s2">&quot;recurrent&quot;</span><span class="p">,</span>
-        <span class="n">inference_network</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;consistency&quot;</span><span class="p">]</span> <span class="o">|</span> <span class="n">InferenceNetwork</span> <span class="o">=</span> <span class="s2">&quot;consistency&quot;</span><span class="p">,</span>
+        <span class="n">summary_network</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;recurrent&quot;</span><span class="p">,</span> <span class="s2">&quot;transformer&quot;</span><span class="p">]</span> <span class="o">|</span> <span class="n">keras</span><span class="o">.</span><span class="n">Layer</span> <span class="o">=</span> <span class="s2">&quot;recurrent&quot;</span><span class="p">,</span>
+        <span class="n">inference_network</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;coupling&quot;</span><span class="p">,</span> <span class="s2">&quot;coupling_flow&quot;</span><span class="p">]</span> <span class="o">|</span> <span class="n">keras</span><span class="o">.</span><span class="n">Layer</span> <span class="o">=</span> <span class="s2">&quot;coupling&quot;</span><span class="p">,</span>
         <span class="n">checkpoint_filepath</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">restore_approximator</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
         <span class="n">restore_history</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
@@ -477,39 +471,19 @@
     <span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">simulator</span> <span class="o">=</span> <span class="n">simulator</span>
 
-        <span class="k">if</span> <span class="n">summary_network</span> <span class="o">==</span> <span class="s2">&quot;recurrent&quot;</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">summary_network</span> <span class="o">=</span> <span class="n">RecurrentNet</span><span class="p">(</span><span class="o">**</span><span class="n">DEFAULT_SUMMARY_NETWORK</span><span class="p">)</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">summary_network</span> <span class="o">=</span> <span class="n">summary_network</span>
-
-        <span class="k">if</span> <span class="n">inference_network</span> <span class="o">==</span> <span class="s2">&quot;consistency&quot;</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">inference_network</span> <span class="o">=</span> <span class="n">bf</span><span class="o">.</span><span class="n">networks</span><span class="o">.</span><span class="n">StableConsistencyModel</span><span class="p">(</span><span class="o">**</span><span class="n">DEFAULT_INFERENCE_NETWORK</span><span class="p">)</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">inference_network</span> <span class="o">=</span> <span class="n">inference_network</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">summary_network</span> <span class="o">=</span> <span class="n">find_summary_network</span><span class="p">(</span><span class="n">summary_network</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">inference_network</span> <span class="o">=</span> <span class="n">find_inference_network</span><span class="p">(</span><span class="n">inference_network</span><span class="p">)</span>
 
         <span class="k">if</span> <span class="n">adapter</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">adapter</span> <span class="o">=</span> <span class="n">adapter</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">local_keys</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">simulator</span><span class="o">.</span><span class="n">local_keys</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">hyper_keys</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">simulator</span><span class="o">.</span><span class="n">hyper_keys</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">shared_keys</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">simulator</span><span class="o">.</span><span class="n">shared_keys</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">adapter</span> <span class="o">=</span> <span class="p">(</span>
-                <span class="n">bf</span><span class="o">.</span><span class="n">Adapter</span><span class="p">()</span>
-                <span class="o">.</span><span class="n">convert_dtype</span><span class="p">(</span><span class="s2">&quot;float64&quot;</span><span class="p">,</span> <span class="s2">&quot;float32&quot;</span><span class="p">)</span>
-                <span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">local_keys</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">hyper_keys</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">shared_keys</span><span class="p">,</span> <span class="n">into</span><span class="o">=</span><span class="s2">&quot;inference_variables&quot;</span><span class="p">)</span>
-                <span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="s2">&quot;data&quot;</span><span class="p">,</span> <span class="s2">&quot;summary_variables&quot;</span><span class="p">)</span>
-            <span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">adapter</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">default_adapter</span><span class="p">(</span><span class="n">simulator</span><span class="p">)</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_filepath</span> <span class="o">=</span> <span class="n">checkpoint_filepath</span>
 
         <span class="k">if</span> <span class="n">restore_approximator</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_filepath</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_filepath</span><span class="p">):</span>
             <span class="n">restore</span> <span class="o">=</span> <span class="kc">True</span>
         <span class="k">elif</span> <span class="n">restore_approximator</span><span class="p">:</span>
-            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">&quot;restore_approximator=True but no model found at &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_filepath</span><span class="si">}</span><span class="s2">&#39;. &quot;</span>
-                <span class="s2">&quot;Starting with no trained model.&quot;</span><span class="p">,</span>
-                <span class="n">stacklevel</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
-            <span class="p">)</span>
             <span class="n">restore</span> <span class="o">=</span> <span class="kc">False</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">restore</span> <span class="o">=</span> <span class="kc">False</span>
@@ -527,11 +501,29 @@
 
         <span class="k">if</span> <span class="n">restore_history</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_filepath</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_filepath</span><span class="p">):</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_load_history</span><span class="p">()</span>
-        <span class="k">elif</span> <span class="n">restore_history</span><span class="p">:</span>
-            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">&quot;restore_history=True but no history found at &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_filepath</span><span class="si">}</span><span class="s2">&#39;. Starting with no history.&quot;</span><span class="p">,</span>
-                <span class="n">stacklevel</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
-            <span class="p">)</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">default_adapter</span><span class="p">(</span><span class="n">simulator</span><span class="p">):</span>
+        <span class="n">local_keys</span> <span class="o">=</span> <span class="n">simulator</span><span class="o">.</span><span class="n">local_keys</span>
+        <span class="n">hyper_keys</span> <span class="o">=</span> <span class="n">simulator</span><span class="o">.</span><span class="n">hyper_keys</span>
+        <span class="n">shared_keys</span> <span class="o">=</span> <span class="n">simulator</span><span class="o">.</span><span class="n">shared_keys</span>
+        <span class="n">data_keys</span> <span class="o">=</span> <span class="n">simulator</span><span class="o">.</span><span class="n">data_keys</span>
+
+        <span class="n">adapter</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">bf</span><span class="o">.</span><span class="n">Adapter</span><span class="p">()</span>
+            <span class="o">.</span><span class="n">convert_dtype</span><span class="p">(</span><span class="s2">&quot;float64&quot;</span><span class="p">,</span> <span class="s2">&quot;float32&quot;</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">as_time_series</span><span class="p">([</span><span class="s2">&quot;time_steps&quot;</span><span class="p">,</span> <span class="o">*</span><span class="n">data_keys</span><span class="p">])</span>
+            <span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">local_keys</span> <span class="o">+</span> <span class="n">hyper_keys</span> <span class="o">+</span> <span class="n">shared_keys</span><span class="p">,</span> <span class="n">into</span><span class="o">=</span><span class="s2">&quot;inference_variables&quot;</span><span class="p">)</span>
+        <span class="p">)</span>
+
+        <span class="n">summary_keys</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;time_steps&quot;</span><span class="p">,</span> <span class="o">*</span><span class="n">data_keys</span><span class="p">]</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">simulator</span><span class="p">,</span> <span class="s2">&quot;has_mask&quot;</span><span class="p">)</span> <span class="ow">and</span> <span class="n">simulator</span><span class="o">.</span><span class="n">has_mask</span><span class="p">:</span>
+            <span class="n">adapter</span> <span class="o">=</span> <span class="n">adapter</span><span class="o">.</span><span class="n">as_time_series</span><span class="p">(</span><span class="s2">&quot;missing_mask&quot;</span><span class="p">)</span>
+            <span class="n">adapter</span> <span class="o">=</span> <span class="n">adapter</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="o">*</span><span class="n">summary_keys</span><span class="p">,</span> <span class="s2">&quot;missing_mask&quot;</span><span class="p">],</span> <span class="n">into</span><span class="o">=</span><span class="s2">&quot;summary_variables&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">adapter</span> <span class="o">=</span> <span class="n">adapter</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">summary_keys</span><span class="p">,</span> <span class="n">into</span><span class="o">=</span><span class="s2">&quot;summary_variables&quot;</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">adapter</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_load_history</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Load persisted training history from `checkpoint_filepath`, if present.</span>
@@ -569,6 +561,49 @@
         <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_filepath</span><span class="p">,</span> <span class="s2">&quot;history.pkl&quot;</span><span class="p">),</span> <span class="s2">&quot;wb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
             <span class="n">pickle</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">new_history</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">workflow</span><span class="o">.</span><span class="n">history</span> <span class="o">=</span> <span class="n">new_history</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_prepare_conditions</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Add adapter-required auxiliary condition keys to named observations.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;data must be a mapping of named arrays, got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">data</span><span class="p">)</span><span class="si">}</span><span class="s2">.&quot;</span><span class="p">)</span>
+
+        <span class="n">conditions</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">simulator</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">conditions</span>
+
+        <span class="n">data_keys</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">simulator</span><span class="o">.</span><span class="n">data_keys</span>
+        <span class="n">missing_keys</span> <span class="o">=</span> <span class="p">[</span><span class="n">key</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">data_keys</span> <span class="k">if</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">conditions</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">missing_keys</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Missing observed data keys </span><span class="si">{</span><span class="n">missing_keys</span><span class="si">!r}</span><span class="s2">. Expected keys: </span><span class="si">{</span><span class="n">data_keys</span><span class="si">!r}</span><span class="s2">.&quot;</span><span class="p">)</span>
+
+        <span class="n">first</span> <span class="o">=</span> <span class="n">conditions</span><span class="p">[</span><span class="n">data_keys</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span>
+        <span class="n">num_datasets</span> <span class="o">=</span> <span class="n">first</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">num_steps</span> <span class="o">=</span> <span class="n">first</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="s2">&quot;time_steps&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">conditions</span><span class="p">:</span>
+            <span class="n">log_warning</span><span class="p">(</span><span class="s2">&quot;No time_steps provided; adding contiguous default time steps.&quot;</span><span class="p">)</span>
+            <span class="n">conditions</span><span class="p">[</span><span class="s2">&quot;time_steps&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">broadcast_to</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">num_steps</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)[</span><span class="kc">None</span><span class="p">,</span> <span class="p">:],</span> <span class="p">(</span><span class="n">num_datasets</span><span class="p">,</span> <span class="n">num_steps</span><span class="p">))</span>
+
+        <span class="k">elif</span> <span class="n">conditions</span><span class="p">[</span><span class="s2">&quot;time_steps&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span> <span class="o">!=</span> <span class="p">(</span><span class="n">num_datasets</span><span class="p">,</span> <span class="n">num_steps</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;&#39;time_steps&#39; must have shape </span><span class="si">{</span><span class="p">(</span><span class="n">num_datasets</span><span class="p">,</span><span class="w"> </span><span class="n">num_steps</span><span class="p">)</span><span class="si">}</span><span class="s2">, got </span><span class="si">{</span><span class="n">conditions</span><span class="p">[</span><span class="s1">&#39;time_steps&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">.&quot;</span>
+            <span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">simulator</span><span class="p">,</span> <span class="s2">&quot;has_mask&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">):</span>
+            <span class="k">if</span> <span class="s2">&quot;missing_mask&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">conditions</span><span class="p">:</span>
+                <span class="n">log_warning</span><span class="p">(</span><span class="s2">&quot;No missing_mask provided although simulator has missingness; assuming no missings.&quot;</span><span class="p">)</span>
+                <span class="n">conditions</span><span class="p">[</span><span class="s2">&quot;missing_mask&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">num_datasets</span><span class="p">,</span> <span class="n">num_steps</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+
+            <span class="k">elif</span> <span class="n">conditions</span><span class="p">[</span><span class="s2">&quot;missing_mask&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span> <span class="o">!=</span> <span class="p">(</span><span class="n">num_datasets</span><span class="p">,</span> <span class="n">num_steps</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;&#39;missing_mask&#39; must have shape </span><span class="si">{</span><span class="p">(</span><span class="n">num_datasets</span><span class="p">,</span><span class="w"> </span><span class="n">num_steps</span><span class="p">)</span><span class="si">}</span><span class="s2">, &quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot;got </span><span class="si">{</span><span class="n">conditions</span><span class="p">[</span><span class="s1">&#39;missing_mask&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">.&quot;</span>
+                <span class="p">)</span>
+
+        <span class="n">remaining_keys</span> <span class="o">=</span> <span class="n">data_keys</span> <span class="o">+</span> <span class="p">[</span><span class="s2">&quot;missing_mask&quot;</span><span class="p">,</span> <span class="s2">&quot;time_steps&quot;</span><span class="p">]</span>
+        <span class="n">conditions</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">conditions</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">remaining_keys</span><span class="p">}</span>
+
+        <span class="k">return</span> <span class="n">conditions</span>
 
 <div class="viewcode-block" id="Workflow.fit_offline">
 <a class="viewcode-back" href="../../../api/generated/superstats.workflow.workflow.html#superstats.workflow.Workflow.fit_offline">[docs]</a>
@@ -678,20 +713,25 @@
 <a class="viewcode-back" href="../../../api/generated/superstats.workflow.workflow.html#superstats.workflow.Workflow.sample">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">sample</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span>
-        <span class="n">data</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
-        <span class="n">num_samples</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1000</span><span class="p">,</span>
-        <span class="n">inference_batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">5</span><span class="p">,</span>
+        <span class="n">data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
+        <span class="n">num_samples</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">500</span><span class="p">,</span>
+        <span class="n">batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">4</span><span class="p">,</span>
         <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Run inference on observed data.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
-<span class="sd">        data                 : np.ndarray of shape (num_datasets, num_steps, data_dims)</span>
-<span class="sd">            Observed data to condition on.</span>
-<span class="sd">        num_samples          : int, optional, default: 1000</span>
+<span class="sd">        data                 : dict of np.ndarray</span>
+<span class="sd">            Observed data to condition on, keyed by the simulator&#39;s</span>
+<span class="sd">            named observation variables. Each value should have shape</span>
+<span class="sd">            (num_datasets, num_steps). If `time_steps` is omitted, it is</span>
+<span class="sd">            generated automatically. If the simulator was configured with</span>
+<span class="sd">            missingness and `missing_mask` is omitted, an all-observed</span>
+<span class="sd">            mask is generated automatically.</span>
+<span class="sd">        num_samples          : int, optional, default: 500</span>
 <span class="sd">            Number of posterior samples per dataset.</span>
-<span class="sd">        inference_batch_size : int, optional, default: 5</span>
+<span class="sd">        batch_size : int, optional, default: 4</span>
 <span class="sd">            Datasets per GPU batch, to avoid out-of-memory errors.</span>
 <span class="sd">        **kwargs</span>
 <span class="sd">            Forwarded to `self.approximator.sample`.</span>
@@ -701,10 +741,11 @@
 <span class="sd">        samples : dict of {param_name: np.ndarray} - posterior samples</span>
 <span class="sd">            per parameter</span>
 <span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">conditions</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prepare_conditions</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
         <span class="n">samples</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">approximator</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span>
-            <span class="n">conditions</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;data&quot;</span><span class="p">:</span> <span class="n">data</span><span class="p">},</span>
+            <span class="n">conditions</span><span class="o">=</span><span class="n">conditions</span><span class="p">,</span>
             <span class="n">num_samples</span><span class="o">=</span><span class="n">num_samples</span><span class="p">,</span>
-            <span class="n">batch_size</span><span class="o">=</span><span class="n">inference_batch_size</span><span class="p">,</span>
+            <span class="n">batch_size</span><span class="o">=</span><span class="n">batch_size</span><span class="p">,</span>
             <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
         <span class="p">)</span>
         <span class="k">return</span> <span class="n">samples</span></div>
@@ -717,7 +758,7 @@
         <span class="n">posterior_samples</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
         <span class="n">num_sims</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
         <span class="n">rng</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Generate posterior predictive simulations from posterior parameter draws.</span>
 
 <span class="sd">        Parameters</span>
@@ -734,8 +775,9 @@
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
-<span class="sd">        sim_data : np.ndarray of shape (batch_size, num_sims,</span>
-<span class="sd">            num_steps, data_dim) - simulated data</span>
+<span class="sd">        sim_data : dict of np.ndarray</span>
+<span class="sd">            Named simulated variables. Each value has shape</span>
+<span class="sd">            (batch_size, num_sims, num_steps).</span>
 
 <span class="sd">        Raises</span>
 <span class="sd">        ------</span>
@@ -811,7 +853,7 @@
             <span class="n">num_steps</span><span class="o">=</span><span class="n">num_steps</span><span class="p">,</span>
         <span class="p">)</span>
 
-        <span class="k">return</span> <span class="n">raw_sim</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">num_sims</span><span class="p">,</span> <span class="n">num_steps</span><span class="p">,</span> <span class="o">*</span><span class="n">raw_sim</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">:])</span></div>
+        <span class="k">return</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">value</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">num_sims</span><span class="p">,</span> <span class="n">num_steps</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">raw_sim</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span></div>
 
 
 <div class="viewcode-block" id="Workflow.plot_history">
@@ -1194,6 +1236,153 @@
             <span class="n">mixture_names</span><span class="o">=</span><span class="n">mixture_names</span><span class="p">,</span>
             <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
         <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Workflow.df_to_dict">
+<a class="viewcode-back" href="../../../api/generated/superstats.workflow.workflow.html#superstats.workflow.Workflow.df_to_dict">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">df_to_dict</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
+        <span class="n">id_col</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">data_mapping</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span>
+        <span class="n">missing_value</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">time_col</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Convert a long-format DataFrame into the model&#39;s dict-of-arrays format.</span>
+
+<span class="sd">        Groups `df` by `id_col` and reshapes the columns named in</span>
+<span class="sd">        `data_mapping` into arrays of shape (batch_size, num_steps).</span>
+
+<span class="sd">        If `time_col` is given, it must contain discrete integer-like</span>
+<span class="sd">        values. The actual labels may be negative or non-contiguous; they</span>
+<span class="sd">        are normalized to positions `1..num_steps` in sorted time order.</span>
+<span class="sd">        Otherwise, rows are placed by order of appearance within each</span>
+<span class="sd">        `id_col` group. Missing or padded positions are flagged in</span>
+<span class="sd">        `&quot;missing_mask&quot;` and filled with the simulator&#39;s missing-value</span>
+<span class="sd">        convention when one exists.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        df           : pd.DataFrame</span>
+<span class="sd">            Long-format data with one row per (dataset, step). Must contain</span>
+<span class="sd">            `id_col`, `time_col` (if given), and every key in</span>
+<span class="sd">            `data_mapping`.</span>
+<span class="sd">        id_col       : str</span>
+<span class="sd">            Name of the column in `df` identifying which dataset/sequence</span>
+<span class="sd">            each row belongs to. Rows are grouped by this column, in order</span>
+<span class="sd">            of first appearance, to form the batch dimension.</span>
+<span class="sd">        data_mapping : Mapping[str, str]</span>
+<span class="sd">            Maps a column name in `df` to the corresponding key expected by</span>
+<span class="sd">            the generative model, e.g. `{&quot;rt&quot;: &quot;response_time&quot;, &quot;correct&quot;:</span>
+<span class="sd">            &quot;choice&quot;}`. The set of values (not keys) must exactly match</span>
+<span class="sd">            `self.simulator.data_keys`.</span>
+<span class="sd">        missing_value : int or float</span>
+<span class="sd">            Sentinel value marking a missing observation, and used to</span>
+<span class="sd">            initialize/pad positions with no corresponding row.</span>
+<span class="sd">        time_col     : str or None, optional, default: None</span>
+<span class="sd">            Name of the column in `df` giving each row&#39;s discrete time</span>
+<span class="sd">            label. If None, rows are placed by order of appearance within</span>
+<span class="sd">            their `id_col` group instead.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        data : dict of np.ndarray</span>
+<span class="sd">            One entry per generative-model data key, each of shape</span>
+<span class="sd">            (batch_size, num_steps), plus `&quot;missing_mask&quot;` (1 where any</span>
+<span class="sd">            mapped column equals `missing_value` at that step, 0 otherwise)</span>
+<span class="sd">            and `&quot;time_steps&quot;` (each row equal to `1..num_steps`).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">simulator</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;simulator&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">simulator</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">AttributeError</span><span class="p">(</span><span class="s2">&quot;df_to_dict needs a Workflow with a simulator.&quot;</span><span class="p">)</span>
+
+        <span class="n">required_cols</span> <span class="o">=</span> <span class="p">[</span><span class="n">id_col</span><span class="p">,</span> <span class="o">*</span><span class="n">data_mapping</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">time_col</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">required_cols</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">time_col</span><span class="p">)</span>
+        <span class="n">missing_cols</span> <span class="o">=</span> <span class="p">[</span><span class="n">col</span> <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">required_cols</span> <span class="k">if</span> <span class="n">col</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="n">missing_cols</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;df is missing required column(s): </span><span class="si">{</span><span class="n">missing_cols</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">df</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;df_to_dict requires at least one row.&quot;</span><span class="p">)</span>
+
+        <span class="n">mapped_keys</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">data_mapping</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+        <span class="n">expected_keys</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">simulator</span><span class="o">.</span><span class="n">data_keys</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">mapped_keys</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">expected_keys</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;data_mapping values </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">mapped_keys</span><span class="p">)</span><span class="si">!r}</span><span class="s2"> do not match &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;simulator.data_keys </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">expected_keys</span><span class="p">)</span><span class="si">!r}</span><span class="s2">.&quot;</span>
+            <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">missing_value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">missing_value</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
+
+        <span class="n">groups</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">id_col</span><span class="p">,</span> <span class="n">sort</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="n">dataset_ids</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">groups</span><span class="o">.</span><span class="n">groups</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+
+        <span class="k">if</span> <span class="n">time_col</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">time_float</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">to_numeric</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="n">time_col</span><span class="p">],</span> <span class="n">errors</span><span class="o">=</span><span class="s2">&quot;coerce&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">time_float</span><span class="p">))</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isclose</span><span class="p">(</span><span class="n">time_float</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">rint</span><span class="p">(</span><span class="n">time_float</span><span class="p">))):</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;time_col &#39;</span><span class="si">{</span><span class="n">time_col</span><span class="si">}</span><span class="s2">&#39; must contain discrete integer-like values.&quot;</span><span class="p">)</span>
+
+            <span class="c1"># Map arbitrary discrete labels, including negatives, onto dense columns.</span>
+            <span class="n">time_values</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">rint</span><span class="p">(</span><span class="n">time_float</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">),</span> <span class="n">index</span><span class="o">=</span><span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="p">)</span>
+            <span class="n">time_lookup</span> <span class="o">=</span> <span class="p">{</span><span class="n">value</span><span class="p">:</span> <span class="n">idx</span> <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">time_values</span><span class="o">.</span><span class="n">unique</span><span class="p">()))}</span>
+            <span class="n">num_steps</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">time_lookup</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">time_values</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="n">time_lookup</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="n">num_steps</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">groups</span><span class="o">.</span><span class="n">size</span><span class="p">()</span><span class="o">.</span><span class="n">max</span><span class="p">())</span>
+
+        <span class="n">batch_size</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">dataset_ids</span><span class="p">)</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="p">{</span><span class="n">data_key</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">num_steps</span><span class="p">),</span> <span class="n">missing_value</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span> <span class="k">for</span> <span class="n">data_key</span> <span class="ow">in</span> <span class="n">expected_keys</span><span class="p">}</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">_col_idx</span><span class="p">(</span><span class="n">group</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">dataset_id</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">time_col</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">group</span><span class="p">))</span>
+            <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">time_lookup</span><span class="p">[</span><span class="n">value</span><span class="p">]</span> <span class="k">for</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">time_values</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">group</span><span class="o">.</span><span class="n">index</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">idx</span><span class="p">))</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">idx</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Duplicate &#39;</span><span class="si">{</span><span class="n">time_col</span><span class="si">}</span><span class="s2">&#39; values found within id &#39;</span><span class="si">{</span><span class="n">dataset_id</span><span class="si">}</span><span class="s2">&#39;.&quot;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">idx</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">_as_float_values</span><span class="p">(</span><span class="n">group</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">col</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">group</span><span class="p">[</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+            <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">)</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Column &#39;</span><span class="si">{</span><span class="n">col</span><span class="si">}</span><span class="s2">&#39; must be numeric.&quot;</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
+
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">dataset_id</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">dataset_ids</span><span class="p">):</span>
+            <span class="n">group</span> <span class="o">=</span> <span class="n">groups</span><span class="o">.</span><span class="n">get_group</span><span class="p">(</span><span class="n">dataset_id</span><span class="p">)</span>
+            <span class="n">col_idx</span> <span class="o">=</span> <span class="n">_col_idx</span><span class="p">(</span><span class="n">group</span><span class="p">,</span> <span class="n">dataset_id</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">col</span><span class="p">,</span> <span class="n">data_key</span> <span class="ow">in</span> <span class="n">data_mapping</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="n">data</span><span class="p">[</span><span class="n">data_key</span><span class="p">][</span><span class="n">i</span><span class="p">,</span> <span class="n">col_idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">_as_float_values</span><span class="p">(</span><span class="n">group</span><span class="p">,</span> <span class="n">col</span><span class="p">)</span>
+
+        <span class="n">missing_mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">num_steps</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">data_key</span> <span class="ow">in</span> <span class="n">expected_keys</span><span class="p">:</span>
+            <span class="n">missing_mask</span> <span class="o">|=</span> <span class="n">pd</span><span class="o">.</span><span class="n">isna</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="n">data_key</span><span class="p">])</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">pd</span><span class="o">.</span><span class="n">isna</span><span class="p">(</span><span class="n">missing_value</span><span class="p">):</span>
+                <span class="n">missing_mask</span> <span class="o">|=</span> <span class="n">data</span><span class="p">[</span><span class="n">data_key</span><span class="p">]</span> <span class="o">==</span> <span class="n">missing_value</span>
+
+        <span class="n">model_missing_value</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">simulator</span><span class="p">,</span> <span class="s2">&quot;missing&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span> <span class="s2">&quot;missing_value&quot;</span><span class="p">,</span> <span class="n">missing_value</span><span class="p">)</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">_missing_fill</span><span class="p">(</span><span class="n">data_key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">index</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">model_missing_value</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">):</span>
+                <span class="k">return</span> <span class="n">model_missing_value</span><span class="p">[</span><span class="n">data_key</span><span class="p">]</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">model_missing_value</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">value</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">model_missing_value</span>
+            <span class="k">if</span> <span class="n">value</span><span class="o">.</span><span class="n">shape</span> <span class="o">==</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">expected_keys</span><span class="p">),):</span>
+                <span class="k">return</span> <span class="n">value</span><span class="p">[</span><span class="n">index</span><span class="p">]</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;simulator missing_value must be scalar, mapping, or shape (</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">expected_keys</span><span class="p">)</span><span class="si">}</span><span class="s2">,).&quot;</span><span class="p">)</span>
+
+        <span class="c1"># A missing value in any observed variable drops the whole time step.</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">data_key</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">expected_keys</span><span class="p">):</span>
+            <span class="n">data</span><span class="p">[</span><span class="n">data_key</span><span class="p">][</span><span class="n">missing_mask</span><span class="p">]</span> <span class="o">=</span> <span class="n">_missing_fill</span><span class="p">(</span><span class="n">data_key</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+
+        <span class="n">data</span><span class="p">[</span><span class="s2">&quot;missing_mask&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">missing_mask</span>
+        <span class="n">data</span><span class="p">[</span><span class="s2">&quot;time_steps&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">broadcast_to</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">num_steps</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)[</span><span class="kc">None</span><span class="p">,</span> <span class="p">:],</span> <span class="p">(</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">num_steps</span><span class="p">))</span>
+
+        <span class="k">return</span> <span class="n">data</span></div>
 </div>
 
 </pre></div>

@@ -161,7 +161,7 @@
 
 <li class="nav-item ">
   <a class="nav-link nav-internal" href="../../../contributing.html">
-    Contributing to superstats
+    Contributing
   </a>
 </li>
 
@@ -288,7 +288,7 @@
 
 <li class="nav-item ">
   <a class="nav-link nav-internal" href="../../../contributing.html">
-    Contributing to superstats
+    Contributing
   </a>
 </li>
 
@@ -395,7 +395,7 @@
 <span></span><span class="sd">&quot;&quot;&quot;Recurrent summary network layers.&quot;&quot;&quot;</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Sequence</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">numbers</span><span class="w"> </span><span class="kn">import</span> <span class="n">Integral</span><span class="p">,</span> <span class="n">Real</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">numbers</span><span class="w"> </span><span class="kn">import</span> <span class="n">Integral</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">bayesflow</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">bf</span>
 
@@ -404,6 +404,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">bayesflow.types</span><span class="w"> </span><span class="kn">import</span> <span class="n">Tensor</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">bayesflow.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">layer_kwargs</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">bayesflow.utils.serialization</span><span class="w"> </span><span class="kn">import</span> <span class="n">serializable</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">bayesflow.networks.helpers</span><span class="w"> </span><span class="kn">import</span> <span class="n">Time2Vec</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">expand_singletons_to_common_length</span>
 
@@ -418,16 +419,22 @@
 <span class="sd">    ----------</span>
 <span class="sd">    summary_dim    : int, optional, default: 64</span>
 <span class="sd">        Per-timestep output dimensionality.</span>
-<span class="sd">    hidden_dim     : int or sequence of int, optional, default: 256</span>
+<span class="sd">    hidden_dim     : int or sequence of int, optional, default: (64, 64)</span>
 <span class="sd">        Dimensionality of the hidden state in each recurrent layer.</span>
-<span class="sd">    recurrent_type : {&quot;lstm&quot;, &quot;gru&quot;} or sequence thereof, optional, default: &quot;lstm&quot;</span>
+<span class="sd">    recurrent_type : {&quot;lstm&quot;, &quot;gru&quot;} or sequence, optional, default: &quot;gru&quot;</span>
 <span class="sd">        Type of recurrent unit to use in each layer.</span>
 <span class="sd">    bidirectional  : bool or sequence of bool, optional, default: True</span>
 <span class="sd">        If True, the layer is processed bidirectionally and the two</span>
-<span class="sd">        directions are summed. If False, the layer processes the</span>
-<span class="sd">        sequence forward only.</span>
+<span class="sd">        directions are merged according to `merge_mode`. If False,</span>
+<span class="sd">        the layer processes the sequence forward only.</span>
+<span class="sd">    merge_mode     : {&quot;sum&quot;, &quot;mul&quot;, &quot;ave&quot;, &quot;concat&quot;} or sequence, optional, default: &quot;sum&quot;</span>
+<span class="sd">        Mode used to merge forward and backward outputs in bidirectional layers.</span>
+<span class="sd">    layer_norm     : bool or sequence of bool, optional, default: True</span>
+<span class="sd">        Whether to apply layer normalization after each recurrent layer.</span>
+<span class="sd">    time_embed_dim : int, optional, default: 16</span>
+<span class="sd">        The number of features learned by the time2vec preprocessing layer.</span>
 <span class="sd">    dropout        : float or sequence of float in [0, 1], optional, default: 0.05</span>
-<span class="sd">        Dropout rate applied within each recurrent layer.</span>
+<span class="sd">        Dropout rate applied after the recurrent layer(s).</span>
 <span class="sd">    **kwargs</span>
 <span class="sd">        Additional keyword arguments passed to the parent class</span>
 <span class="sd">        constructor.</span>
@@ -437,8 +444,8 @@
 <span class="sd">    All recurrent layers are built with `return_sequences=True`, so</span>
 <span class="sd">    the projection is applied per timestep and the sequence-length</span>
 <span class="sd">    axis is retained. If any of `hidden_dim`, `recurrent_type`,</span>
-<span class="sd">    `bidirectional`, or `dropout` is a sequence with more than one</span>
-<span class="sd">    element, all single values are expanded to that length. Multiple</span>
+<span class="sd">    `bidirectional`, `merge_mode`, or `layer_norm` is a sequence with</span>
+<span class="sd">    more than one element, all single values are expanded to that length. Multiple</span>
 <span class="sd">    multi-element sequences must have the same length.</span>
 
 <span class="sd">    Raises</span>
@@ -451,42 +458,63 @@
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span>
         <span class="n">summary_dim</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">64</span><span class="p">,</span>
-        <span class="n">hidden_dim</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">256</span><span class="p">,</span>
-        <span class="n">recurrent_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;lstm&quot;</span><span class="p">,</span>
+        <span class="n">hidden_dim</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="mi">64</span><span class="p">,</span> <span class="mi">64</span><span class="p">),</span>
+        <span class="n">recurrent_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;gru&quot;</span><span class="p">,</span>
         <span class="n">bidirectional</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
-        <span class="n">dropout</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.05</span><span class="p">,</span>
+        <span class="n">merge_mode</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;sum&quot;</span><span class="p">,</span>
+        <span class="n">layer_norm</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="n">time_axis</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+        <span class="n">time_embed_dim</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">16</span><span class="p">,</span>
+        <span class="n">dropout</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.05</span><span class="p">,</span>
         <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
     <span class="p">):</span>
         <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">layer_kwargs</span><span class="p">(</span><span class="n">kwargs</span><span class="p">))</span>
 
         <span class="n">recurrent_kwargs</span> <span class="o">=</span> <span class="n">expand_singletons_to_common_length</span><span class="p">(</span>
-            <span class="n">hidden_dim</span><span class="o">=</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">recurrent_type</span><span class="o">=</span><span class="n">recurrent_type</span><span class="p">,</span> <span class="n">bidirectional</span><span class="o">=</span><span class="n">bidirectional</span><span class="p">,</span> <span class="n">dropout</span><span class="o">=</span><span class="n">dropout</span>
+            <span class="n">hidden_dim</span><span class="o">=</span><span class="n">hidden_dim</span><span class="p">,</span>
+            <span class="n">recurrent_type</span><span class="o">=</span><span class="n">recurrent_type</span><span class="p">,</span>
+            <span class="n">bidirectional</span><span class="o">=</span><span class="n">bidirectional</span><span class="p">,</span>
+            <span class="n">merge_mode</span><span class="o">=</span><span class="n">merge_mode</span><span class="p">,</span>
+            <span class="n">layer_norm</span><span class="o">=</span><span class="n">layer_norm</span><span class="p">,</span>
         <span class="p">)</span>
 
         <span class="n">recurrent_layers</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">normalization_layers</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="k">for</span> <span class="n">constructor_kwargs</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span>
             <span class="n">recurrent_kwargs</span><span class="p">[</span><span class="s2">&quot;hidden_dim&quot;</span><span class="p">],</span>
             <span class="n">recurrent_kwargs</span><span class="p">[</span><span class="s2">&quot;recurrent_type&quot;</span><span class="p">],</span>
             <span class="n">recurrent_kwargs</span><span class="p">[</span><span class="s2">&quot;bidirectional&quot;</span><span class="p">],</span>
-            <span class="n">recurrent_kwargs</span><span class="p">[</span><span class="s2">&quot;dropout&quot;</span><span class="p">],</span>
+            <span class="n">recurrent_kwargs</span><span class="p">[</span><span class="s2">&quot;merge_mode&quot;</span><span class="p">],</span>
+            <span class="n">recurrent_kwargs</span><span class="p">[</span><span class="s2">&quot;layer_norm&quot;</span><span class="p">],</span>
         <span class="p">):</span>
-            <span class="n">hidden_dim_</span><span class="p">,</span> <span class="n">recurrent_type_</span><span class="p">,</span> <span class="n">bidirectional_</span><span class="p">,</span> <span class="n">dropout_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_validate_layer_kwargs</span><span class="p">(</span><span class="o">*</span><span class="n">constructor_kwargs</span><span class="p">)</span>
+            <span class="n">hidden_dim_</span><span class="p">,</span> <span class="n">recurrent_type_</span><span class="p">,</span> <span class="n">bidirectional_</span><span class="p">,</span> <span class="n">merge_mode_</span><span class="p">,</span> <span class="n">layer_norm_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_validate_layer_kwargs</span><span class="p">(</span>
+                <span class="o">*</span><span class="n">constructor_kwargs</span>
+            <span class="p">)</span>
             <span class="n">recurrent_constructor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_recurrent_constructor</span><span class="p">(</span><span class="n">recurrent_type_</span><span class="p">)</span>
-            <span class="n">recurrent_layer</span> <span class="o">=</span> <span class="n">recurrent_constructor</span><span class="p">(</span><span class="n">units</span><span class="o">=</span><span class="n">hidden_dim_</span><span class="p">,</span> <span class="n">dropout</span><span class="o">=</span><span class="n">dropout_</span><span class="p">,</span> <span class="n">return_sequences</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="n">recurrent_layer</span> <span class="o">=</span> <span class="n">recurrent_constructor</span><span class="p">(</span><span class="n">units</span><span class="o">=</span><span class="n">hidden_dim_</span><span class="p">,</span> <span class="n">return_sequences</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
             <span class="k">if</span> <span class="n">bidirectional_</span><span class="p">:</span>
-                <span class="n">recurrent_layer</span> <span class="o">=</span> <span class="n">keras</span><span class="o">.</span><span class="n">layers</span><span class="o">.</span><span class="n">Bidirectional</span><span class="p">(</span><span class="n">recurrent_layer</span><span class="p">,</span> <span class="n">merge_mode</span><span class="o">=</span><span class="s2">&quot;sum&quot;</span><span class="p">)</span>
+                <span class="n">recurrent_layer</span> <span class="o">=</span> <span class="n">keras</span><span class="o">.</span><span class="n">layers</span><span class="o">.</span><span class="n">Bidirectional</span><span class="p">(</span><span class="n">recurrent_layer</span><span class="p">,</span> <span class="n">merge_mode</span><span class="o">=</span><span class="n">merge_mode_</span><span class="p">)</span>
 
             <span class="n">recurrent_layers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">recurrent_layer</span><span class="p">)</span>
+            <span class="n">normalization_layers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">keras</span><span class="o">.</span><span class="n">layers</span><span class="o">.</span><span class="n">LayerNormalization</span><span class="p">(</span><span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span> <span class="k">if</span> <span class="n">layer_norm_</span> <span class="k">else</span> <span class="kc">None</span><span class="p">)</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">recurrent_layers</span> <span class="o">=</span> <span class="n">recurrent_layers</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">normalization_layers</span> <span class="o">=</span> <span class="n">normalization_layers</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">dropout_layer</span> <span class="o">=</span> <span class="n">keras</span><span class="o">.</span><span class="n">layers</span><span class="o">.</span><span class="n">Dropout</span><span class="p">(</span><span class="n">dropout</span><span class="p">)</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">summary_stats</span> <span class="o">=</span> <span class="n">keras</span><span class="o">.</span><span class="n">layers</span><span class="o">.</span><span class="n">Conv1D</span><span class="p">(</span><span class="n">filters</span><span class="o">=</span><span class="n">summary_dim</span><span class="p">,</span> <span class="n">kernel_size</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">time_embedding</span> <span class="o">=</span> <span class="n">Time2Vec</span><span class="p">(</span><span class="n">time_embed_dim</span><span class="p">)</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">summary_dim</span> <span class="o">=</span> <span class="n">summary_dim</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">time_axis</span> <span class="o">=</span> <span class="n">time_axis</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">time_embed_dim</span> <span class="o">=</span> <span class="n">time_embed_dim</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">hidden_dim</span> <span class="o">=</span> <span class="n">hidden_dim</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">recurrent_type</span> <span class="o">=</span> <span class="n">recurrent_type</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">bidirectional</span> <span class="o">=</span> <span class="n">bidirectional</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">merge_mode</span> <span class="o">=</span> <span class="n">merge_mode</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">layer_norm</span> <span class="o">=</span> <span class="n">layer_norm</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">dropout</span> <span class="o">=</span> <span class="n">dropout</span>
 
 <div class="viewcode-block" id="RecurrentNet.call">
@@ -506,9 +534,20 @@
 <span class="sd">        summary : Tensor - the learned summary of shape</span>
 <span class="sd">            (batch_size, sequence_length, summary_dim).</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">out</span> <span class="o">=</span> <span class="n">time_series</span>
-        <span class="k">for</span> <span class="n">recurrent_layer</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">recurrent_layers</span><span class="p">:</span>
-            <span class="n">out</span> <span class="o">=</span> <span class="n">recurrent_layer</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="n">training</span><span class="o">=</span><span class="n">training</span><span class="p">)</span>
+
+        <span class="n">time</span> <span class="o">=</span> <span class="n">time_series</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">time_axis</span><span class="p">]</span>
+        <span class="n">indices</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">keras</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">shape</span><span class="p">(</span><span class="n">time_series</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]))</span>
+        <span class="n">indices</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">time_axis</span><span class="p">)</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">keras</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">take</span><span class="p">(</span><span class="n">time_series</span><span class="p">,</span> <span class="n">indices</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="n">out</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">time_embedding</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="n">t</span><span class="o">=</span><span class="n">time</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">recurrent_layer</span><span class="p">,</span> <span class="n">normalization_layer</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">recurrent_layers</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">normalization_layers</span><span class="p">):</span>
+            <span class="n">out</span> <span class="o">=</span> <span class="n">recurrent_layer</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">normalization_layer</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">out</span> <span class="o">=</span> <span class="n">normalization_layer</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="n">training</span><span class="o">=</span><span class="n">training</span><span class="p">)</span>
+
+        <span class="n">out</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">dropout_layer</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="n">training</span><span class="o">=</span><span class="n">training</span><span class="p">)</span>
 
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">summary_stats</span><span class="p">(</span><span class="n">out</span><span class="p">)</span></div>
 
@@ -523,7 +562,11 @@
                 <span class="s2">&quot;hidden_dim&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">hidden_dim</span><span class="p">,</span>
                 <span class="s2">&quot;recurrent_type&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">recurrent_type</span><span class="p">,</span>
                 <span class="s2">&quot;bidirectional&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">bidirectional</span><span class="p">,</span>
+                <span class="s2">&quot;merge_mode&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">merge_mode</span><span class="p">,</span>
+                <span class="s2">&quot;layer_norm&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">layer_norm</span><span class="p">,</span>
                 <span class="s2">&quot;dropout&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">dropout</span><span class="p">,</span>
+                <span class="s2">&quot;time_axis&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">time_axis</span><span class="p">,</span>
+                <span class="s2">&quot;time_embed_dim&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">time_embed_dim</span><span class="p">,</span>
             <span class="p">}</span>
         <span class="p">)</span>
         <span class="k">return</span> <span class="n">config</span></div>
@@ -543,8 +586,9 @@
         <span class="n">hidden_dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
         <span class="n">recurrent_type</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
         <span class="n">bidirectional</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
-        <span class="n">dropout</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
-    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">bool</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>
+        <span class="n">merge_mode</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">layer_norm</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">bool</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
         <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="nb">bool</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">Integral</span><span class="p">)</span> <span class="ow">or</span> <span class="n">hidden_dim</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;hidden_dim must be a positive integer, not </span><span class="si">{</span><span class="n">hidden_dim</span><span class="si">!r}</span><span class="s2">.&quot;</span><span class="p">)</span>
 
@@ -555,10 +599,17 @@
         <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">bidirectional</span><span class="p">,</span> <span class="nb">bool</span><span class="p">):</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;bidirectional must be a boolean, not </span><span class="si">{</span><span class="n">bidirectional</span><span class="si">!r}</span><span class="s2">.&quot;</span><span class="p">)</span>
 
-        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">dropout</span><span class="p">,</span> <span class="nb">bool</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">dropout</span><span class="p">,</span> <span class="n">Real</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">dropout</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;dropout must be a float in [0, 1], not </span><span class="si">{</span><span class="n">dropout</span><span class="si">!r}</span><span class="s2">.&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">merge_mode</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;merge_mode must be one of [&#39;sum&#39;, &#39;mul&#39;, &#39;ave&#39;, &#39;concat&#39;], not </span><span class="si">{</span><span class="n">merge_mode</span><span class="si">!r}</span><span class="s2">.&quot;</span><span class="p">)</span>
+        <span class="n">merge_mode</span> <span class="o">=</span> <span class="n">merge_mode</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
 
-        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">),</span> <span class="n">recurrent_type</span><span class="p">,</span> <span class="n">bidirectional</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="n">dropout</span><span class="p">)</span></div>
+        <span class="k">if</span> <span class="n">merge_mode</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">&quot;sum&quot;</span><span class="p">,</span> <span class="s2">&quot;mul&quot;</span><span class="p">,</span> <span class="s2">&quot;ave&quot;</span><span class="p">,</span> <span class="s2">&quot;concat&quot;</span><span class="p">}:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;merge_mode must be one of [&#39;sum&#39;, &#39;mul&#39;, &#39;ave&#39;, &#39;concat&#39;], not </span><span class="si">{</span><span class="n">merge_mode</span><span class="si">!r}</span><span class="s2">.&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">layer_norm</span><span class="p">,</span> <span class="nb">bool</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;layer_norm must be a boolean, not </span><span class="si">{</span><span class="n">layer_norm</span><span class="si">!r}</span><span class="s2">.&quot;</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">hidden_dim</span><span class="p">,</span> <span class="n">recurrent_type</span><span class="p">,</span> <span class="n">bidirectional</span><span class="p">,</span> <span class="n">merge_mode</span><span class="p">,</span> <span class="n">layer_norm</span></div>
 
 </pre></div>
 

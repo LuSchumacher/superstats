@@ -161,7 +161,7 @@
 
 <li class="nav-item ">
   <a class="nav-link nav-internal" href="../../../../contributing.html">
-    Contributing to superstats
+    Contributing
   </a>
 </li>
 
@@ -288,7 +288,7 @@
 
 <li class="nav-item ">
   <a class="nav-link nav-internal" href="../../../../contributing.html">
-    Contributing to superstats
+    Contributing
   </a>
 </li>
 
@@ -394,7 +394,7 @@
   <h1>Source code for superstats.diagnostics.plots.posterior_resimulation</h1><div class="highlight"><pre>
 <span></span><span class="sd">&quot;&quot;&quot;Posterior predictive resimulation plots.&quot;&quot;&quot;</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Callable</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">Mapping</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Literal</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
@@ -415,6 +415,39 @@
 
 <span class="n">BASE_COL_WIDTH</span> <span class="o">=</span> <span class="mf">4.0</span>
 <span class="n">BASE_ROW_HEIGHT</span> <span class="o">=</span> <span class="mf">3.0</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_select_resimulation_variable</span><span class="p">(</span>
+    <span class="n">pred_data</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
+    <span class="n">real_data</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
+    <span class="n">data_dim</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Resolve named posterior predictive data to one variable.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">pred_data</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">real_data</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;pred_data and real_data must be mappings of named arrays.&quot;</span><span class="p">)</span>
+
+    <span class="n">keys</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">pred_data</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data_dim</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">key</span> <span class="o">=</span> <span class="n">keys</span><span class="p">[</span><span class="n">data_dim</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">IndexError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;data_dim index </span><span class="si">{</span><span class="n">data_dim</span><span class="si">}</span><span class="s2"> is out of range for data keys </span><span class="si">{</span><span class="n">keys</span><span class="si">!r}</span><span class="s2">.&quot;</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">key</span> <span class="o">=</span> <span class="n">data_dim</span>
+        <span class="k">if</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">pred_data</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;pred_data key </span><span class="si">{</span><span class="n">key</span><span class="si">!r}</span><span class="s2"> not found. Available keys: </span><span class="si">{</span><span class="n">keys</span><span class="si">!r}</span><span class="s2">.&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">real_data</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;real_data key </span><span class="si">{</span><span class="n">key</span><span class="si">!r}</span><span class="s2"> not found. Available keys: </span><span class="si">{</span><span class="nb">list</span><span class="p">(</span><span class="n">real_data</span><span class="p">)</span><span class="si">!r}</span><span class="s2">.&quot;</span><span class="p">)</span>
+
+    <span class="n">pred_x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">pred_data</span><span class="p">[</span><span class="n">key</span><span class="p">])</span>
+    <span class="n">real_x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">real_data</span><span class="p">[</span><span class="n">key</span><span class="p">])</span>
+    <span class="k">if</span> <span class="n">pred_x</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">3</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Predictive variable </span><span class="si">{</span><span class="n">key</span><span class="si">!r}</span><span class="s2"> must have shape (num_datasets, num_resims, num_steps), got </span><span class="si">{</span><span class="n">pred_x</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">.&quot;</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">real_x</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Observed variable </span><span class="si">{</span><span class="n">key</span><span class="si">!r}</span><span class="s2"> must have shape (num_datasets, num_steps), got </span><span class="si">{</span><span class="n">real_x</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">.&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">pred_x</span><span class="p">,</span> <span class="n">real_x</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_smooth_trajectory</span><span class="p">(</span><span class="n">arr</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">smoothing</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">window</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
@@ -580,9 +613,9 @@
 <div class="viewcode-block" id="plot_posterior_resimulation">
 <a class="viewcode-back" href="../../../../api/generated/superstats.diagnostics.plots.posterior_resimulation.html#superstats.diagnostics.plot_posterior_resimulation">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">plot_posterior_resimulation</span><span class="p">(</span>
-    <span class="n">pred_data</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
-    <span class="n">real_data</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
-    <span class="n">data_dim</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+    <span class="n">pred_data</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
+    <span class="n">real_data</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
+    <span class="n">data_dim</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
     <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;trajectory&quot;</span><span class="p">,</span> <span class="s2">&quot;dist&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;trajectory&quot;</span><span class="p">,</span>
     <span class="n">aggregation</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">aggregate_strategy</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;full_uncertainty&quot;</span><span class="p">,</span> <span class="s2">&quot;no_epistemic&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;full_uncertainty&quot;</span><span class="p">,</span>
@@ -604,12 +637,15 @@
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
-<span class="sd">    pred_data           : np.ndarray of shape (num_datasets, num_resims, num_steps, data_dims)</span>
-<span class="sd">        Posterior resimulated data.</span>
-<span class="sd">    real_data           : np.ndarray of shape (num_datasets, num_steps, data_dims)</span>
-<span class="sd">        Observed data.</span>
-<span class="sd">    data_dim            : int, optional, default: 0</span>
-<span class="sd">        Which data dimension to plot.</span>
+<span class="sd">    pred_data           : mapping of np.ndarray</span>
+<span class="sd">        Posterior resimulated data, mapping observation names to arrays</span>
+<span class="sd">        of shape (num_datasets, num_resims, num_steps).</span>
+<span class="sd">    real_data           : mapping of np.ndarray</span>
+<span class="sd">        Observed data, mapping observation names to arrays of shape</span>
+<span class="sd">        (num_datasets, num_steps).</span>
+<span class="sd">    data_dim            : int or str, optional, default: 0</span>
+<span class="sd">        Which observation variable to plot. Strings select by key and</span>
+<span class="sd">        integers index the predictive mapping&#39;s key order.</span>
 <span class="sd">    kind                : {&quot;trajectory&quot;, &quot;dist&quot;}, optional, default: &quot;trajectory&quot;</span>
 <span class="sd">        &quot;trajectory&quot;: band/center over steps.</span>
 <span class="sd">        &quot;dist&quot;: distribution across steps.</span>
@@ -674,27 +710,18 @@
 <span class="sd">    ------</span>
 <span class="sd">    ValueError</span>
 <span class="sd">        If `kind` is not &quot;trajectory&quot; or &quot;dist&quot;, if `pred_data` or</span>
-<span class="sd">        `real_data` don&#39;t have the expected number of dimensions, if</span>
-<span class="sd">        their (num_datasets, num_steps) don&#39;t match, or if</span>
-<span class="sd">        `aggregate_strategy` is not &quot;full_uncertainty&quot; or &quot;no_epistemic&quot;.</span>
+<span class="sd">        `real_data` don&#39;t have the expected shape, if their</span>
+<span class="sd">        (num_datasets, num_steps) don&#39;t match, or if `aggregate_strategy`</span>
+<span class="sd">        is not &quot;full_uncertainty&quot; or &quot;no_epistemic&quot;.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">kind</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">&quot;trajectory&quot;</span><span class="p">,</span> <span class="s2">&quot;dist&quot;</span><span class="p">}:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;kind must be &#39;trajectory&#39; or &#39;dist&#39;.&quot;</span><span class="p">)</span>
 
-    <span class="n">pred</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">pred_data</span><span class="p">)</span>
-    <span class="n">real</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">real_data</span><span class="p">)</span>
+    <span class="n">pred_x</span><span class="p">,</span> <span class="n">real_x</span> <span class="o">=</span> <span class="n">_select_resimulation_variable</span><span class="p">(</span><span class="n">pred_data</span><span class="p">,</span> <span class="n">real_data</span><span class="p">,</span> <span class="n">data_dim</span><span class="p">)</span>
 
-    <span class="k">if</span> <span class="n">pred</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">4</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;pred_data must have shape (num_datasets, num_resims, num_steps, data_dims).&quot;</span><span class="p">)</span>
-    <span class="k">if</span> <span class="n">real</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">3</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;real_data must have shape (num_datasets, num_steps, data_dims).&quot;</span><span class="p">)</span>
-
-    <span class="n">D</span><span class="p">,</span> <span class="n">S</span><span class="p">,</span> <span class="n">T</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">pred</span><span class="o">.</span><span class="n">shape</span>
-    <span class="k">if</span> <span class="n">real</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">D</span> <span class="ow">or</span> <span class="n">real</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="n">T</span><span class="p">:</span>
+    <span class="n">D</span><span class="p">,</span> <span class="n">S</span><span class="p">,</span> <span class="n">T</span> <span class="o">=</span> <span class="n">pred_x</span><span class="o">.</span><span class="n">shape</span>
+    <span class="k">if</span> <span class="n">real_x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">D</span> <span class="ow">or</span> <span class="n">real_x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="n">T</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;real_data&#39;s (num_datasets, num_steps) must match pred_data&#39;s.&quot;</span><span class="p">)</span>
-
-    <span class="n">pred_x</span> <span class="o">=</span> <span class="n">pred</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="n">data_dim</span><span class="p">]</span>
-    <span class="n">real_x</span> <span class="o">=</span> <span class="n">real</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="n">data_dim</span><span class="p">]</span>
 
     <span class="k">if</span> <span class="n">kind</span> <span class="o">==</span> <span class="s2">&quot;trajectory&quot;</span> <span class="ow">and</span> <span class="n">smoothing</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">real_x</span> <span class="o">=</span> <span class="n">_smooth_trajectory</span><span class="p">(</span><span class="n">real_x</span><span class="p">,</span> <span class="n">smoothing</span><span class="p">,</span> <span class="n">smoothing_window</span><span class="p">)</span>

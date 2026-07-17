@@ -1,16 +1,11 @@
 # Examples
 
-Example notebooks currently live in the repository's `examples/` directory.
-They are intentionally kept outside the first documentation build so the docs
-can be generated quickly while the notebook execution policy is still settling.
+This page contains tutorial notebooks for superstats, ranging from basic workflows to more complex applications.
+The corresponding Jupyter Notebooks are available in the `examples/` directory.
 
-Good first candidates to promote into rendered documentation are:
+```{toctree}
+:maxdepth: 1
+:titlesonly:
 
-- `examples/tutorial.ipynb`
-- `examples/minimal_workflow.ipynb`
-- `examples/minimal_workflow_net.ipynb`
-- `examples/benchmark.ipynb`
-
-The Sphinx configuration already enables MyST-NB with execution disabled, so
-these notebooks can be added to the documentation toctree when their outputs and
-runtime expectations are ready.
+../examples/minimal_workflow_demo
+```

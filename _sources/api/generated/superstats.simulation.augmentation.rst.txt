@@ -1,0 +1,16 @@
+superstats.simulation.augmentation
+==================================
+
+.. automodule:: superstats.simulation.augmentation
+
+   
+.. rubric:: Modules
+
+.. autosummary::
+   :toctree:
+   :recursive:
+
+   contamination
+   missing
+   random_choice_contamination
+   random_missing

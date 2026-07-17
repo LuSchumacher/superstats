@@ -161,7 +161,7 @@
 
 <li class="nav-item ">
   <a class="nav-link nav-internal" href="../../../../contributing.html">
-    Contributing to superstats
+    Contributing
   </a>
 </li>
 
@@ -288,7 +288,7 @@
 
 <li class="nav-item ">
   <a class="nav-link nav-internal" href="../../../../contributing.html">
-    Contributing to superstats
+    Contributing
   </a>
 </li>
 
@@ -409,7 +409,7 @@
     <span class="n">sigma</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
     <span class="n">dt</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.001</span><span class="p">,</span>
     <span class="n">max_steps</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10000</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Sample from the Diffusion Decision Model (DDM) for decision making.</span>
 
 <span class="sd">    This function simulates decision processes using the DDM, where evidence</span>
@@ -418,18 +418,18 @@
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
-<span class="sd">    v         : np.ndarray of shape (num_trials,)</span>
+<span class="sd">    v         : np.ndarray of shape (num_steps,)</span>
 <span class="sd">        Drift rates for each trial.</span>
-<span class="sd">    a         : np.ndarray of shape (num_trials,)</span>
-<span class="sd">        Boundary distance from the origin for each trial; decision</span>
-<span class="sd">        boundaries are at +a and -a.</span>
-<span class="sd">    tau       : np.ndarray of shape (num_trials,)</span>
+<span class="sd">    a         : np.ndarray of shape (num_steps,)</span>
+<span class="sd">        Boundary separation for each trial; decision boundaries are at</span>
+<span class="sd">        0 (lower) and a (upper).</span>
+<span class="sd">    tau       : np.ndarray of shape (num_steps,)</span>
 <span class="sd">        Non-decision times for each trial.</span>
-<span class="sd">    bias      : np.ndarray of shape (num_trials,)</span>
-<span class="sd">        Starting point offset, as a fraction of `a` (i.e. the initial</span>
-<span class="sd">        evidence is `bias * a`). 0 starts at the midpoint between the</span>
-<span class="sd">        two boundaries; positive values start closer to the upper</span>
-<span class="sd">        boundary, negative values closer to the lower one.</span>
+<span class="sd">    bias      : np.ndarray of shape (num_steps,)</span>
+<span class="sd">        Starting point, as a fraction of `a` (i.e. the initial evidence</span>
+<span class="sd">        is `bias * a`). 0.5 starts at the midpoint between the two</span>
+<span class="sd">        boundaries; values &gt; 0.5 start closer to the upper boundary,</span>
+<span class="sd">        values &lt; 0.5 closer to the lower one. Must lie in (0, 1).</span>
 <span class="sd">    sigma     : float, optional, default: 1.0</span>
 <span class="sd">        Diffusion noise standard deviation.</span>
 <span class="sd">    dt        : float, optional, default: 0.001</span>
@@ -439,17 +439,19 @@
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
-<span class="sd">    data : np.ndarray of shape (num_trials, 2) - decision data, where</span>
-<span class="sd">        column 0 is the response time (or -1.0 on timeout) and column</span>
-<span class="sd">        1 is the choice (1.0 for the upper boundary, 0.0 for the</span>
-<span class="sd">        lower boundary, -1.0 on timeout)</span>
+<span class="sd">    data : dict of np.ndarray</span>
+<span class="sd">        Named decision data. `&quot;response_time&quot;` contains response times</span>
+<span class="sd">        (or -1.0 on timeout) and `&quot;choice&quot;` contains choices (1.0 for</span>
+<span class="sd">        the upper boundary, 0.0 for the lower boundary, -1.0 on timeout).</span>
+<span class="sd">        Each array has shape (num_steps,).</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
-    <span class="n">num_trials</span> <span class="o">=</span> <span class="n">v</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-    <span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="n">num_trials</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+    <span class="n">num_steps</span> <span class="o">=</span> <span class="n">v</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">response_time</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">num_steps</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+    <span class="n">choice</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">num_steps</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
     <span class="n">noise_scale</span> <span class="o">=</span> <span class="n">sigma</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">dt</span><span class="p">)</span>
 
-    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">prange</span><span class="p">(</span><span class="n">num_trials</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">prange</span><span class="p">(</span><span class="n">num_steps</span><span class="p">):</span>
         <span class="n">v_t</span> <span class="o">=</span> <span class="n">v</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
         <span class="n">a_t</span> <span class="o">=</span> <span class="n">a</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
         <span class="n">t</span> <span class="o">=</span> <span class="n">tau</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
@@ -460,18 +462,18 @@
             <span class="n">t</span> <span class="o">+=</span> <span class="n">dt</span>
             <span class="n">x</span> <span class="o">+=</span> <span class="n">drift_dt</span> <span class="o">+</span> <span class="n">noise_scale</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">()</span>
             <span class="k">if</span> <span class="n">x</span> <span class="o">&gt;=</span> <span class="n">a_t</span><span class="p">:</span>
-                <span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">t</span>
-                <span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span>
+                <span class="n">response_time</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">t</span>
+                <span class="n">choice</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span>
                 <span class="k">break</span>
-            <span class="k">if</span> <span class="n">x</span> <span class="o">&lt;=</span> <span class="o">-</span><span class="n">a_t</span><span class="p">:</span>
-                <span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">t</span>
-                <span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+            <span class="k">if</span> <span class="n">x</span> <span class="o">&lt;=</span> <span class="mf">0.0</span><span class="p">:</span>
+                <span class="n">response_time</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">t</span>
+                <span class="n">choice</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
                 <span class="k">break</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mf">1.0</span>
-            <span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mf">1.0</span>
+            <span class="n">response_time</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mf">1.0</span>
+            <span class="n">choice</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mf">1.0</span>
 
-    <span class="k">return</span> <span class="n">data</span></div>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;response_time&quot;</span><span class="p">:</span> <span class="n">response_time</span><span class="p">,</span> <span class="s2">&quot;choice&quot;</span><span class="p">:</span> <span class="n">choice</span><span class="p">}</span></div>
 
 </pre></div>
 

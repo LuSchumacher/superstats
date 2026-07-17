@@ -10,5 +10,7 @@
    :toctree:
    :recursive:
 
+   dispatch
+   logging
    plotting
    transformations

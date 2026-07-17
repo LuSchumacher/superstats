@@ -1,0 +1,12 @@
+superstats.simulation.augmentation.random\_choice\_contamination
+================================================================
+
+.. automodule:: superstats.simulation.augmentation.random_choice_contamination
+
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      RandomChoiceContamination
+   

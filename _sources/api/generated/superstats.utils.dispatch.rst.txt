@@ -1,0 +1,15 @@
+superstats.utils.dispatch
+=========================
+
+.. automodule:: superstats.utils.dispatch
+
+   
+   .. rubric:: Functions
+
+   .. autosummary::
+   
+      find_contamination
+      find_inference_network
+      find_missing
+      find_summary_network
+   

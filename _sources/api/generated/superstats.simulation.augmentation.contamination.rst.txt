@@ -1,0 +1,12 @@
+superstats.simulation.augmentation.contamination
+================================================
+
+.. automodule:: superstats.simulation.augmentation.contamination
+
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      ContaminationProcess
+   
