@@ -25,8 +25,9 @@ license = { file = "LICENSE" }
 
 requires-python = ">= 3.12"
 dependencies = [
-    "jax >= 0.11.0",
     "bayesflow>=2.0.12",
+    "jax >= 0.11.0; sys_platform != 'win32'",
+    "torch; sys_platform == 'win32'",
     "numba >= 0.63.1",
     "ipywidgets>=8.1.8",
 ]
@@ -64,7 +65,7 @@ dev = [
     "ruff",
 ]
 cuda = [
-    "jax[cuda13] >= 0.11.0",
+    "jax[cuda13] >= 0.11.0; sys_platform != 'win32'",
 ]
 docs = [
     "myst-nb ~= 1.2",

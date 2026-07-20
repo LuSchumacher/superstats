@@ -4,4 +4,5 @@ dependencies:
   - pip:
       - bayesflow >= 2.0.12
       - numba >= 0.63.1
-      - jax >= 0.11.0
+      - 'jax >= 0.11.0; sys_platform != "win32"'
+      - 'torch; sys_platform == "win32"'
