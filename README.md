@@ -57,6 +57,14 @@ If you want the latest features, you can install from source:
 pip install git+https://github.com/LuSchumacher/superstats.git@dev"
 ```
 
+### Deep learning backend
+
+Per default, `superstats` installs [JAX](https://docs.jax.dev/en/latest/installation.html) on Linux/MacOS machines and [PyTorch](https://pytorch.org/get-started/locally/) on Windows machines. This is because `JAX` does not natively support GPU acceleration on Windows. You can also manually install and configure any of the three backends:
+
+- [Install JAX](https://jax.readthedocs.io/en/latest/installation.html)
+- [Install PyTorch](https://pytorch.org/get-started/locally/)
+- [Install TensorFlow](https://www.tensorflow.org/install)
+
 ## Getting started
 
 A complete workflow using a diffusion decision model whose drift rate and thresold are free to vary across time:
