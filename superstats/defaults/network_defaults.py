@@ -4,8 +4,10 @@ from types import MappingProxyType
 
 DEFAULT_RECURRENT_NETWORK = MappingProxyType(
     {
+        "summary_dim": 64,
         "recurrent_type": "lstm",
-        "hidden_dim": 128,
+        "hidden_dim": (128, 128),
+        "time_embed_dim": 16,
         "time_axis": 0,
     }
 )
@@ -13,6 +15,9 @@ DEFAULT_RECURRENT_NETWORK = MappingProxyType(
 DEFAULT_TRANSFORMER_NETWORK = MappingProxyType(
     {
         "summary_dim": 64,
+        "embed_dims": (128, 128),
+        "num_heads": (4, 4),
+        "time_embed_dim": 16,
         "time_axis": 0,
         "return_sequences": True,
     }
