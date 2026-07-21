@@ -4,11 +4,11 @@ from typing import Sequence, Tuple, Dict, Any
 import numpy as np
 import warnings
 
-from .transition import Transition, Prior
+from .stochastic_transition import StochasticTransition, Prior
 from superstats.utils.transformations import scaled_sigmoid
 
 
-class Mixture(Transition):
+class Mixture(StochasticTransition):
     """Mixture over multiple transitions, switching regimes at each step.
 
     Parameters
@@ -47,7 +47,7 @@ class Mixture(Transition):
 
     def __init__(
         self,
-        transitions: Sequence[Transition],
+        transitions: Sequence[StochasticTransition],
         mixture_weights: Prior | Tuple[float, ...] | None = None,
         bounds: Sequence[float] | None = None,
         initial_prior: Prior | None = None,

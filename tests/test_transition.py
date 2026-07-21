@@ -2,16 +2,25 @@ import numpy as np
 import pytest
 
 from superstats.prior import Prior
-from superstats.transition import (
+from superstats.transition.stochastic_transitions import (
     AutoRegression,
     Jump,
     Mixture,
     OrnsteinUhlenbeck,
     RandomWalk,
+    StochasticTransition,
 )
 
 BATCH_SIZE = 8
 NUM_STEPS = 12
+
+
+def test_transition_models_use_stochastic_transition_base_class():
+    assert issubclass(RandomWalk, StochasticTransition)
+    assert issubclass(AutoRegression, StochasticTransition)
+    assert issubclass(OrnsteinUhlenbeck, StochasticTransition)
+    assert issubclass(Jump, StochasticTransition)
+    assert issubclass(Mixture, StochasticTransition)
 
 
 @pytest.mark.parametrize(

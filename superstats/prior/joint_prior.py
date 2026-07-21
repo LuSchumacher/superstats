@@ -10,7 +10,7 @@ from superstats.diagnostics.plots.prior_samples import (
     plot_time_varying_prior,
 )
 from .prior import Prior
-from superstats.transition.transition import Transition
+from superstats.transition import StochasticTransition
 
 
 class JointPrior:
@@ -18,8 +18,8 @@ class JointPrior:
 
     Parameters
     ----------
-    **kwargs : Transition, Prior, float, int
-        Named model parameters. Use `Transition` for time-varying
+    **kwargs : StochasticTransition, Prior, float, int
+        Named model parameters. Use `StochasticTransition` for time-varying
         parameters with hyperparameters, `Prior` for inferred stationary
         parameters, and scalar values for fixed parameters.
 
@@ -33,7 +33,7 @@ class JointPrior:
     - `fixed_params`: fixed scalar values.
     """
 
-    def __init__(self, **kwargs: Transition | Prior | float | int):
+    def __init__(self, **kwargs: StochasticTransition | Prior | float | int):
         self.params = kwargs
 
     def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
@@ -49,7 +49,12 @@ class JointPrior:
         Returns
         -------
         result : dict - sampled parameter groups `local_params`,
-            `hyper_params`, `shared_params`, and `fixed_params`
+            `hyper_params`, `shared_params`, `fixed_params`, and
+            `hyper_param_groups` (mapping from each declared parameter
+            name to the exact, unambiguous list of `hyper_params` keys
+            it owns — needed because parameter names may be prefixes of
+            one another, e.g. "v_1" and "v_1_2", which string-prefix
+            matching on flattened keys cannot disambiguate).
 
         Raises
         ------
@@ -65,14 +70,18 @@ class JointPrior:
         hyper_params: Dict[str, np.ndarray] = {}
         shared_params: Dict[str, np.ndarray] = {}
         fixed_params: Dict[str, Any] = {}
+        hyper_param_groups: Dict[str, list] = {}
 
         for name, param in self.params.items():
-            if isinstance(param, Transition):
+            if isinstance(param, StochasticTransition):
                 samples = param.sample(batch_size=batch_size, num_steps=num_steps)
                 local_params[name] = samples["local_params"]
 
+                hyper_param_groups[name] = []
                 for key, value in samples["hyper_params"].items():
-                    hyper_params[f"{name}_{key}"] = value
+                    full_key = f"{name}_{key}"
+                    hyper_params[full_key] = value
+                    hyper_param_groups[name].append(full_key)
 
                 for key, value in samples["fixed_params"].items():
                     fixed_params[f"{name}_{key}"] = value
@@ -91,6 +100,7 @@ class JointPrior:
             "hyper_params": hyper_params,
             "shared_params": shared_params,
             "fixed_params": fixed_params,
+            "hyper_param_groups": hyper_param_groups,
         }
 
     def _param_bounds(self) -> dict:
@@ -189,5 +199,6 @@ class JointPrior:
             shared_params=samples["shared_params"],
             param_bounds=self._param_bounds(),
             mixture_names=self._mixture_names(),
+            hyper_param_groups=samples["hyper_param_groups"],
             **kwargs,
         )

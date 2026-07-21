@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Tuple, Dict, Any, Union
 import numpy as np
 
-from superstats.prior import Prior
+from superstats.prior.prior import Prior
 from superstats.defaults.transition_defaults import (
     DEFAULT_HYPER_PRIORS,
     DEFAULT_BOUNDS,
@@ -14,8 +14,8 @@ from superstats.defaults.transition_defaults import (
 ParamSpec = Union[Prior, float, None]
 
 
-class Transition(ABC):
-    """Base class for time-varying parameter transitions.
+class StochasticTransition(ABC):
+    """Base class for stochastic transition models.
 
     Subclasses implement stochastic dynamics for a single scalar latent
     parameter. Subclasses must implement `sample` (generate full

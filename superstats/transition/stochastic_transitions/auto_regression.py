@@ -4,7 +4,7 @@ from typing import Tuple, Dict, Any
 import numpy as np
 from numba import njit, prange
 
-from .transition import Transition, Prior
+from .stochastic_transition import StochasticTransition, Prior
 from superstats.utils.transformations import scaled_sigmoid
 
 
@@ -82,7 +82,7 @@ def _one_step_ar1(
     return phi * x + delta + sigma * noise
 
 
-class AutoRegression(Transition):
+class AutoRegression(StochasticTransition):
     """AR(1) autoregressive transition.
 
     Parameters

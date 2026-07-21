@@ -262,6 +262,7 @@ def plot_joint_prior(
     shared_params: Mapping[str, np.ndarray],
     param_bounds: Mapping[str, tuple[float, float]] | None = None,
     mixture_names: Mapping[str, Sequence[str]] | None = None,
+    hyper_param_groups: Mapping[str, Sequence[str]] | None = None,
     marginal: bool = True,
     color: str = BASE_COLOR,
     title_fontsize: int = 22,
@@ -275,10 +276,13 @@ def plot_joint_prior(
     Parameters
     ----------
     local_params   : dict of np.ndarray, each of shape (num_trajectories, num_steps)
-        Mapping from parameter name to an array of trajectories.
+        Mapping from parameter name to an array of trajectories. Every
+        `StochasticTransition` parameter is unconditionally added here by
+        `JointPrior.sample`, so together with `shared_params` this is the
+        authoritative set of row names.
     hyper_params   : dict of np.ndarray
-        Mapping from hyperparameter name to an array of samples. Keys may
-        include parameter prefixes followed by component labels.
+        Mapping from hyperparameter name to an array of samples. Keys are
+        `f"{param_name}_{hyper_key}"`.
     shared_params  : dict of np.ndarray
         Mapping from parameter name to an array of shared parameter samples.
     param_bounds   : dict or None, optional, default: None
@@ -286,6 +290,16 @@ def plot_joint_prior(
     mixture_names  : dict or None, optional, default: None
         Mapping from parameter name to a list of component names for
         mixture weight parameters.
+    hyper_param_groups : dict or None, optional, default: None
+        Mapping from each parameter name to the exact list of
+        `hyper_params` keys it owns. Required to correctly separate rows
+        when one parameter name is a prefix of another at an underscore
+        boundary (e.g. "v_1" and "v_1_2"), since `str.startswith` cannot
+        disambiguate that case from key strings alone. When provided
+        (e.g. by `JointPrior.plot_joint_prior`), this is used instead of
+        prefix matching. If omitted, falls back to prefix matching,
+        which can misassign hyperparameters in the presence of such
+        name collisions.
     marginal       : bool, optional, default: True
         Whether to draw a marginal KDE panel beside each trajectory
         panel.
@@ -311,15 +325,15 @@ def plot_joint_prior(
         If no plottable parameters are found across local_params,
         hyper_params, and shared_params.
     """
-    all_param_names = list(
-        dict.fromkeys(
-            list(local_params.keys()) + list(shared_params.keys()) + [k.split("_")[0] for k in hyper_params.keys()]
-        )
-    )
+    all_param_names = list(dict.fromkeys(list(local_params.keys()) + list(shared_params.keys())))
 
     row_specs = []
     for param_name in all_param_names:
-        hyper_cols = [(k, np.asarray(v)) for k, v in hyper_params.items() if k.startswith(param_name + "_")]
+        if hyper_param_groups is not None:
+            owned_keys = hyper_param_groups.get(param_name, [])
+            hyper_cols = [(k, np.asarray(hyper_params[k])) for k in owned_keys if k in hyper_params]
+        else:
+            hyper_cols = [(k, np.asarray(v)) for k, v in hyper_params.items() if k.startswith(param_name + "_")]
         local_arr = np.asarray(local_params[param_name]) if param_name in local_params else None
         shared_arr = np.asarray(shared_params[param_name]) if param_name in shared_params else None
 
@@ -351,6 +365,7 @@ def plot_joint_prior(
         hyper_cols = spec["hyper_cols"]
         local_arr = spec["local"]
         shared_arr = spec["shared"]
+        prefix = param_name + "_"
 
         for col_i, (label, values) in enumerate(hyper_cols):
             ax = axes[row_i, col_i]
@@ -386,7 +401,7 @@ def plot_joint_prior(
                     alpha=1,
                 )
 
-            short_label = "_".join(label.split("_")[1:])
+            short_label = label[len(prefix) :] if label.startswith(prefix) else label
             ax.set_title(short_label, fontsize=title_fontsize, pad=15)
             ax.set_xlabel("")
             ax.set_ylabel("")
