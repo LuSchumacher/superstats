@@ -52,10 +52,18 @@ numpydoc_class_members_toctree = False
 numpydoc_xref_param_type = True
 
 myst_heading_anchors = 3
+myst_enable_extensions = [
+    "dollarmath",
+    "amsmath",
+    "colon_fence",
+]
 nb_execution_mode = "off"
+
 
 templates_path = []
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+html_static_path = ["_static"]
+html_css_files = ["custom.css"]
 
 html_theme = "pydata_sphinx_theme"
 html_title = "superstats"
@@ -63,6 +71,11 @@ html_theme_options = {
     "github_url": "https://github.com/LuSchumacher/superstats",
     "show_toc_level": 2,
     "navigation_depth": 3,
+    "logo": {
+        "image_light": "_static/superstats-square-dark.svg",
+        "image_dark": "_static/superstats-square-dark.svg",
+        "text": "",
+    },
 }
 
 intersphinx_mapping = {

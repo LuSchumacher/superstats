@@ -31,7 +31,7 @@ def get_periodic_kernel(
 ) -> np.ndarray:
     """Batched periodic kernel construction.
 
-    k(x, x') = amplitude^2 * exp(-2 * sin^2(pi * |x - x'| / period) / length_scale^2)
+    k(x, x_prime) = amplitude^2 * exp(-2 * sin^2(pi * |x - x_prime| / period) / length_scale^2)
 
     Parameters
     ----------
