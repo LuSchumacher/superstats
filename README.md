@@ -20,7 +20,7 @@ The library aims to be domain-agnostic, but for now focuses on cognitive modelin
 
 - A lean API for non-stationary models: specify which parameters change across time, and how.
 - A library of transition models: random walks, ARs, jump processes, mixtures, and Gaussian processes.
-- Built-in cognitive models, plus a plug-in interface for any simulator of your own.
+- Built-in cognitive models, plus a plug-in interface for any custom simulator with time-varying parameters.
 - Amortized Bayesian inference built on top of [BayesFlow](https://github.com/bayesflow-org/bayesflow): train once, then quickly fit every data set.
 - Diagnostics and visualization tools for every critical step in a principled Bayesian workflow.
 
@@ -40,7 +40,7 @@ A **high-level transition model** $\mathcal{T}$ describes how the parameters of 
 
 $$\theta_t = \mathcal{T}(\theta_{0:t-1}; \eta) \qquad x_t = \mathcal{G}(x_{1:t-1}; \theta_t, \lambda)$$
 
-`superstats` trains a neural estimator on simulations from any generative model of this form and returns the joint posterior $p(\theta_{1:T}, \eta, \lambda \mid x_{1:T})$ over all time-varying parameters $\theta_{1:T}$ and time-invariant parameters $(\eta, \lambda)$.
+`superstats` trains a neural estimator (i.e., a generative network) on simulations from any model of this form and returns the joint posterior $p(\theta_{1:T}, \eta, \lambda \mid x_{1:T})$ over all time-varying parameters $\theta_{1:T}$ and time-invariant parameters $(\eta, \lambda)$.
 
 
 ## Install
@@ -54,7 +54,7 @@ pip install superstats
 If you want the latest features, you can install from source:
 
 ```bash
-pip install git+https://github.com/LuSchumacher/superstats.git@dev"
+pip install git+https://github.com/LuSchumacher/superstats.git@dev
 ```
 
 ### Deep learning backend
@@ -145,7 +145,3 @@ If you use `superstats` in your research, please cite:
   doi     = {10.1007/s42113-024-00218-4}
 }
 ```
-
-## License
-
-MIT
