@@ -54,7 +54,7 @@ pip install superstats
 If you want the latest features, you can install from source:
 
 ```bash
-pip install git+https://github.com/LuSchumacher/superstats.git@dev"
+pip install git+https://github.com/LuSchumacher/superstats.git@dev
 ```
 
 ### Deep learning backend
@@ -145,7 +145,3 @@ If you use `superstats` in your research, please cite:
   doi     = {10.1007/s42113-024-00218-4}
 }
 ```
-
-## License
-
-MIT
