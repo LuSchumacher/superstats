@@ -35,6 +35,7 @@ class JointPrior:
 
     def __init__(self, **kwargs: StochasticTransition | Prior | float | int):
         self.params = kwargs
+        self._last_hyper_param_groups: Dict[str, list[str]] = {}
 
     def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
         """Draw a joint parameter sample.
@@ -49,12 +50,7 @@ class JointPrior:
         Returns
         -------
         result : dict - sampled parameter groups `local_params`,
-            `hyper_params`, `shared_params`, `fixed_params`, and
-            `hyper_param_groups` (mapping from each declared parameter
-            name to the exact, unambiguous list of `hyper_params` keys
-            it owns — needed because parameter names may be prefixes of
-            one another, e.g. "v_1" and "v_1_2", which string-prefix
-            matching on flattened keys cannot disambiguate).
+            `hyper_params`, `shared_params`, and `fixed_params`.
 
         Raises
         ------
@@ -70,7 +66,7 @@ class JointPrior:
         hyper_params: Dict[str, np.ndarray] = {}
         shared_params: Dict[str, np.ndarray] = {}
         fixed_params: Dict[str, Any] = {}
-        hyper_param_groups: Dict[str, list] = {}
+        hyper_param_groups: Dict[str, list[str]] = {}
 
         for name, param in self.params.items():
             if isinstance(param, StochasticTransition):
@@ -95,12 +91,12 @@ class JointPrior:
             else:
                 raise TypeError(f"Unknown parameter type for '{name}': {type(param).__name__}")
 
+        self._last_hyper_param_groups = hyper_param_groups
         return {
             "local_params": local_params,
             "hyper_params": hyper_params,
             "shared_params": shared_params,
             "fixed_params": fixed_params,
-            "hyper_param_groups": hyper_param_groups,
         }
 
     def _param_bounds(self) -> dict:
@@ -199,6 +195,6 @@ class JointPrior:
             shared_params=samples["shared_params"],
             param_bounds=self._param_bounds(),
             mixture_names=self._mixture_names(),
-            hyper_param_groups=samples["hyper_param_groups"],
+            hyper_param_groups=self._last_hyper_param_groups,
             **kwargs,
         )
