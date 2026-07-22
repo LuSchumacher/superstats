@@ -30,6 +30,12 @@ dependencies = [
     "torch; sys_platform == 'win32'",
     "numba >= 0.63.1",
     "ipywidgets>=8.1.8",
+    "sphinx>=8.1.3",
+    "myst-parser>=5.1.0",
+    "myst-nb>=1.4.0",
+    "numpydoc>=1.10.0",
+    "sphinx-design>=0.7.0",
+    "pydata-sphinx-theme>=0.19.0",
 ]
 [project.optional-dependencies]
 all = [
@@ -185,3 +191,8 @@ testpaths = ["tests"]
 
 [tool.uv.sources]
 bayesflow = { git = "https://github.com/bayesflow-org/bayesflow.git", rev = "dev" }
+
+[dependency-groups]
+dev = [
+    "sphinx-autobuild>=2025.8.25",
+]
