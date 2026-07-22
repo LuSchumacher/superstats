@@ -35,7 +35,7 @@ class JointPrior:
 
     def __init__(self, **kwargs: StochasticTransition | Prior | float | int):
         self.params = kwargs
-        self._last_hyper_param_groups: Dict[str, list[str]] = {}
+        self._last_hyper_param_groups = {}
 
     def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
         """Draw a joint parameter sample.
@@ -62,11 +62,11 @@ class JointPrior:
         if num_steps <= 0:
             raise ValueError("num_steps must be a positive integer")
 
-        local_params: Dict[str, np.ndarray] = {}
-        hyper_params: Dict[str, np.ndarray] = {}
-        shared_params: Dict[str, np.ndarray] = {}
-        fixed_params: Dict[str, Any] = {}
-        hyper_param_groups: Dict[str, list[str]] = {}
+        local_params = {}
+        hyper_params = {}
+        shared_params = {}
+        fixed_params = {}
+        hyper_param_groups = {}
 
         for name, param in self.params.items():
             if isinstance(param, StochasticTransition):
