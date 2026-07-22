@@ -1,6 +1,9 @@
 # User Guide
 
-This guide is currently under construction and will provide an entry point for building and estimating time-varying models with **Superstats**. End-to-end workflow examples can be found under {doc}`../examples`.
+Welcome to the user guide!
+
+The following pages are intended to make you familiar with the core functionalities of Superstats and provides an entry point into the basic principles. End-to-end application examples can be found under [Examples](../examples/index.md).
+
 
 ```{toctree}
 :maxdepth: 1
@@ -8,4 +11,5 @@ This guide is currently under construction and will provide an entry point for b
 :numbered:
 
 introduction
+simulator.ipynb
 ```

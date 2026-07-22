@@ -1,11 +1,25 @@
 # Examples
 
-This page contains tutorial notebooks for superstats, ranging from basic workflows to more complex applications.
-The corresponding Jupyter Notebooks are available in the `examples/` directory.
+This page collects notebook-based examples for Superstats. The notebooks are stored in the repository's [examples directory](https://github.com/LuSchumacher/superstats/tree/main/examples).
+
+## Demos
+
+| Notebook | What it covers |
+|---|---|
+| [Minimal workflow demo](minimal_workflow_demo.ipynb) | Short path from prior to posterior |
+
+
+## Case Studies
+
+Coming soon...
+
+## Contribute
+
+More examples are always welcome. If you have an application, please consider opening a pull request.
 
 ```{toctree}
 :maxdepth: 1
 :titlesonly:
 
-../examples/minimal_workflow_demo
+minimal_workflow_demo.ipynb
 ```

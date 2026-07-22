@@ -1,6 +1,6 @@
 # Contributing
 
-Contributions to `superstats` are **very welcome**. Whether you are fixing a bug, improving documentation, proposing a feature, or adding new statistical functionality, we appreciate your help.
+Contributions to Superstats are **very welcome**. Whether you are fixing a bug, improving documentation, proposing a feature, or adding new statistical functionality, we appreciate your help.
 
 ## Requesting a feature
 
@@ -54,4 +54,4 @@ Contributions should:
 
 When your changes are ready, open a pull request (PR) with a clear explanation and reference the related issue.
 
-Thank you for contributing to `superstats`!
+Thank you for contributing to Superstats!

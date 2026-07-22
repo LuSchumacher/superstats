@@ -18,9 +18,9 @@ class GenerativeModel:
 
     This class facilitates sampling parameters from a joint prior distribution
     and generating simulated data using a user-provided model function. It handles
-    parameter broadcasting, flattening, and reshaping to support batched simulations
-    with time-varying parameters. Optionally, a missing-data process can be applied
-    to the simulated data to introduce and record missingness.
+    parameter broadcasting, flattening, and reshaping to support batched
+    simulations with time-varying parameters. Optionally, a missing-data process
+    can be applied to the simulated data to introduce and record missingness.
 
     Parameters
     ----------
@@ -35,8 +35,8 @@ class GenerativeModel:
         Process applied to simulated data to introduce missingness.
         - Not provided (default) or `"random"`: uses `RandomMissingProcess()`,
           the default MCAR missingness process.
-        - `None`: disables missingness augmentation and `sample` will not include
-          a `"missing_mask"` entry in its result.
+        - `None`: disables missingness augmentation and `sample` will not
+          include a `"missing_mask"` entry in its result.
         - `MissingProcess` instance: used as-is.
         - Plain `Callable`: must follow the same contract as
           `MissingProcess.__call__`, i.e.

@@ -10,7 +10,7 @@ from superstats.diagnostics.plots.prior_samples import (
     plot_time_varying_prior,
 )
 from .prior import Prior
-from superstats.transition.transition import Transition
+from superstats.transition import StochasticTransition
 
 
 class JointPrior:
@@ -18,8 +18,8 @@ class JointPrior:
 
     Parameters
     ----------
-    **kwargs : Transition, Prior, float, int
-        Named model parameters. Use `Transition` for time-varying
+    **kwargs : StochasticTransition, Prior, float, int
+        Named model parameters. Use `StochasticTransition` for time-varying
         parameters with hyperparameters, `Prior` for inferred stationary
         parameters, and scalar values for fixed parameters.
 
@@ -33,7 +33,7 @@ class JointPrior:
     - `fixed_params`: fixed scalar values.
     """
 
-    def __init__(self, **kwargs: Transition | Prior | float | int):
+    def __init__(self, **kwargs: StochasticTransition | Prior | float | int):
         self.params = kwargs
 
     def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
@@ -49,7 +49,7 @@ class JointPrior:
         Returns
         -------
         result : dict - sampled parameter groups `local_params`,
-            `hyper_params`, `shared_params`, and `fixed_params`
+            `hyper_params`, `shared_params`, and `fixed_params`.
 
         Raises
         ------
@@ -67,12 +67,13 @@ class JointPrior:
         fixed_params: Dict[str, Any] = {}
 
         for name, param in self.params.items():
-            if isinstance(param, Transition):
+            if isinstance(param, StochasticTransition):
                 samples = param.sample(batch_size=batch_size, num_steps=num_steps)
                 local_params[name] = samples["local_params"]
 
                 for key, value in samples["hyper_params"].items():
-                    hyper_params[f"{name}_{key}"] = value
+                    full_key = f"{name}_{key}"
+                    hyper_params[full_key] = value
 
                 for key, value in samples["fixed_params"].items():
                     fixed_params[f"{name}_{key}"] = value

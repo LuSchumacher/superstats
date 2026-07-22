@@ -27,6 +27,12 @@ class Prior:
         Concentration parameters for `dirichlet`. Required when
         `dist="dirichlet"` (e.g. [1, 1, 1] for a uniform simplex over
         3 categories).
+    scale_factor : float, optional, default: 1.0
+        Multiplicative scaling applied to the drawn samples:
+        `scale_factor * samples + shift`.
+    shift : float, optional, default: 0.0
+        Additive offset applied to the drawn samples:
+        `scale_factor * samples + shift`.
     """
 
     def __init__(
@@ -39,6 +45,8 @@ class Prior:
         a: float = 1.0,
         b: float = 1.0,
         alpha: Sequence[float] | None = None,
+        scale_factor: float = 1.0,
+        shift: float = 0.0,
     ):
         self.dist = dist
         self.loc = loc
@@ -48,9 +56,14 @@ class Prior:
         self.a = a
         self.b = b
         self.alpha = alpha
+        self.scale_factor = scale_factor
+        self.shift = shift
 
     def sample(self, batch_size: int) -> np.ndarray:
         """Draw samples from the prior.
+
+        Samples are transformed as `scale_factor * samples + shift` before
+        being returned.
 
         Parameters
         ----------
@@ -97,5 +110,7 @@ class Prior:
 
         else:
             raise ValueError(f"Unsupported prior distribution: {self.dist}")
+
+        samples = self.scale_factor * samples + self.shift
 
         return samples.astype(np.float32)

@@ -1,8 +1,8 @@
 <div align="center">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="img/superstats-long-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="img/superstats-long-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="img/superstats-long-dark.svg">
-  <img alt="Overview graphic  of superstats" src="./img/superstats-long-light.svg">
+  <img alt="Superstats logo" src="./img/superstats-long-light.svg">
 </picture>
 </div>
 <br>
@@ -19,8 +19,8 @@ Superstats is a Python library for simulation and Bayesian estimation of dynamic
 The library aims to be domain-agnostic, but for now focuses on cognitive modeling. It provides users with:
 
 - A lean API for non-stationary models: specify which parameters change across time, and how.
-- A library of transition models: random walks, ARs, jump processes, mixtures, and Gaussian processes.
-- Built-in cognitive models, plus a plug-in interface for any custom simulator with time-varying parameters.
+- A library of transition models: random walks, ARs, levy flights, jump processes, mixtures, and Gaussian processes.
+- Built-in cognitive models, plus a plug-in interface for any simulator of your own.
 - Amortized Bayesian inference built on top of [BayesFlow](https://github.com/bayesflow-org/bayesflow): train once, then quickly fit every data set.
 - Diagnostics and visualization tools for every critical step in a principled Bayesian workflow.
 
@@ -28,9 +28,9 @@ The library aims to be domain-agnostic, but for now focuses on cognitive modelin
 
 <div align="center">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="img/superstats-arch-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="img/superstats-arch-light.svg">
-  <img alt="Overview graphic  of superstats" src="./img/superstats-arch-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="./img/superstats-arch-light.svg">
+  <source media="(prefers-color-scheme: light)" srcset="./img/superstats-arch-light.svg">
+  <img alt="Overview graphic of superstats" src="./img/superstats-arch-light.svg">
 </picture>
 </div>
 <br>
@@ -40,7 +40,7 @@ A **high-level transition model** $\mathcal{T}$ describes how the parameters of 
 
 $$\theta_t = \mathcal{T}(\theta_{0:t-1}; \eta) \qquad x_t = \mathcal{G}(x_{1:t-1}; \theta_t, \lambda)$$
 
-`superstats` trains a neural estimator (i.e., a generative network) on simulations from any model of this form and returns the joint posterior $p(\theta_{1:T}, \eta, \lambda \mid x_{1:T})$ over all time-varying parameters $\theta_{1:T}$ and time-invariant parameters $(\eta, \lambda)$.
+Superstats trains a neural estimator on simulations from any generative model of this form and returns the joint posterior $p(\theta_{1:T}, \eta, \lambda \mid x_{1:T})$ over all time-varying parameters $\theta_{1:T}$ and time-invariant parameters $(\eta, \lambda)$.
 
 
 ## Install
@@ -120,7 +120,7 @@ feature requests. For questions about the underlying inference machinery, the
 
 ## Citation
 
-If you use `superstats` in your research, please cite:
+If you use Superstats in your research, please cite:
 
 ```bibtex
 @article{schumacher2023neural,

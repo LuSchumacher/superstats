@@ -2,20 +2,19 @@
 
 import logging as _logging
 
+from . import diagnostics, prior, simulation, workflow, networks
+from .prior import JointPrior, Prior
+from .simulation import GenerativeModel
+from .workflow import Workflow
+
 _logging.basicConfig(level=_logging.INFO)
 _logging.getLogger(__name__).setLevel(_logging.INFO)
-
-from . import diagnostics, prior, simulation, workflow, transition, networks  # noqa: E402
-from .prior import JointPrior, Prior  # noqa: E402
-from .simulation import GenerativeModel  # noqa: E402
-from .workflow import Workflow  # noqa: E402
 
 __all__ = [
     "diagnostics",
     "prior",
     "simulation",
     "workflow",
-    "transition",
     "networks",
     "JointPrior",
     "Prior",

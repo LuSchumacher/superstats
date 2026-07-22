@@ -4,7 +4,7 @@ from typing import Any, Dict, Sequence, Literal
 import numpy as np
 from numba import njit, prange
 
-from .transition import Transition, Prior, ParamSpec
+from .stochastic_transition import StochasticTransition, Prior, ParamSpec
 from .kernel import Kernel, resolve_kernel
 from superstats.utils.transformations import scaled_sigmoid
 
@@ -48,7 +48,7 @@ def sample_gaussian_process(
     return local_params
 
 
-class GaussianProcess(Transition):
+class GaussianProcess(StochasticTransition):
     """Gaussian process transition model.
 
     Draws each trajectory as a GP sample with mean `start` (from

@@ -4,7 +4,7 @@ from typing import Tuple, Dict, Any
 import numpy as np
 from numba import njit, prange
 
-from .transition import Transition, Prior
+from .stochastic_transition import StochasticTransition, Prior
 from superstats.utils.transformations import scaled_sigmoid
 
 
@@ -77,7 +77,7 @@ def _one_step_jump(
     return x
 
 
-class Jump(Transition):
+class Jump(StochasticTransition):
     """Simple jump process: stay or jump to a proposal draw.
 
     Parameters

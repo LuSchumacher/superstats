@@ -6,6 +6,8 @@ from superstats.prior.prior import Prior
 DEFAULT_HYPER_PRIORS = {
     "sigma": Prior("halfnormal", scale=0.1),
     "delta": 0.0,
+    "alpha": Prior("beta", a=5, b=1.5, shift=1),
+    "beta": 0.0,
     "phi": Prior("beta", a=20.0, b=1.0),
     "theta": Prior("halfnormal", scale=0.3),
     "mu": Prior("normal", loc=0.0, scale=1.0),
