@@ -188,6 +188,9 @@ find = {}
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+filterwarnings = [
+    "ignore:__array__ implementation doesn't accept a copy keyword.*:DeprecationWarning:keras.src.backend.jax.core",
+]
 
 [tool.uv.sources]
 bayesflow = { git = "https://github.com/bayesflow-org/bayesflow.git", rev = "dev" }

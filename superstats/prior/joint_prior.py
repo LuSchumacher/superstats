@@ -35,6 +35,7 @@ class JointPrior:
 
     def __init__(self, **kwargs: StochasticTransition | Prior | float | int):
         self.params = kwargs
+        self._last_hyper_param_groups = {}
 
     def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
         """Draw a joint parameter sample.
@@ -61,19 +62,22 @@ class JointPrior:
         if num_steps <= 0:
             raise ValueError("num_steps must be a positive integer")
 
-        local_params: Dict[str, np.ndarray] = {}
-        hyper_params: Dict[str, np.ndarray] = {}
-        shared_params: Dict[str, np.ndarray] = {}
-        fixed_params: Dict[str, Any] = {}
+        local_params = {}
+        hyper_params = {}
+        shared_params = {}
+        fixed_params = {}
+        hyper_param_groups = {}
 
         for name, param in self.params.items():
             if isinstance(param, StochasticTransition):
                 samples = param.sample(batch_size=batch_size, num_steps=num_steps)
                 local_params[name] = samples["local_params"]
 
+                hyper_param_groups[name] = []
                 for key, value in samples["hyper_params"].items():
                     full_key = f"{name}_{key}"
                     hyper_params[full_key] = value
+                    hyper_param_groups[name].append(full_key)
 
                 for key, value in samples["fixed_params"].items():
                     fixed_params[f"{name}_{key}"] = value
@@ -87,6 +91,7 @@ class JointPrior:
             else:
                 raise TypeError(f"Unknown parameter type for '{name}': {type(param).__name__}")
 
+        self._last_hyper_param_groups = hyper_param_groups
         return {
             "local_params": local_params,
             "hyper_params": hyper_params,
@@ -190,5 +195,6 @@ class JointPrior:
             shared_params=samples["shared_params"],
             param_bounds=self._param_bounds(),
             mixture_names=self._mixture_names(),
+            hyper_param_groups=self._last_hyper_param_groups,
             **kwargs,
         )
