@@ -98,7 +98,7 @@ feature requests. For questions about the underlying inference machinery, the
 
 ## Citation
 
-If you use `superstats` in your research, please cite:
+If you use Superstats in your research, please cite:
 
 ```bibtex
 @article{schumacher2023neural,
