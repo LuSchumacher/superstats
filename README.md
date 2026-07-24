@@ -74,18 +74,12 @@ import superstats as sup
 
 # 1. Assume which parameters move, and how
 joint_prior = sup.JointPrior(
-    v=sup.transition.RandomWalk(),
-    a=sup.transition.RandomWalk(),
-    tau=sup.Prior(dist="halfnormal", scale=0.15),
-    bias=0.5
+    v=sup.transition.RandomWalk(), a=sup.transition.RandomWalk(), tau=sup.Prior(dist="halfnormal", scale=0.15), bias=0.5
 )
 
 # 2. Plug in an observation model (any simulator will do)
 generative_model = sup.GenerativeModel(
-    prior=joint_prior,
-    model=sup.simulation.sample_ddm,
-    missing="random",
-    contamination="random_choice"
+    prior=joint_prior, model=sup.simulation.sample_ddm, missing="random", contamination="random_choice"
 )
 
 # 3. Train a neural approximator
