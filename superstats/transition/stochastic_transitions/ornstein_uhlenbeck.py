@@ -120,7 +120,7 @@ class OrnsteinUhlenbeck(StochasticTransition):
             "theta": theta,
         }
 
-        self.transition_type = "ou"
+        self.transition_name = "ou"
 
     def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
         """Draw `batch_size` Ornstein-Uhlenbeck trajectories of length `num_steps`.

@@ -119,7 +119,7 @@ class AutoRegression(StochasticTransition):
             "delta": delta,
         }
 
-        self.transition_type = "ar1"
+        self.transition_name = "ar1"
 
     def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
         """Draw `batch_size` AR(1) trajectories of length `num_steps`.

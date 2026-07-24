@@ -12,11 +12,18 @@ from superstats.simulation.augmentation import (
     RandomChoiceContamination,
     RandomMissingProcess,
 )
+from superstats.transition import DeterministicTransition
 from superstats.transition.stochastic_transitions import RandomWalk
 from superstats.workflow import Workflow
 
 BATCH_SIZE = 4
 NUM_STEPS = 6
+
+
+class _DeterministicTestTransition(DeterministicTransition):
+    def sample(self, batch_size, num_steps):
+        trajectory = np.broadcast_to(np.arange(num_steps, dtype=np.float32), (batch_size, num_steps))
+        return {"deterministic_params": trajectory, "hyper_params": {}, "fixed_params": {}}
 
 
 def _build_generative_model(**kwargs):
@@ -63,6 +70,8 @@ def test_generative_model_sample_shapes():
     # fixed params are excluded by default
     assert "tau" not in result
     assert "bias" not in result
+    assert np.all(np.isfinite(result["response_time"]))
+    assert np.all(np.isin(result["choice"], [-1.0, 0.0, 1.0]))
 
 
 def test_generative_model_sample_include_fixed():
@@ -78,6 +87,7 @@ def test_generative_model_sample_tile_to_steps():
     result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS, tile_to_steps=True)
 
     assert result["a"].shape == (BATCH_SIZE, NUM_STEPS, 1)
+    np.testing.assert_allclose(result["a"], np.broadcast_to(result["a"][:, :1, :], result["a"].shape))
 
 
 def test_generative_model_get_fixed_params():
@@ -128,6 +138,22 @@ def test_workflow_default_adapter_uses_named_time_series_data_keys():
     assert "choice" not in adapted
     assert adapted["summary_variables"].shape == (BATCH_SIZE, NUM_STEPS, 4)
     assert adapted["inference_variables"].shape == (BATCH_SIZE, NUM_STEPS, 2)
+
+
+def test_deterministic_trajectories_are_simulated_but_not_inferred():
+    prior = JointPrior(v=RandomWalk(sigma=0.05, delta=0.0), d=_DeterministicTestTransition())
+
+    def model(v, d):
+        return {"observation": v + d}
+
+    gm = GenerativeModel(prior=prior, model=model, missing=None)
+    result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS, tile_to_steps=True)
+    adapted = Workflow.default_adapter(gm)(result)
+
+    assert gm.local_keys == ["v"]
+    assert gm.deterministic_keys == ["d"]
+    assert result["d"].shape == (BATCH_SIZE, NUM_STEPS, 1)
+    assert adapted["inference_variables"].shape[-1] == 1
 
 
 def test_workflow_prepare_conditions_adds_time_steps_for_named_data(caplog):

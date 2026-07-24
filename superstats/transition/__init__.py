@@ -10,6 +10,7 @@ from .stochastic_transitions import (
     GaussianProcess,
     StochasticTransition,
 )
+from .deterministic_transitions import DeterministicTransition, Linear
 
 __all__ = [
     "RandomWalk",
@@ -20,4 +21,6 @@ __all__ = [
     "Mixture",
     "GaussianProcess",
     "StochasticTransition",
+    "DeterministicTransition",
+    "Linear",
 ]

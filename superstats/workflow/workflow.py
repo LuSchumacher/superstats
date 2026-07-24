@@ -40,8 +40,8 @@ class Workflow:
         provided, for building a default adapter. Required in that case.
     adapter           : Adapter or None, optional, default: None
         Data adapter for the workflow. If None, a default adapter is
-        built from `simulator.local_keys`, `simulator.hyper_keys`, and
-        `simulator.shared_keys` (which requires `simulator` to be set).
+        built from the stochastic `simulator.local_keys`, `simulator.hyper_keys`,
+        and `simulator.shared_keys` (which requires `simulator` to be set).
     summary_network   : {"recurrent", "transformer"} or keras.Layer, optional, default: "recurrent".
         String names build a default summary network; otherwise, an already-created Keras layer is used directly.
     inference_network : {"coupling", "coupling_flow"} or keras.Layer, optional, default: "coupling".

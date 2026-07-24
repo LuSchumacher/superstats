@@ -101,7 +101,7 @@ class GaussianProcess(StochasticTransition):
 
         self.hyper_specs = {name: kernel_params.get(name) for name in self.kernel.hyperparam_names}
 
-        self.transition_type = "gp"
+        self.transition_name = "gp"
 
     def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
         """Draw `batch_size` Gaussian process trajectories of length `num_steps`.

@@ -1,4 +1,4 @@
-"""Random-walk transition models."""
+"""Random-walk transition model."""
 
 from typing import Dict, Any
 from collections.abc import Sequence
@@ -108,7 +108,7 @@ class RandomWalk(StochasticTransition):
             "delta": delta,
         }
 
-        self.transition_type = "rw"
+        self.transition_name = "rw"
 
     def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
         """Draw `batch_size` random-walk trajectories of length `num_steps`.

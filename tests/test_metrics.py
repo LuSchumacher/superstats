@@ -29,6 +29,7 @@ def test_correlation_per_step_shape():
 
     assert correlation.shape == (NUM_STEPS, NUM_PARAMS)
     assert np.all(np.isfinite(correlation))
+    assert np.all((correlation >= -1.0) & (correlation <= 1.0))
 
 
 def test_posterior_contraction_per_step_shape():
@@ -39,6 +40,7 @@ def test_posterior_contraction_per_step_shape():
 
     assert contraction.shape == (NUM_STEPS, NUM_PARAMS)
     assert np.all(np.isfinite(contraction))
+    assert np.all((contraction >= 0.0) & (contraction <= 1.0))
 
 
 def test_calibration_error_per_step_shape_and_bounds():
@@ -60,3 +62,4 @@ def test_nrmse_per_step_shape():
 
     assert nrmse.shape == (NUM_STEPS, NUM_PARAMS)
     assert np.all(np.isfinite(nrmse))
+    assert np.all(nrmse >= 0.0)
