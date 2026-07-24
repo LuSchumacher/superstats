@@ -12,4 +12,5 @@ The following pages are intended to make you familiar with the core functionalit
 
 introduction
 simulator.ipynb
+joint_prior.ipynb
 ```
