@@ -2,5 +2,6 @@
 
 from .deterministic_transition import DeterministicTransition
 from .linear import Linear
+from .polynomial import Polynomial
 
-__all__ = ["DeterministicTransition", "Linear"]
+__all__ = ["DeterministicTransition", "Linear", "Polynomial"]

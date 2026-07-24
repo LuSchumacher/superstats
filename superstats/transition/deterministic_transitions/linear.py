@@ -18,7 +18,7 @@ class Linear(DeterministicTransition):
     intercept       : float, Prior, or None, optional, default: None
         Starting value of the trajectory. A `Prior` samples one intercept
         per trajectory; `None` uses the deterministic default prior.
-    slope           : float, Prior, or None, optional, default: None
+    beta            : float, Prior, or None, optional, default: None
         Change across the trajectory when `normalize_steps=True`. A `Prior`
         samples one slope per trajectory; `None` uses the deterministic
         default prior.
@@ -36,7 +36,7 @@ class Linear(DeterministicTransition):
         self,
         bounds: Sequence[float, float] | None = None,
         intercept: float | Prior | None = None,
-        slope: float | Prior | None = None,
+        beta: float | Prior | None = None,
         normalize_steps: bool = True,
     ):
         super().__init__(bounds)
@@ -45,7 +45,7 @@ class Linear(DeterministicTransition):
 
         self.hyper_specs = {
             "intercept": intercept,
-            "slope": slope,
+            "beta": beta,
         }
 
         self.transition_name = "linear"
@@ -71,16 +71,16 @@ class Linear(DeterministicTransition):
             if "intercept" in hyper
             else np.full(batch_size, fixed["intercept"], dtype=self.dtype)
         )
-        slope = (
-            self._sample(hyper["slope"], batch_size)
-            if "slope" in hyper
-            else np.full(batch_size, fixed["slope"], dtype=self.dtype)
+        beta = (
+            self._sample(hyper["beta"], batch_size)
+            if "beta" in hyper
+            else np.full(batch_size, fixed["beta"], dtype=self.dtype)
         )
         if self.normalize_steps:
             index = np.linspace(0.0, 1.0, num_steps, dtype=self.dtype)
         else:
             index = np.arange(num_steps, dtype=self.dtype)
-        local = intercept[:, None] + slope[:, None] * index[None, :]
+        local = intercept[:, None] + beta[:, None] * index[None, :]
 
         return {
             "deterministic_params": self._bound(local),
