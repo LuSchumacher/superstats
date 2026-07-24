@@ -10,7 +10,7 @@ from superstats.diagnostics.plots.prior_samples import (
     plot_time_varying_prior,
 )
 from .prior import Prior
-from superstats.transition import StochasticTransition
+from superstats.transition import DeterministicTransition, StochasticTransition
 
 
 class JointPrior:
@@ -18,22 +18,26 @@ class JointPrior:
 
     Parameters
     ----------
-    **kwargs : StochasticTransition, Prior, float, int
-        Named model parameters. Use `StochasticTransition` for time-varying
-        parameters with hyperparameters, `Prior` for inferred stationary
+    **kwargs : StochasticTransition, DeterministicTransition, Prior, float, int
+        Named model parameters.
+
+        Use `StochasticTransition` for stochastic time-varying parameters with
+        hyperparameters, `DeterministicTransition` for deterministic
+        time-varying parameters, `Prior` for inferred time-invariant
         parameters, and scalar values for fixed parameters.
 
     Notes
     -----
     Sample outputs are grouped into:
 
-    - `local_params`: time-varying trajectories.
-    - `hyper_params`: inferred transition hyperparameters.
-    - `shared_params`: inferred stationary parameters.
-    - `fixed_params`: fixed scalar values.
+    - `local_params`: stochastic time-varying parameters (inferred).
+    - `deterministic_params`: deterministic time-varying parameters (no inferred).
+    - `hyper_params`: hyperparameters for transition models (inferred).
+    - `shared_params`: time-invariant parameters (inferred).
+    - `fixed_params`: fixed parameters (no inferred).
     """
 
-    def __init__(self, **kwargs: StochasticTransition | Prior | float | int):
+    def __init__(self, **kwargs: StochasticTransition | DeterministicTransition | Prior | float | int):
         self.params = kwargs
         self._last_hyper_param_groups = {}
 
@@ -50,7 +54,8 @@ class JointPrior:
         Returns
         -------
         result : dict - sampled parameter groups `local_params`,
-            `hyper_params`, `shared_params`, and `fixed_params`.
+            `deterministic_params` `hyper_params`, `shared_params`,
+            and `fixed_params`.
 
         Raises
         ------
@@ -63,15 +68,18 @@ class JointPrior:
             raise ValueError("num_steps must be a positive integer")
 
         local_params = {}
+        deterministic_params = {}
         hyper_params = {}
         shared_params = {}
         fixed_params = {}
         hyper_param_groups = {}
 
         for name, param in self.params.items():
-            if isinstance(param, StochasticTransition):
+            if isinstance(param, (StochasticTransition, DeterministicTransition)):
                 samples = param.sample(batch_size=batch_size, num_steps=num_steps)
-                local_params[name] = samples["local_params"]
+                target = deterministic_params if isinstance(param, DeterministicTransition) else local_params
+                sample_key = "deterministic_params" if isinstance(param, DeterministicTransition) else "local_params"
+                target[name] = samples[sample_key]
 
                 hyper_param_groups[name] = []
                 for key, value in samples["hyper_params"].items():
@@ -94,6 +102,7 @@ class JointPrior:
         self._last_hyper_param_groups = hyper_param_groups
         return {
             "local_params": local_params,
+            "deterministic_params": deterministic_params,
             "hyper_params": hyper_params,
             "shared_params": shared_params,
             "fixed_params": fixed_params,
@@ -139,8 +148,9 @@ class JointPrior:
         fig : plt.Figure - the generated figure
         """
         samples = self.sample(batch_size=num_trajectories, num_steps=num_steps)
+        local_params = {**samples["local_params"], **samples["deterministic_params"]}
         return plot_time_varying_prior(
-            local_params=samples["local_params"],
+            local_params=local_params,
             param_bounds=self._param_bounds(),
             **kwargs,
         )
@@ -188,7 +198,8 @@ class JointPrior:
         fig : plt.Figure - the generated figure
         """
         samples = self.sample(batch_size=num_draws, num_steps=num_steps)
-        local_params = {k: v[:num_trajectories] for k, v in samples["local_params"].items()}
+        all_local_params = {**samples["local_params"], **samples["deterministic_params"]}
+        local_params = {k: v[:num_trajectories] for k, v in all_local_params.items()}
         return plot_joint_prior(
             local_params=local_params,
             hyper_params=samples["hyper_params"],

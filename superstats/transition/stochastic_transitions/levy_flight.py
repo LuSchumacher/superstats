@@ -5,7 +5,7 @@ from collections.abc import Sequence
 import numpy as np
 from numba import njit, prange
 
-from .transition import StochasticTransition, Prior
+from .stochastic_transition import StochasticTransition, Prior
 from superstats.utils.transformations import scaled_sigmoid
 
 
@@ -171,7 +171,7 @@ class LevyFlight(StochasticTransition):
             "beta": beta,
         }
 
-        self.transition_type = "levy"
+        self.transition_name = "levy"
 
     def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
         """Draw `batch_size` Lévy-flight trajectories of length `num_steps`.

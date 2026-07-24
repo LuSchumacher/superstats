@@ -2,7 +2,7 @@
 
 import logging as _logging
 
-from . import diagnostics, prior, simulation, workflow, networks
+from . import prior, diagnostics, simulation, workflow, networks
 from .prior import JointPrior, Prior
 from .simulation import GenerativeModel
 from .workflow import Workflow

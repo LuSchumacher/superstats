@@ -60,3 +60,21 @@ def test_sample_rdm_times_out_when_max_steps_too_small():
 
     assert np.all(data["response_time"] == -1.0)
     assert np.all(data["choice"] == -1.0)
+
+
+def test_sample_rdm_preserves_trialwise_parameter_alignment():
+    # A zero-noise, zero-drift process with a tiny boundary should always
+    # time out, independently for every trial.
+    n = 4
+    data = sample_rdm(
+        np.zeros(n, dtype=np.float32),
+        np.zeros(n, dtype=np.float32),
+        np.full(n, 1e6, dtype=np.float32),
+        np.zeros(n, dtype=np.float32),
+        np.full(n, 0.5, dtype=np.float32),
+        np.zeros(n, dtype=np.float32),
+        max_steps=2,
+    )
+
+    assert np.array_equal(data["response_time"], np.full(n, -1.0, dtype=np.float32))
+    assert np.array_equal(data["choice"], np.full(n, -1.0, dtype=np.float32))

@@ -16,16 +16,16 @@ classifiers = [
     "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
-    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 description = "Estimating time-varying parameters with deep learning"
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { file = "LICENSE" }
 
-requires-python = ">= 3.12"
+requires-python = ">= 3.12, < 3.14"
 dependencies = [
     "bayesflow>=2.0.12",
+    "numpy>=2.4,<2.5",
     "jax >= 0.11.0; sys_platform != 'win32'",
     "torch; sys_platform == 'win32'",
     "numba >= 0.63.1",
@@ -186,14 +186,20 @@ docstring-code-line-length = "dynamic"
 [tool.setuptools.packages]
 find = {}
 
+[tool.uv]
+# BayesFlow's dev branch currently declares NumPy >=2.5, while Numba supports
+# NumPy only below 2.5. Keep the dev branch and use the latest NumPy supported
+# by Numba until the upstream constraints converge.
+override-dependencies = ["numpy>=2.4,<2.5"]
+
+[tool.uv.sources]
+bayesflow = { git = "https://github.com/bayesflow-org/bayesflow.git", rev = "dev" }
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 filterwarnings = [
     "ignore:__array__ implementation doesn't accept a copy keyword.*:DeprecationWarning:keras.src.backend.jax.core",
 ]
-
-[tool.uv.sources]
-bayesflow = { git = "https://github.com/bayesflow-org/bayesflow.git", rev = "dev" }
 
 [dependency-groups]
 dev = [
