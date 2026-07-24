@@ -1,7 +1,8 @@
 import numpy as np
+import pytest
 
 from superstats.prior import JointPrior
-from superstats.transition import DeterministicTransition, Linear
+from superstats.transition import DeterministicTransition, Linear, Polynomial
 
 
 def test_linear_returns_standard_parameter_groups():
@@ -50,3 +51,18 @@ def test_joint_prior_accepts_deterministic_transitions():
 
     assert result["deterministic_params"]["x"].shape == (3, 4)
     assert "x_intercept" in result["fixed_params"]
+
+
+def test_polynomial_reconstructs_trajectory_from_resolved_parameters():
+    transition = Polynomial(intercept=1.0, betas=[2.0, 3.0], bounds=(-100.0, 100.0))
+
+    trajectory = transition.sample_from_parameters(
+        {"intercept": 1.0, "beta_1": 2.0, "beta_2": 3.0}, batch_size=1, num_steps=3
+    )
+
+    np.testing.assert_allclose(trajectory[0], [1.0, 2.75, 6.0])
+
+
+def test_polynomial_rejects_wrong_number_of_coefficients():
+    with pytest.raises(ValueError, match="num_polynomials"):
+        Polynomial(betas=[1.0], num_polynomials=2)

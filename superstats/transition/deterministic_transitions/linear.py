@@ -87,3 +87,19 @@ class Linear(DeterministicTransition):
             "hyper_params": hyper,
             "fixed_params": fixed,
         }
+
+    def sample_from_parameters(
+        self,
+        params: Dict[str, np.ndarray | float],
+        batch_size: int,
+        num_steps: int,
+    ) -> np.ndarray:
+        intercept = np.broadcast_to(np.asarray(params["intercept"], dtype=self.dtype), (batch_size,))
+        beta = np.broadcast_to(np.asarray(params["beta"], dtype=self.dtype), (batch_size,))
+        index = (
+            np.linspace(0.0, 1.0, num_steps, dtype=self.dtype)
+            if self.normalize_steps
+            else np.arange(num_steps, dtype=self.dtype)
+        )
+        trajectory = intercept[:, None] + beta[:, None] * index[None, :]
+        return self._bound(trajectory)

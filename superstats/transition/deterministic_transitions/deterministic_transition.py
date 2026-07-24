@@ -200,3 +200,19 @@ class DeterministicTransition(ABC):
             an ndarray of shape (batch_size, steps).
         """
         raise NotImplementedError
+
+    def sample_from_parameters(
+        self,
+        params: Dict[str, np.ndarray | float],
+        batch_size: int,
+        num_steps: int,
+    ) -> np.ndarray:
+        """Generate trajectories from already-resolved transition parameters.
+
+        Subclasses used with posterior predictive resimulation should override
+        this method. ``params`` contains the subclass's own hyperparameter
+        names, independent of any name used by a :class:`JointPrior`.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} must implement sample_from_parameters() to support posterior resimulation."
+        )

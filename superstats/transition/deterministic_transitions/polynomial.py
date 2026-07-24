@@ -140,3 +140,23 @@ class Polynomial(DeterministicTransition):
             "hyper_params": hyper,
             "fixed_params": fixed,
         }
+
+    def sample_from_parameters(
+        self,
+        params: Dict[str, np.ndarray | float],
+        batch_size: int,
+        num_steps: int,
+    ) -> np.ndarray:
+        """Generate trajectories from resolved intercept and beta terms."""
+        intercept = np.broadcast_to(np.asarray(params["intercept"], dtype=self.dtype), (batch_size,))
+        if self.normalize_steps:
+            index = np.linspace(0.0, 1.0, num_steps, dtype=self.dtype)
+        else:
+            index = np.arange(num_steps, dtype=self.dtype)
+
+        trajectory = np.repeat(intercept[:, None], num_steps, axis=1)
+        for power in range(1, self.num_polynomials + 1):
+            beta = np.broadcast_to(np.asarray(params[f"beta_{power}"], dtype=self.dtype), (batch_size,))
+            trajectory += beta[:, None] * np.power(index[None, :], power)
+
+        return self._bound(trajectory)

@@ -12,7 +12,7 @@ from superstats.simulation.augmentation import (
     RandomChoiceContamination,
     RandomMissingProcess,
 )
-from superstats.transition import DeterministicTransition
+from superstats.transition import DeterministicTransition, Linear
 from superstats.transition.stochastic_transitions import RandomWalk
 from superstats.workflow import Workflow
 
@@ -154,6 +154,28 @@ def test_deterministic_trajectories_are_simulated_but_not_inferred():
     assert gm.deterministic_keys == ["d"]
     assert result["d"].shape == (BATCH_SIZE, NUM_STEPS, 1)
     assert adapted["inference_variables"].shape[-1] == 1
+
+
+def test_resimulate_posterior_reconstructs_linear_deterministic_parameter():
+    prior = JointPrior(
+        v=RandomWalk(bounds=(-3.0, 3.0), initial_prior=Prior("normal", loc=0.0, scale=0.5), sigma=0.0, delta=0.0),
+        a=Linear(intercept=0.5, beta=0.5),
+        tau=0.2,
+        bias=0.0,
+    )
+    simulator = GenerativeModel(prior=prior, model=sample_ddm, missing=None)
+    workflow = object.__new__(Workflow)
+    workflow.simulator = simulator
+
+    posterior = {
+        "v": np.zeros((2, 3, NUM_STEPS), dtype=np.float32),
+        # Shared posterior outputs can be tiled over time by the adapter.
+        "a_intercept": np.full((2, 3, NUM_STEPS, 1), 0.5, dtype=np.float32),
+    }
+    result = workflow.resimulate_posterior(posterior, num_sims=4, rng=0)
+
+    assert result["response_time"].shape == (2, 4, NUM_STEPS)
+    assert result["choice"].shape == (2, 4, NUM_STEPS)
 
 
 def test_workflow_prepare_conditions_adds_time_steps_for_named_data(caplog):
