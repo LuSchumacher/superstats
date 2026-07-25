@@ -92,7 +92,7 @@ class GaussianProcess(StochasticTransition):
         self.kernel = resolve_kernel(kernel)
         kernel_params = kernel_params or {}
 
-        unknown = set(kernel_params) - set(self.kernel.hyperparam_names)
+        unknown = set(kernel_params).difference(self.kernel.hyperparam_names)
         if unknown:
             raise ValueError(
                 f"Unknown hyperparameter(s) {unknown} for kernel '{kernel}'; "
@@ -126,7 +126,7 @@ class GaussianProcess(StochasticTransition):
         }
         kernel_mat = self.kernel.build(num_steps, **kernel_args)
 
-        start = self.initial_prior.sample(batch_size).astype(self.dtype)
+        start = self.initial_prior.sample(batch_size)
 
         local_params = np.empty((batch_size, num_steps), dtype=self.dtype)
         local_params = sample_gaussian_process(

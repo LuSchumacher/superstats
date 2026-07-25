@@ -137,7 +137,7 @@ class AutoRegression(StochasticTransition):
             `hyper_params`, and `fixed_params`
         """
         local_params = np.empty((batch_size, num_steps), dtype=self.dtype)
-        local_params[:, 0] = self.initial_prior.sample(batch_size).astype(self.dtype)
+        local_params[:, 0] = self.initial_prior.sample(batch_size)
 
         hyper, fixed = self._resolve_hyperparams(batch_size)
 
@@ -158,9 +158,9 @@ class AutoRegression(StochasticTransition):
 
         local_params = _sample_ar1(
             local_params,
-            sigma.astype(self.dtype),
-            phi.astype(self.dtype),
-            delta.astype(self.dtype),
+            sigma,
+            phi,
+            delta,
             self.bounds,
         )
 
@@ -184,13 +184,9 @@ class AutoRegression(StochasticTransition):
         -------
         x_next : float - the next latent state
         """
-        sigma = float(params["sigma"])
-        phi = float(params["phi"])
-        delta = float(params["delta"])
-
         return _one_step_ar1(
             x,
-            sigma,
-            phi,
-            delta,
+            params["sigma"],
+            params["phi"],
+            params["delta"],
         )

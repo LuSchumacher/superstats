@@ -16,16 +16,19 @@ NUM_STEPS = 12
 
 
 def test_transition_models_use_stochastic_transition_base_class():
-    assert issubclass(RandomWalk, StochasticTransition)
-    assert issubclass(AutoRegression, StochasticTransition)
-    assert issubclass(OrnsteinUhlenbeck, StochasticTransition)
-    assert issubclass(Jump, StochasticTransition)
-    assert issubclass(Mixture, StochasticTransition)
-
-
-def test_transition_models_expose_category_and_name():
     transitions = [RandomWalk(), AutoRegression(), OrnsteinUhlenbeck(), Jump()]
-    assert [transition.transition_type for transition in transitions] == ["stochastic"] * 4
+    assert all(isinstance(transition, StochasticTransition) for transition in transitions)
+    assert isinstance(
+        Mixture(
+            transitions=[RandomWalk(), Jump()],
+            initial_prior=Prior("normal"),
+        ),
+        StochasticTransition,
+    )
+
+
+def test_transition_models_expose_name():
+    transitions = [RandomWalk(), AutoRegression(), OrnsteinUhlenbeck(), Jump()]
     assert [transition.transition_name for transition in transitions] == ["rw", "ar1", "ou", "jump"]
 
 

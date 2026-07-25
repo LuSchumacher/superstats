@@ -3,7 +3,7 @@
 import logging as _logging
 
 logger = _logging.getLogger("superstats")
-_WARNED_MESSAGES: set[str] = set()
+_WARNED_MESSAGES = set()
 
 
 def _format_message(msg, *args, **kwargs) -> str:

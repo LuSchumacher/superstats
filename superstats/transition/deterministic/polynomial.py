@@ -52,10 +52,10 @@ class Polynomial(DeterministicTransition):
         if degree < 1:
             raise ValueError("degree must be at least 1")
 
-        self.degree = int(degree)
+        self.degree = degree
         self.normalize_steps = normalize_steps
 
-        self.hyper_specs: Dict[str, Any] = {"intercept": intercept}
+        self.hyper_specs = {"intercept": intercept}
 
         beta_specs = self._expand_beta_specs(betas)
         for idx, spec in enumerate(beta_specs, start=1):
@@ -66,16 +66,15 @@ class Polynomial(DeterministicTransition):
     def _expand_beta_specs(
         self,
         betas: float | Prior | Sequence[float | Prior | None] | None,
-    ) -> list[float | Prior | None]:
+    ) -> Sequence[float | Prior | None]:
         """Normalize beta input into one spec per polynomial term."""
         if isinstance(betas, (Prior, float, int)) or betas is None:
             return [betas] * self.degree
 
         if isinstance(betas, Sequence) and not isinstance(betas, (str, bytes)):
-            beta_specs = list(betas)
-            if len(beta_specs) != self.degree:
-                raise ValueError(f"betas must have length equal to degree ({self.degree}), got {len(beta_specs)}")
-            return beta_specs
+            if len(betas) != self.degree:
+                raise ValueError(f"betas must have length equal to degree ({self.degree}), got {len(betas)}")
+            return betas
 
         raise TypeError("betas must be a scalar, Prior, None, or a sequence of scalars/Priors")
 
@@ -86,7 +85,7 @@ class Polynomial(DeterministicTransition):
         if isinstance(spec, Prior):
             return spec, True
         if isinstance(spec, (float, int)):
-            return float(spec), False
+            return spec, False
         raise TypeError(f"Invalid beta specification: {type(spec)}")
 
     def _resolve_hyperparams(self, batch_size: int) -> tuple[Dict[str, np.ndarray], Dict[str, float]]:
@@ -122,7 +121,7 @@ class Polynomial(DeterministicTransition):
         else:
             index = np.arange(num_steps, dtype=self.dtype)
 
-        local = np.repeat(intercept[:, None], num_steps, axis=1).astype(self.dtype)
+        local = np.repeat(intercept[:, None], num_steps, axis=1)
 
         for power in range(1, self.degree + 1):
             name = f"beta_{power}"

@@ -189,7 +189,7 @@ class LevyFlight(StochasticTransition):
             `hyper_params`, and `fixed_params`
         """
         local_params = np.empty((batch_size, num_steps), dtype=self.dtype)
-        local_params[:, 0] = self.initial_prior.sample(batch_size).astype(self.dtype)
+        local_params[:, 0] = self.initial_prior.sample(batch_size)
 
         hyper, fixed = self._resolve_hyperparams(batch_size)
 
@@ -209,10 +209,10 @@ class LevyFlight(StochasticTransition):
 
         local_params = _sample_levy_flight(
             local_params,
-            sigma.astype(self.dtype),
-            delta.astype(self.dtype),
-            alpha.astype(self.dtype),
-            beta.astype(self.dtype),
+            sigma,
+            delta,
+            alpha,
+            beta,
             self.bounds,
         )
 
@@ -236,8 +236,10 @@ class LevyFlight(StochasticTransition):
         -------
         x_next : float - the next latent state
         """
-        sigma = float(params["sigma"])
-        delta = float(params["delta"])
-        alpha = float(params["alpha"])
-        beta = float(params.get("beta", 0.0))
-        return _one_step_levy_flight(x, sigma, delta, alpha, beta)
+        return _one_step_levy_flight(
+            x,
+            params["sigma"],
+            params["delta"],
+            params["alpha"],
+            params.get("beta", 0.0),
+        )
