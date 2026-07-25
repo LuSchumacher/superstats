@@ -30,7 +30,7 @@ class Mixture(StochasticTransition):
         transitions. Required at sample time.
     names           : sequence of str or None, optional, default: None
         Names for each component, used to prefix hyperparameter keys.
-        Defaults to each component's `transition_type`.
+        Defaults to each component's `transition_name`.
 
     Raises
     ------
@@ -70,19 +70,19 @@ class Mixture(StochasticTransition):
             if t._user_defined_bounds:
                 raise ValueError(
                     f"Transition at index {i} "
-                    f"({t.transition_type}) defines bounds={t.bounds}. "
+                    f"({t.transition_name}) defines bounds={t.bounds}. "
                     "Transitions inside Mixture cannot define bounds. "
                     "Specify bounds in Mixture(...) instead."
                 )
             if t._user_defined_initial_prior:
                 raise ValueError(
                     f"Transition at index {i} "
-                    f"({t.transition_type}) defines initial_prior. "
+                    f"({t.transition_name}) defines initial_prior. "
                     "Transitions inside Mixture cannot define "
                     "initial_prior. "
                     "Specify initial_prior in Mixture(...) instead."
                 )
-            if t.transition_type == "jump":
+            if t.transition_name == "jump":
                 if getattr(t, "_user_defined_p_jump", False):
                     raise ValueError(
                         f"Jump transition at index {i} defines p_jump. "
@@ -93,7 +93,7 @@ class Mixture(StochasticTransition):
             t.bounds = self.bounds
             t.initial_prior = self.initial_prior
 
-        self.names = names or [t.transition_type for t in self.transitions]
+        self.names = names or [t.transition_name for t in self.transitions]
 
         if len(self.names) != self.K:
             raise ValueError("names must match number of transitions")
@@ -132,7 +132,7 @@ class Mixture(StochasticTransition):
         else:
             raise TypeError("Invalid type for mixture_weights")
 
-        self.transition_type = "mixture"
+        self.transition_name = "mixture"
 
     def _sample_mixture_weights(self, batch_size: int) -> np.ndarray:
         """Sample per-batch mixture weights.

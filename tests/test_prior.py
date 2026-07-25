@@ -21,6 +21,7 @@ def test_prior_sample_shape_and_dtype(kwargs):
     assert isinstance(samples, np.ndarray)
     assert samples.shape == (32,)
     assert samples.dtype == np.float32
+    assert np.all(np.isfinite(samples))
 
 
 def test_prior_dirichlet_sample_shape():
@@ -49,3 +50,26 @@ def test_prior_halfnormal_is_nonnegative():
     prior = Prior(dist="halfnormal", scale=1.0)
     samples = prior.sample(batch_size=100)
     assert np.all(samples >= 0.0)
+
+
+def test_prior_applies_scale_and_shift_after_sampling():
+    samples = Prior("uniform", low=0.0, high=1.0, scale_factor=2.0, shift=3.0).sample(100)
+
+    assert np.all(samples >= 3.0)
+    assert np.all(samples <= 5.0)
+
+
+def test_prior_sampling_is_reproducible_when_seed_is_reset():
+    prior = Prior("normal", loc=1.0, scale=0.5)
+    np.random.seed(123)
+    first = prior.sample(16)
+    np.random.seed(123)
+    second = prior.sample(16)
+
+    np.testing.assert_array_equal(first, second)
+
+
+@pytest.mark.parametrize("batch_size", [-1])
+def test_prior_rejects_non_positive_batch_size(batch_size):
+    with pytest.raises(ValueError):
+        Prior("normal").sample(batch_size)

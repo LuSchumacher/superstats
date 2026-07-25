@@ -1,22 +1,22 @@
-"""Base stochastic transition interface."""
+"""Base interface and shared helpers for deterministic transitions."""
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from typing import Dict, Any, Union
 import numpy as np
 
-from superstats.prior.prior import Prior
 from superstats.defaults import (
-    DEFAULT_STOCHASTIC_HYPER_PRIORS,
-    DEFAULT_BOUNDS,
+    DEFAULT_DETERMINISTIC_HYPER_PRIORS,
     DEFAULT_INITIAL_PRIOR,
+    DEFAULT_BOUNDS,
 )
+from superstats.prior.prior import Prior
 
 ParamSpec = Union[Prior, float, int, None]
 
 
-class StochasticTransition(ABC):
-    """Base class for stochastic transition models.
+class DeterministicTransition(ABC):
+    """Base class for deterministic transition models.
 
     Subclasses implement deterministic dynamics for a single scalar latent
     parameter. Subclasses must implement `sample` to generate complete
@@ -28,7 +28,7 @@ class StochasticTransition(ABC):
         Lower and upper bounds for the latent state, applied via
         `scaled_sigmoid`. Falls back to `DEFAULT_BOUNDS` if not provided.
     initial_prior : Prior or None, optional, default: None
-        Prior used to draw initial latent states. Falls back to
+        Prior used to draw the initial latent state. Falls back to
         `DEFAULT_INITIAL_PRIOR` if not provided.
 
     Attributes
@@ -38,17 +38,17 @@ class StochasticTransition(ABC):
     initial_prior : Prior
         Resolved prior used to draw initial latent states.
     hyper_specs   : dict
-        Mapping from hyperparameter names to either a `Prior` (to be
-        sampled per-batch) or a scalar fixed value. Populated by
-        subclasses.
+        Mapping from parameter names to either a `Prior` (sampled per batch),
+        a scalar fixed value, or `None` to use a deterministic default.
+        Subclasses populate this mapping.
     transition_type : str
-        Broad transition category, always ``"stochastic"`` for this base.
+        Broad transition category, always ``"deterministic"`` for this base.
     transition_name : str
-        Short model name, such as ``"rw"`` or ``"ar1"``.
+        Short model name, such as ``"linear"``.
     """
 
     dtype = np.float32
-    transition_type = "stochastic"
+    transition_type = "deterministic"
 
     def __init__(
         self,
@@ -64,7 +64,7 @@ class StochasticTransition(ABC):
 
         self.initial_prior = initial_prior if initial_prior is not None else DEFAULT_INITIAL_PRIOR
         self.hyper_specs: Dict[str, ParamSpec] = {}
-        self.transition_type = "stochastic"
+        self.transition_type = "deterministic"
         self.transition_name = self.__class__.__name__
 
     def _resolve(self, name: str, spec: ParamSpec) -> tuple[Prior | float, bool]:
@@ -95,7 +95,7 @@ class StochasticTransition(ABC):
             If `spec` is not None, a `Prior`, or a numeric scalar.
         """
         if spec is None:
-            default = DEFAULT_STOCHASTIC_HYPER_PRIORS.get(name)
+            default = DEFAULT_DETERMINISTIC_HYPER_PRIORS.get(name)
             if default is None:
                 raise KeyError(f"No default hyperprior found for '{name}'")
             if isinstance(default, Prior):
@@ -149,6 +149,10 @@ class StochasticTransition(ABC):
             return np.full(batch_size, x, dtype=self.dtype)
         return np.asarray(x, dtype=self.dtype)
 
+    def _bound(self, values: np.ndarray) -> np.ndarray:
+        """Clip trajectory values to the configured latent-state bounds."""
+        return np.clip(values, self.bounds[0], self.bounds[1]).astype(self.dtype)
+
     def _resolve_hyperparams(self, batch_size: int) -> tuple[Dict[str, np.ndarray], Dict[str, float]]:
         """Resolve every entry in `hyper_specs` into sampled and fixed groups.
 
@@ -191,9 +195,24 @@ class StochasticTransition(ABC):
 
         Returns
         -------
-        result : dict - dictionary with at least keys `local_params`
-            (ndarray of shape (batch_size, steps)), `hyper_params`,
-            and `fixed_params` describing sampled and fixed
-            hyperparameters
+        result : dict - dictionary with keys `deterministic_params`,
+            `hyper_params`, and `fixed_params`. `deterministic_params` is
+            an ndarray of shape (batch_size, steps).
         """
         raise NotImplementedError
+
+    def sample_from_parameters(
+        self,
+        params: Dict[str, np.ndarray | float],
+        batch_size: int,
+        num_steps: int,
+    ) -> np.ndarray:
+        """Generate trajectories from already-resolved transition parameters.
+
+        Subclasses used with posterior predictive resimulation should override
+        this method. ``params`` contains the subclass's own hyperparameter
+        names, independent of any name used by a :class:`JointPrior`.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} must implement sample_from_parameters() to support posterior resimulation."
+        )

@@ -114,7 +114,7 @@ class Jump(StochasticTransition):
         }
 
         self.proposal_prior = proposal_prior or Prior("normal", loc=0.0, scale=1.0)
-        self.transition_type = "jump"
+        self.transition_name = "jump"
 
     def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
         """Draw `batch_size` jump-process trajectories of length `num_steps`.

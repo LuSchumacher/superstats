@@ -40,8 +40,8 @@ class Workflow:
         provided, for building a default adapter. Required in that case.
     adapter           : Adapter or None, optional, default: None
         Data adapter for the workflow. If None, a default adapter is
-        built from `simulator.local_keys`, `simulator.hyper_keys`, and
-        `simulator.shared_keys` (which requires `simulator` to be set).
+        built from the stochastic `simulator.local_keys`, `simulator.hyper_keys`,
+        and `simulator.shared_keys` (which requires `simulator` to be set).
     summary_network   : {"recurrent", "transformer"} or keras.Layer, optional, default: "recurrent".
         String names build a default summary network; otherwise, an already-created Keras layer is used directly.
     inference_network : {"coupling", "coupling_flow"} or keras.Layer, optional, default: "coupling".
@@ -394,7 +394,11 @@ class Workflow:
             )
 
         batch_size, num_draws = example.shape[:2]
-        num_steps = example.shape[2]
+        time_varying_keys = set(self.simulator.local_keys) | set(self.simulator.deterministic_keys)
+        time_varying_arrays = [
+            np.asarray(value) for name, value in posterior_samples.items() if name in time_varying_keys
+        ]
+        num_steps = time_varying_arrays[0].shape[2] if time_varying_arrays else example.shape[2]
 
         sample_idx = rng.integers(num_draws, size=(batch_size, num_sims))
 
@@ -410,7 +414,10 @@ class Workflow:
 
             if arr.ndim == 3:
                 selected = arr[np.arange(batch_size)[:, None], sample_idx, :]
-                simulation_params[name] = selected
+                # Posterior samples for shared/hyperparameters have a
+                # singleton trailing time axis, whereas local and
+                # deterministic trajectories have one entry per step.
+                simulation_params[name] = selected[..., 0] if name not in time_varying_keys else selected
             elif arr.ndim == 4:
                 selected = arr[
                     np.arange(batch_size)[:, None, None],
@@ -418,6 +425,12 @@ class Workflow:
                     np.arange(num_steps)[None, None, :],
                     :,
                 ]
+                if name not in time_varying_keys:
+                    # Some adapters tile shared parameters over time and/or
+                    # retain a singleton feature axis. Only one value per
+                    # posterior draw is needed for simulation.
+                    while selected.ndim > 2:
+                        selected = selected[..., 0]
                 simulation_params[name] = selected
             else:
                 raise ValueError(
@@ -428,10 +441,15 @@ class Workflow:
         # Collapse sample axis into batch axis for simulation
         expanded_params: dict[str, np.ndarray] = {}
         for name, arr in simulation_params.items():
-            if arr.ndim == 2:
+            if name not in time_varying_keys:
+                expanded_params[name] = arr.reshape(batch_size * num_sims)
+            elif arr.ndim == 2:
                 expanded_params[name] = arr.reshape(batch_size * num_sims, num_steps)
             elif arr.ndim == 3:
-                expanded_params[name] = arr.reshape(batch_size * num_sims, num_steps, arr.shape[2])
+                if arr.shape[2] == num_steps:
+                    expanded_params[name] = arr.reshape(batch_size * num_sims, num_steps)
+                else:
+                    expanded_params[name] = arr.reshape(batch_size * num_sims, num_steps, arr.shape[2])
             elif arr.ndim == 4:
                 expanded_params[name] = arr.reshape(batch_size * num_sims, num_steps, arr.shape[3])
             else:
@@ -439,6 +457,28 @@ class Workflow:
 
         for name, value in fixed_params.items():
             expanded_params[name] = np.broadcast_to(np.asarray(value), (batch_size * num_sims,))
+
+        # Deterministic transitions are simulated but are intentionally not
+        # returned as inferred trajectories. Delegate reconstruction to each
+        # transition, keeping transition-specific hyperparameters out of the
+        # workflow implementation.
+        for name in self.simulator.deterministic_keys:
+            if name in expanded_params:
+                continue
+            transition = self.simulator.prior.params[name]
+            prefix = f"{name}_"
+            transition_params = {
+                key[len(prefix) :]: value for key, value in expanded_params.items() if key.startswith(prefix)
+            }
+            transition_fixed = transition.sample(batch_size=1, num_steps=1).get("fixed_params", {})
+            transition_params.update(
+                {key: value for key, value in transition_fixed.items() if key not in transition_params}
+            )
+            expanded_params[name] = transition.sample_from_parameters(
+                transition_params,
+                batch_size=batch_size * num_sims,
+                num_steps=num_steps,
+            )
 
         raw_sim = self.simulator.simulate_from_parameters(
             expanded_params,

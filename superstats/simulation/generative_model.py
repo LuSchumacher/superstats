@@ -75,6 +75,9 @@ class GenerativeModel:
         # Run a pilot draw to determine key groups once
         pilot = self.prior.sample(batch_size=1, num_steps=1)
         self.local_keys = list(pilot["local_params"].keys()) if pilot.get("local_params") else []
+        self.deterministic_keys = (
+            list(pilot["deterministic_params"].keys()) if pilot.get("deterministic_params") else []
+        )
         self.hyper_keys = list(pilot["hyper_params"].keys()) if pilot.get("hyper_params") else []
         self.shared_keys = list(pilot["shared_params"].keys()) if pilot.get("shared_params") else []
         self.fixed_keys = list(pilot["fixed_params"].keys()) if pilot.get("fixed_params") else []
@@ -144,6 +147,7 @@ class GenerativeModel:
     def _infer_data_keys(self, prior_draws: dict) -> list[str]:
         """Infer observation names from a one-step simulator call."""
         combined_params = dict(prior_draws.get("local_params", {}))
+        combined_params.update(prior_draws.get("deterministic_params", {}))
         combined_params.update(prior_draws.get("shared_params", {}))
 
         fixed_params = prior_draws.get("fixed_params", {})
@@ -558,11 +562,13 @@ class GenerativeModel:
         # Sample parameters
         prior_draws = self.prior.sample(batch_size=batch_size, num_steps=num_steps)
         local_params = prior_draws["local_params"]
+        deterministic_params = prior_draws.get("deterministic_params", {})
         shared_params = prior_draws.get("shared_params", {})
         fixed_params = prior_draws.get("fixed_params", {})
 
         # Combine parameter dictionaries
         combined_params = dict(local_params)
+        combined_params.update(deterministic_params)
         combined_params.update(shared_params)
 
         # Include fixed params that are used by the model
@@ -588,6 +594,7 @@ class GenerativeModel:
         sim_data, missing_mask, missing_extra = self._apply_missing(sim_data, rng)
 
         local_params = self._normalize_local_params(local_params, batch_size, num_steps)
+        deterministic_params = self._normalize_local_params(deterministic_params, batch_size, num_steps)
         hyper_params = self._normalize_batch_params(prior_draws.get("hyper_params", {}), batch_size)
         shared_params = self._normalize_batch_params(shared_params, batch_size)
 
@@ -608,6 +615,8 @@ class GenerativeModel:
             result.update(missing_extra)
         if local_params:
             result.update(local_params)
+        if deterministic_params:
+            result.update(deterministic_params)
         if hyper_params:
             result.update(hyper_params)
         if shared_params:
