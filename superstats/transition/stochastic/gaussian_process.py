@@ -4,7 +4,7 @@ from typing import Any, Dict, Sequence, Literal
 import numpy as np
 from numba import njit, prange
 
-from stochastic import StochasticTransition, Prior, ParamSpec
+from .stochastic_transition import StochasticTransition, Prior, ParamSpec
 from .kernel import Kernel, resolve_kernel
 from superstats.utils.transformations import scaled_sigmoid
 

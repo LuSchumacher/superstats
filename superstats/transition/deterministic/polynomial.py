@@ -1,13 +1,11 @@
 """Polynomial deterministic transition."""
 
-from __future__ import annotations
-
 from collections.abc import Sequence
 from typing import Any, Dict
 
 import numpy as np
 
-from deterministic import DeterministicTransition, Prior
+from .deterministic_transition import DeterministicTransition, Prior
 
 
 class Polynomial(DeterministicTransition):
@@ -24,12 +22,12 @@ class Polynomial(DeterministicTransition):
     betas           : float, Prior, sequence of float/Prior/None, or None
         Polynomial coefficients for the non-constant terms. If a single scalar
         or `Prior` is provided, the same specification is used for every beta.
-        If a sequence is provided, it must have length `num_polynomials` and
+        If a sequence is provided, it must have length `degree` and
         each element is used for the corresponding beta weight.
-    num_polynomials : int, optional, default: 2
+    degree : int, optional, default: 2
         Number of polynomial terms beyond the intercept. For example,
-        `num_polynomials=1` reproduces a linear model, while the default
-        `num_polynomials=2` gives a quadratic model.
+        `degree=1` reproduces a linear model, while the default
+        `degree=2` gives a quadratic model.
     normalize_steps : bool, optional, default: True
         If `True`, use a time axis from 0 to 1. If `False`, use integer step
         indices, so higher-order terms are evaluated on raw step numbers.
@@ -46,15 +44,15 @@ class Polynomial(DeterministicTransition):
         bounds: Sequence[float, float] | None = None,
         intercept: float | Prior | None = None,
         betas: float | Prior | Sequence[float | Prior | None] | None = None,
-        num_polynomials: int = 2,
+        degree: int = 2,
         normalize_steps: bool = True,
     ):
-        super().__init__(bounds)
+        super().__init__(bounds=bounds)
 
-        if num_polynomials < 1:
-            raise ValueError("num_polynomials must be at least 1")
+        if degree < 1:
+            raise ValueError("degree must be at least 1")
 
-        self.num_polynomials = int(num_polynomials)
+        self.degree = int(degree)
         self.normalize_steps = normalize_steps
 
         self.hyper_specs: Dict[str, Any] = {"intercept": intercept}
@@ -71,14 +69,12 @@ class Polynomial(DeterministicTransition):
     ) -> list[float | Prior | None]:
         """Normalize beta input into one spec per polynomial term."""
         if isinstance(betas, (Prior, float, int)) or betas is None:
-            return [betas] * self.num_polynomials
+            return [betas] * self.degree
 
         if isinstance(betas, Sequence) and not isinstance(betas, (str, bytes)):
             beta_specs = list(betas)
-            if len(beta_specs) != self.num_polynomials:
-                raise ValueError(
-                    f"betas must have length equal to num_polynomials ({self.num_polynomials}), got {len(beta_specs)}"
-                )
+            if len(beta_specs) != self.degree:
+                raise ValueError(f"betas must have length equal to degree ({self.degree}), got {len(beta_specs)}")
             return beta_specs
 
         raise TypeError("betas must be a scalar, Prior, None, or a sequence of scalars/Priors")
@@ -95,8 +91,8 @@ class Polynomial(DeterministicTransition):
 
     def _resolve_hyperparams(self, batch_size: int) -> tuple[Dict[str, np.ndarray], Dict[str, float]]:
         """Resolve intercept and beta specs into sampled and fixed groups."""
-        hyper_params: Dict[str, np.ndarray] = {}
-        fixed_params: Dict[str, float] = {}
+        hyper_params = {}
+        fixed_params = {}
 
         for name, spec in self.hyper_specs.items():
             if name == "intercept":
@@ -128,7 +124,7 @@ class Polynomial(DeterministicTransition):
 
         local = np.repeat(intercept[:, None], num_steps, axis=1).astype(self.dtype)
 
-        for power in range(1, self.num_polynomials + 1):
+        for power in range(1, self.degree + 1):
             name = f"beta_{power}"
             spec = self.hyper_specs[name]
             value, infer = self._resolve_beta(spec)
@@ -155,7 +151,7 @@ class Polynomial(DeterministicTransition):
             index = np.arange(num_steps, dtype=self.dtype)
 
         trajectory = np.repeat(intercept[:, None], num_steps, axis=1)
-        for power in range(1, self.num_polynomials + 1):
+        for power in range(1, self.degree + 1):
             beta = np.broadcast_to(np.asarray(params[f"beta_{power}"], dtype=self.dtype), (batch_size,))
             trajectory += beta[:, None] * np.power(index[None, :], power)
 

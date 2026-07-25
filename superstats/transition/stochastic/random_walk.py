@@ -5,7 +5,7 @@ from collections.abc import Sequence
 import numpy as np
 from numba import njit, prange
 
-from stochastic import StochasticTransition, Prior
+from .stochastic_transition import StochasticTransition, Prior
 from superstats.utils.transformations import scaled_sigmoid
 
 
