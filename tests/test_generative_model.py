@@ -13,7 +13,7 @@ from superstats.simulation.augmentation import (
     RandomMissingProcess,
 )
 from superstats.transition import DeterministicTransition, Linear
-from superstats.transition.stochastic_transitions import RandomWalk
+from superstats.transition.stochastic import RandomWalk
 from superstats.workflow import Workflow
 
 BATCH_SIZE = 4

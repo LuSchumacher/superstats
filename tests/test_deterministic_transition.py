@@ -64,5 +64,5 @@ def test_polynomial_reconstructs_trajectory_from_resolved_parameters():
 
 
 def test_polynomial_rejects_wrong_number_of_coefficients():
-    with pytest.raises(ValueError, match="num_polynomials"):
-        Polynomial(betas=[1.0], num_polynomials=2)
+    with pytest.raises(ValueError, match="degree"):
+        Polynomial(betas=[1.0], degree=2)

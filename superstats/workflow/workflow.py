@@ -402,7 +402,7 @@ class Workflow:
 
         sample_idx = rng.integers(num_draws, size=(batch_size, num_sims))
 
-        simulation_params: dict[str, np.ndarray] = {}
+        simulation_params = {}
         fixed_params = self.simulator.get_fixed_params()
 
         for name, arr in posterior_samples.items():
@@ -439,7 +439,7 @@ class Workflow:
                 )
 
         # Collapse sample axis into batch axis for simulation
-        expanded_params: dict[str, np.ndarray] = {}
+        expanded_params = {}
         for name, arr in simulation_params.items():
             if name not in time_varying_keys:
                 expanded_params[name] = arr.reshape(batch_size * num_sims)

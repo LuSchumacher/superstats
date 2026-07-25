@@ -132,7 +132,7 @@ class Jump(StochasticTransition):
             `hyper_params`, and `fixed_params`
         """
         local_params = np.empty((batch_size, num_steps), dtype=self.dtype)
-        local_params[:, 0] = self.initial_prior.sample(batch_size).astype(self.dtype)
+        local_params[:, 0] = self.initial_prior.sample(batch_size)
 
         hyper, fixed = self._resolve_hyperparams(batch_size)
 
@@ -141,13 +141,9 @@ class Jump(StochasticTransition):
         else:
             p_jump = np.full(batch_size, fixed["p_jump"], dtype=self.dtype)
 
-        proposals = (
-            self.proposal_prior.sample(batch_size * (num_steps - 1))
-            .reshape(
-                batch_size,
-                num_steps - 1,
-            )
-            .astype(self.dtype)
+        proposals = self.proposal_prior.sample(batch_size * (num_steps - 1)).reshape(
+            batch_size,
+            num_steps - 1,
         )
 
         local_params = _sample_jump_process(
@@ -177,10 +173,8 @@ class Jump(StochasticTransition):
         -------
         x_next : float - the next latent state
         """
-        p_jump = float(params["p_jump"])
-        proposal = float(self.proposal_prior.sample(1)[0])
         return _one_step_jump(
             x,
-            p_jump,
-            proposal,
+            params["p_jump"],
+            self.proposal_prior.sample(1)[0],
         )

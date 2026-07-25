@@ -58,7 +58,7 @@ class Mixture(StochasticTransition):
             initial_prior=initial_prior,
         )
 
-        self.transitions = list(transitions)
+        self.transitions = transitions
 
         if len(self.transitions) < 2:
             raise ValueError("Mixture must contain at least two transitions.")
@@ -103,10 +103,7 @@ class Mixture(StochasticTransition):
                 "mixture_weights must be tuple/list, Dirichlet Prior, or None. Scalar values are ambiguous."
             )
 
-        if isinstance(mixture_weights, tuple):
-            mixture_weights = list(mixture_weights)
-
-        if isinstance(mixture_weights, list):
+        if isinstance(mixture_weights, (tuple, list)):
             w = np.asarray(mixture_weights, dtype=self.dtype)
 
             if w.shape[0] != self.K:
@@ -121,7 +118,7 @@ class Mixture(StochasticTransition):
                 warnings.warn(f"mixture_weights sum to {s:.2f}, normalizing to simplex.", RuntimeWarning)
                 w = w / s
 
-            self.mixture_weights = tuple(w.tolist())
+            self.mixture_weights = tuple(w)
 
         elif isinstance(mixture_weights, Prior):
             if mixture_weights.dist != "dirichlet":
@@ -150,7 +147,7 @@ class Mixture(StochasticTransition):
         """
         # Dirichlet prior
         if isinstance(self.mixture_weights, Prior):
-            w = self.mixture_weights.sample(batch_size).astype(self.dtype)
+            w = self.mixture_weights.sample(batch_size)
 
             return w
 
@@ -216,7 +213,7 @@ class Mixture(StochasticTransition):
         local_params = np.empty((batch_size, num_steps), dtype=self.dtype)
 
         # initial state
-        local_params[:, 0] = self.initial_prior.sample(batch_size).astype(self.dtype)
+        local_params[:, 0] = self.initial_prior.sample(batch_size)
 
         # mixture weights + regimes
         weights = self._sample_mixture_weights(batch_size)
@@ -229,11 +226,11 @@ class Mixture(StochasticTransition):
         for model in self.transitions:
             hyper, fixed = model._resolve_hyperparams(batch_size)
 
-            params: Dict[str, np.ndarray] = {}
+            params = {}
 
             # sampled hyperparameters
             for k, v in hyper.items():
-                params[k] = v.astype(self.dtype)
+                params[k] = v
 
             # fixed hyperparameters
             for k, v in fixed.items():
@@ -253,9 +250,7 @@ class Mixture(StochasticTransition):
                 model = self.transitions[k]
                 params_all = resolved_params[k]["params"]
 
-                params = {
-                    key: float(val[b]) if hasattr(val, "__len__") else float(val) for key, val in params_all.items()
-                }
+                params = {key: val[b] for key, val in params_all.items()}
 
                 local_params[b, t] = model.sample_one_step(
                     local_params[b, t - 1],
@@ -265,17 +260,17 @@ class Mixture(StochasticTransition):
             local_params[b, :] = scaled_sigmoid(local_params[b, :], self.bounds[0], self.bounds[1])
 
         # collect outputs
-        hyper_params: Dict[str, np.ndarray] = {}
-        fixed_params: Dict[str, float] = {}
+        hyper_params = {}
+        fixed_params = {}
 
         for name, resolved in zip(self.names, resolved_params):
             # sampled hyperparameters
             for k, v in resolved["hyper"].items():
-                hyper_params[f"{name}_{k}"] = v.astype(self.dtype)
+                hyper_params[f"{name}_{k}"] = v
 
             # fixed hyperparameters
             for k, v in resolved["fixed"].items():
-                fixed_params[f"{name}_{k}"] = float(v)
+                fixed_params[f"{name}_{k}"] = v
 
         if isinstance(self.mixture_weights, Prior):
             hyper_params["mixture_weights"] = weights

@@ -41,14 +41,11 @@ class DeterministicTransition(ABC):
         Mapping from parameter names to either a `Prior` (sampled per batch),
         a scalar fixed value, or `None` to use a deterministic default.
         Subclasses populate this mapping.
-    transition_type : str
-        Broad transition category, always ``"deterministic"`` for this base.
     transition_name : str
         Short model name, such as ``"linear"``.
     """
 
     dtype = np.float32
-    transition_type = "deterministic"
 
     def __init__(
         self,
@@ -63,8 +60,7 @@ class DeterministicTransition(ABC):
         )
 
         self.initial_prior = initial_prior if initial_prior is not None else DEFAULT_INITIAL_PRIOR
-        self.hyper_specs: Dict[str, ParamSpec] = {}
-        self.transition_type = "deterministic"
+        self.hyper_specs = {}
         self.transition_name = self.__class__.__name__
 
     def _resolve(self, name: str, spec: ParamSpec) -> tuple[Prior | float, bool]:
@@ -100,13 +96,13 @@ class DeterministicTransition(ABC):
                 raise KeyError(f"No default hyperprior found for '{name}'")
             if isinstance(default, Prior):
                 return default, True
-            return float(default), False
+            return default, False
 
         if isinstance(spec, Prior):
             return spec, True
 
         if isinstance(spec, (float, int)):
-            return float(spec), False
+            return spec, False
 
         raise TypeError(f"Invalid hyperparameter '{name}': {type(spec)}")
 
@@ -169,8 +165,8 @@ class DeterministicTransition(ABC):
             `(batch_size,)` and `fixed_params` maps names to fixed
             floats
         """
-        hyper_params: Dict[str, np.ndarray] = {}
-        fixed_params: Dict[str, float] = {}
+        hyper_params = {}
+        fixed_params = {}
 
         for name, spec in self.hyper_specs.items():
             value, infer = self._resolve(name, spec)

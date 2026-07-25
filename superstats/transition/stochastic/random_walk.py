@@ -126,7 +126,7 @@ class RandomWalk(StochasticTransition):
             `hyper_params`, and `fixed_params`
         """
         local_params = np.empty((batch_size, num_steps), dtype=self.dtype)
-        local_params[:, 0] = self.initial_prior.sample(batch_size).astype(self.dtype)
+        local_params[:, 0] = self.initial_prior.sample(batch_size)
 
         hyper, fixed = self._resolve_hyperparams(batch_size)
 
@@ -142,8 +142,8 @@ class RandomWalk(StochasticTransition):
 
         local_params = _sample_random_walk(
             local_params,
-            sigma.astype(self.dtype),
-            delta.astype(self.dtype),
+            sigma,
+            delta,
             self.bounds,
         )
 
@@ -167,10 +167,8 @@ class RandomWalk(StochasticTransition):
         -------
         x_next : float - the next latent state
         """
-        sigma = float(params["sigma"])
-        delta = float(params["delta"])
         return _one_step_random_walk(
             x,
-            sigma,
-            delta,
+            params["sigma"],
+            params["delta"],
         )

@@ -1,7 +1,7 @@
 """Kernel base classes and composition helpers."""
 
 from abc import ABC, abstractmethod
-from typing import Dict, Sequence
+from typing import Dict
 
 import numpy as np
 
@@ -45,7 +45,7 @@ class Kernel(ABC):
         `name="trend"`. These become `Transition.hyper_specs` entries.
     """
 
-    _local_hyperparam_names: Sequence[str] = ()
+    _local_hyperparam_names = ()
 
     def __init__(self, name: str | None = None):
         self.name = name
@@ -113,7 +113,7 @@ class CompositeKernel(Kernel):
         if op not in ("add", "mul"):
             raise ValueError(f"op must be 'add' or 'mul', got {op!r}")
 
-        overlap = set(left.hyperparam_names) & set(right.hyperparam_names)
+        overlap = set(left.hyperparam_names).intersection(right.hyperparam_names)
         if overlap:
             raise ValueError(
                 f"Combined kernels have colliding hyperparameter name(s) {overlap}. "

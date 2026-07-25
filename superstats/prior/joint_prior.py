@@ -75,29 +75,32 @@ class JointPrior:
         hyper_param_groups = {}
 
         for name, param in self.params.items():
-            if isinstance(param, (StochasticTransition, DeterministicTransition)):
-                samples = param.sample(batch_size=batch_size, num_steps=num_steps)
-                target = deterministic_params if isinstance(param, DeterministicTransition) else local_params
-                sample_key = "deterministic_params" if isinstance(param, DeterministicTransition) else "local_params"
-                target[name] = samples[sample_key]
-
-                hyper_param_groups[name] = []
-                for key, value in samples["hyper_params"].items():
-                    full_key = f"{name}_{key}"
-                    hyper_params[full_key] = value
-                    hyper_param_groups[name].append(full_key)
-
-                for key, value in samples["fixed_params"].items():
-                    fixed_params[f"{name}_{key}"] = value
-
+            if isinstance(param, StochasticTransition):
+                target = local_params
+                sample_key = "local_params"
+            elif isinstance(param, DeterministicTransition):
+                target = deterministic_params
+                sample_key = "deterministic_params"
             elif isinstance(param, Prior):
                 shared_params[name] = param.sample(batch_size=batch_size)
-
+                continue
             elif np.isscalar(param):
-                fixed_params[name] = int(param) if isinstance(param, int) else float(param)
-
+                fixed_params[name] = param
+                continue
             else:
                 raise TypeError(f"Unknown parameter type for '{name}': {type(param).__name__}")
+
+            samples = param.sample(batch_size=batch_size, num_steps=num_steps)
+            target[name] = samples[sample_key]
+
+            hyper_param_groups[name] = []
+            for key, value in samples["hyper_params"].items():
+                full_key = f"{name}_{key}"
+                hyper_params[full_key] = value
+                hyper_param_groups[name].append(full_key)
+
+            for key, value in samples["fixed_params"].items():
+                fixed_params[f"{name}_{key}"] = value
 
         self._last_hyper_param_groups = hyper_param_groups
         return {

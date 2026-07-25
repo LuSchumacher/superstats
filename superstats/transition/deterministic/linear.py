@@ -39,7 +39,7 @@ class Linear(DeterministicTransition):
         beta: float | Prior | None = None,
         normalize_steps: bool = True,
     ):
-        super().__init__(bounds)
+        super().__init__(bounds=bounds)
 
         self.normalize_steps = normalize_steps
 
@@ -66,16 +66,19 @@ class Linear(DeterministicTransition):
             `hyper_params`, and `fixed_params`
         """
         hyper, fixed = self._resolve_hyperparams(batch_size)
+
         intercept = (
             self._sample(hyper["intercept"], batch_size)
             if "intercept" in hyper
             else np.full(batch_size, fixed["intercept"], dtype=self.dtype)
         )
+
         beta = (
             self._sample(hyper["beta"], batch_size)
             if "beta" in hyper
             else np.full(batch_size, fixed["beta"], dtype=self.dtype)
         )
+
         if self.normalize_steps:
             index = np.linspace(0.0, 1.0, num_steps, dtype=self.dtype)
         else:
@@ -96,10 +99,12 @@ class Linear(DeterministicTransition):
     ) -> np.ndarray:
         intercept = np.broadcast_to(np.asarray(params["intercept"], dtype=self.dtype), (batch_size,))
         beta = np.broadcast_to(np.asarray(params["beta"], dtype=self.dtype), (batch_size,))
+
         index = (
             np.linspace(0.0, 1.0, num_steps, dtype=self.dtype)
             if self.normalize_steps
             else np.arange(num_steps, dtype=self.dtype)
         )
         trajectory = intercept[:, None] + beta[:, None] * index[None, :]
+
         return self._bound(trajectory)

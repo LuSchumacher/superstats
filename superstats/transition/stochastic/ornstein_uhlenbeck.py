@@ -138,7 +138,7 @@ class OrnsteinUhlenbeck(StochasticTransition):
             `hyper_params`, and `fixed_params`
         """
         local_params = np.empty((batch_size, num_steps), dtype=self.dtype)
-        local_params[:, 0] = self.initial_prior.sample(batch_size).astype(self.dtype)
+        local_params[:, 0] = self.initial_prior.sample(batch_size)
 
         hyper, fixed = self._resolve_hyperparams(batch_size)
 
@@ -159,9 +159,9 @@ class OrnsteinUhlenbeck(StochasticTransition):
 
         local_params = _sample_ou(
             local_params,
-            mu.astype(self.dtype),
-            theta.astype(self.dtype),
-            sigma.astype(self.dtype),
+            mu,
+            theta,
+            sigma,
             self.bounds,
         )
 
@@ -185,12 +185,9 @@ class OrnsteinUhlenbeck(StochasticTransition):
         -------
         x_next : float - the next latent state
         """
-        mu = float(params["mu"])
-        theta = float(params["theta"])
-        sigma = float(params["sigma"])
         return _one_step_ou(
             x,
-            mu,
-            theta,
-            sigma,
+            params["mu"],
+            params["theta"],
+            params["sigma"],
         )
