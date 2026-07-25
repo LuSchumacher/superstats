@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from superstats.prior import Prior
-from superstats.transition.stochastic_transitions import (
+from superstats.transition.stochastic import (
     AutoRegression,
     Jump,
     Mixture,

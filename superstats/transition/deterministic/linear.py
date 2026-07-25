@@ -4,7 +4,7 @@ from typing import Dict, Any
 from collections.abc import Sequence
 import numpy as np
 
-from .deterministic_transition import DeterministicTransition, Prior
+from deterministic import DeterministicTransition, Prior
 
 
 class Linear(DeterministicTransition):

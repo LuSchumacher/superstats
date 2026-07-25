@@ -7,7 +7,7 @@ from typing import Any, Dict
 
 import numpy as np
 
-from .deterministic_transition import DeterministicTransition, Prior
+from deterministic import DeterministicTransition, Prior
 
 
 class Polynomial(DeterministicTransition):

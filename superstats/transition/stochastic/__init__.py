@@ -7,7 +7,7 @@ from .levy_flight import LevyFlight
 from .gaussian_process import GaussianProcess
 from .jump import Jump
 from .mixture import Mixture
-from .stochastic_transition import StochasticTransition
+from stochastic import StochasticTransition
 
 __all__ = [
     "RandomWalk",

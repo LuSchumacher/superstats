@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from superstats.prior import Prior
-from superstats.transition.stochastic_transitions import LevyFlight, OrnsteinUhlenbeck
+from superstats.transition.stochastic import LevyFlight, OrnsteinUhlenbeck
 
 
 @pytest.mark.parametrize(

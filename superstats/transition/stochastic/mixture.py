@@ -4,7 +4,7 @@ from typing import Sequence, Tuple, Dict, Any
 import numpy as np
 import warnings
 
-from .stochastic_transition import StochasticTransition, Prior
+from stochastic import StochasticTransition, Prior
 from superstats.utils.transformations import scaled_sigmoid
 
 

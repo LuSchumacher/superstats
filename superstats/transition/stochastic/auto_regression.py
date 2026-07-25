@@ -1,41 +1,41 @@
-"""Ornstein-Uhlenbeck transition models."""
+"""Autoregressive transition models."""
 
 from typing import Tuple, Dict, Any
 import numpy as np
 from numba import njit, prange
 
-from .stochastic_transition import StochasticTransition, Prior
+from stochastic import StochasticTransition, Prior
 from superstats.utils.transformations import scaled_sigmoid
 
 
 @njit(parallel=True, fastmath=True)
-def _sample_ou(
+def _sample_ar1(
     local_params: np.ndarray,
-    mu: np.ndarray,
-    theta: np.ndarray,
     sigma: np.ndarray,
+    phi: np.ndarray,
+    delta: np.ndarray,
     bounds: np.ndarray,
 ) -> np.ndarray:
-    """Vectorized Ornstein-Uhlenbeck rollout across a batch, filled in place.
+    """Vectorized AR(1) rollout across a batch, filled in place.
 
     Parameters
     ----------
     local_params : np.ndarray of shape (batch_size, steps)
         Pre-allocated trajectory array; `local_params[:, 0]` must already
         hold the initial state. Overwritten in place with the full rollout.
-    mu           : np.ndarray of shape (batch_size,)
-        Long-run mean to revert towards, per trajectory.
-    theta        : np.ndarray of shape (batch_size,)
-        Mean-reversion speed, per trajectory.
     sigma        : np.ndarray of shape (batch_size,)
-        Diffusion scale, per trajectory.
+        Noise standard deviation.
+    phi          : np.ndarray of shape (batch_size,)
+        Autoregressive coefficient.
+    delta        : np.ndarray of shape (batch_size,)
+        Additive drift term.
     bounds       : np.ndarray of shape (2,)
         (lower, upper) bounds passed to `scaled_sigmoid`.
 
     Returns
     -------
     local_params : np.ndarray of shape (batch_size, steps) - the same
-        array, filled with the bounded OU rollout
+        array, filled with the bounded AR(1) rollout
     """
     batch_size, steps = local_params.shape
     lower, upper = bounds[0], bounds[1]
@@ -46,7 +46,7 @@ def _sample_ou(
         x_prev = local_params[b, 0]
 
         for t in range(1, steps):
-            x_prev = x_prev + theta[b] * (mu[b] - x_prev) + sigma[b] * noise[b, t - 1]
+            x_prev = phi[b] * x_prev + delta[b] + sigma[b] * noise[b, t - 1]
             local_params[b, t] = x_prev
 
         local_params[b, :] = scaled_sigmoid(local_params[b, :], lower, upper)
@@ -55,35 +55,35 @@ def _sample_ou(
 
 
 @njit
-def _one_step_ou(
+def _one_step_ar1(
     x: float,
-    mu: float,
-    theta: float,
     sigma: float,
+    phi: float,
+    delta: float,
 ) -> float:
-    """Advance a single Ornstein-Uhlenbeck state by one step (scalar, JIT-compiled).
+    """Advance a single AR(1) state by one step.
 
     Parameters
     ----------
     x     : float
         Previous latent state.
-    mu    : float
-        Long-run mean to revert towards.
-    theta : float
-        Mean-reversion speed.
     sigma : float
-        Diffusion scale.
+        Noise standard deviation.
+    phi   : float
+        Autoregressive coefficient.
+    delta : float
+        Additive drift term.
 
     Returns
     -------
     x_next : float - the next latent state
     """
     noise = np.random.randn()
-    return x + theta * (mu - x) + sigma * noise
+    return phi * x + delta + sigma * noise
 
 
-class OrnsteinUhlenbeck(StochasticTransition):
-    """Ornstein-Uhlenbeck mean-reverting transition.
+class AutoRegression(StochasticTransition):
+    """AR(1) autoregressive transition.
 
     Parameters
     ----------
@@ -92,16 +92,15 @@ class OrnsteinUhlenbeck(StochasticTransition):
     initial_prior : Prior or None, optional, default: None
         Prior for the initial latent state.
     sigma         : float or Prior or None, optional, default: None
-        Diffusion scale.
-    mu            : float or Prior or None, optional, default: None
-        Long-run mean to revert towards.
-    theta         : float or Prior or None, optional, default: None
-        Mean-reversion speed.
+        Standard deviation of the noise.
+    phi           : float or Prior or None, optional, default: None
+        Autoregressive coefficient.
+    delta         : float or Prior, optional, default: 0.0
+        Additive drift term.
 
     Notes
     -----
-    Implements an OU process:
-    x_t = x_{t-1} + theta * (mu - x_{t-1}) + sigma * eps_t.
+    Implements an AR(1): x_t = phi * x_{t-1} + delta + sigma * eps_t.
     """
 
     def __init__(
@@ -109,21 +108,21 @@ class OrnsteinUhlenbeck(StochasticTransition):
         bounds: Tuple[float, float] | None = None,
         initial_prior: Prior | None = None,
         sigma: float | Prior | None = None,
-        mu: float | Prior | None = None,
-        theta: float | Prior | None = None,
+        phi: float | Prior | None = None,
+        delta: float | Prior | None = None,
     ):
         super().__init__(bounds, initial_prior)
 
         self.hyper_specs = {
             "sigma": sigma,
-            "mu": mu,
-            "theta": theta,
+            "phi": phi,
+            "delta": delta,
         }
 
-        self.transition_name = "ou"
+        self.transition_name = "ar1"
 
     def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
-        """Draw `batch_size` Ornstein-Uhlenbeck trajectories of length `num_steps`.
+        """Draw `batch_size` AR(1) trajectories of length `num_steps`.
 
         Parameters
         ----------
@@ -147,21 +146,21 @@ class OrnsteinUhlenbeck(StochasticTransition):
         else:
             sigma = np.full(batch_size, fixed["sigma"], dtype=self.dtype)
 
-        if "mu" in hyper:
-            mu = hyper["mu"]
+        if "phi" in hyper:
+            phi = hyper["phi"]
         else:
-            mu = np.full(batch_size, fixed["mu"], dtype=self.dtype)
+            phi = np.full(batch_size, fixed["phi"], dtype=self.dtype)
 
-        if "theta" in hyper:
-            theta = hyper["theta"]
+        if "delta" in hyper:
+            delta = hyper["delta"]
         else:
-            theta = np.full(batch_size, fixed["theta"], dtype=self.dtype)
+            delta = np.full(batch_size, fixed["delta"], dtype=self.dtype)
 
-        local_params = _sample_ou(
+        local_params = _sample_ar1(
             local_params,
-            mu.astype(self.dtype),
-            theta.astype(self.dtype),
             sigma.astype(self.dtype),
+            phi.astype(self.dtype),
+            delta.astype(self.dtype),
             self.bounds,
         )
 
@@ -172,25 +171,26 @@ class OrnsteinUhlenbeck(StochasticTransition):
         }
 
     def sample_one_step(self, x: float, params: Dict[str, Any]) -> float:
-        """Advance a single OU step.
+        """Advance a single AR(1) step.
 
         Parameters
         ----------
         x      : float
             Previous latent state.
         params : dict
-            Expected keys: `mu`, `theta`, `sigma`.
+            Expected keys: `sigma`, `phi`, `delta`.
 
         Returns
         -------
         x_next : float - the next latent state
         """
-        mu = float(params["mu"])
-        theta = float(params["theta"])
         sigma = float(params["sigma"])
-        return _one_step_ou(
+        phi = float(params["phi"])
+        delta = float(params["delta"])
+
+        return _one_step_ar1(
             x,
-            mu,
-            theta,
             sigma,
+            phi,
+            delta,
         )

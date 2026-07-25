@@ -1,6 +1,6 @@
 """Transition models for latent time-varying parameters."""
 
-from .stochastic_transitions import (
+from .stochastic import (
     RandomWalk,
     AutoRegression,
     LevyFlight,
@@ -10,7 +10,7 @@ from .stochastic_transitions import (
     GaussianProcess,
     StochasticTransition,
 )
-from .deterministic_transitions import DeterministicTransition, Linear, Polynomial
+from .deterministic import DeterministicTransition, Linear, Polynomial
 
 __all__ = [
     "RandomWalk",
