@@ -11,7 +11,7 @@ without losing the small-library overview.
 
    superstats.prior
    superstats.transition
-   superstats.transitionstochastics.kernel
+   superstats.transition.stochastics.kernel
    superstats.simulation
    superstats.simulation.cognitive
    superstats.workflow
