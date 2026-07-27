@@ -45,7 +45,7 @@ Superstats trains a neural estimator on simulations from any generative model of
 
 ## Install
 
-We support Python 3.12 to 3.14. Install the latest version from source:
+We support Python 3.12 to 3.13. Install the latest version from source:
 
 ```bash
 pip install superstats
