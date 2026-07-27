@@ -39,7 +39,7 @@ def test_summary_network_dispatches_recurrent_defaults():
     network = find_summary_network("recurrent", hidden_dim=16, summary_dim=8)
 
     assert isinstance(network, RecurrentNet)
-    assert network.recurrent_type == "lstm"
+    assert network.recurrent_type == "gru"
     assert network.hidden_dim == 16
     assert network.time_axis == 0
 
