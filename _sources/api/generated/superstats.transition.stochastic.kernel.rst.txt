@@ -1,0 +1,17 @@
+superstats.transition.stochastic.kernel
+=======================================
+
+.. automodule:: superstats.transition.stochastic.kernel
+
+   
+.. rubric:: Modules
+
+.. autosummary::
+   :toctree:
+   :recursive:
+
+   kernel
+   linear
+   periodic
+   rbf
+   registry

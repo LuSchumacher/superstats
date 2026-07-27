@@ -1,28 +1,35 @@
 # Superstats
 
-**superstats** is a Python library for simulation and Bayesian estimation of models with time-varying parameters.
+Superstats is a Python library for simulation and Bayesian estimation of dynamic models with time-varying parameters.
 
-The library is general, but for now focuses on cognitive modeling. It provides users with:
+The library aims to be domain-agnostic, but for now focuses on cognitive modeling. It provides users with:
 
 - A lean API for non-stationary models: specify which parameters change across time, and how.
-- A library of transition models: random walks, Ornstein–Uhlenbeck, autoregression, jump processes, mixtures, and Gaussian processes.
+- A library of transition models: random walks, ARs, levy flights, jump processes, mixtures, and Gaussian processes.
 - Built-in cognitive models, plus a plug-in interface for any simulator of your own.
-- Amortized Bayesian inference build on top of [BayesFlow](https://github.com/bayesflow-org/bayesflow): train once, then quickly fit every data set.
-- Diagnostic and visualization tools for every critical step in a principled Bayesian workflow.
+- Amortized Bayesian inference built on top of [BayesFlow](https://github.com/bayesflow-org/bayesflow): train once, then quickly fit every data set.
+- Diagnostics and visualization tools for every critical step in a principled Bayesian workflow.
 
 ## Conceptual overview
+
+:::{div} conceptual-overview
+:::{image} /_static/superstats-arch-light.svg
+:alt: Overview graphic of superstats
+:::
+:::
+
 
 A superstatistical model has two levels. A **low-level observation model** $\mathcal{G}$ generates the data at each time step.
 A **high-level transition model** $\mathcal{T}$ describes how the parameters of that model evolve:
 
 $$\theta_t = \mathcal{T}(\theta_{0:t-1}; \eta) \qquad x_t = \mathcal{G}(x_{1:t-1}; \theta_t, \lambda)$$
 
-`superstats` trains a neural estimator on simulations from any generative model of this form and returns the joint posterior $p(\theta_{1:T}, \eta, \lambda \mid x_{1:T})$ over all time-varying parameters $\theta_{1:T}$ and time-invariant parameters $(\eta, \lambda)$.
+Superstats trains a neural estimator on simulations from any generative model of this form and returns the joint posterior $p(\theta_{1:T}, \eta, \lambda \mid x_{1:T})$ over all time-varying parameters $\theta_{1:T}$ and time-invariant parameters $(\eta, \lambda)$.
 
 
 ## Install
 
-We support Python 3.12 to 3.14. Install the latest version from source:
+We support Python 3.12 to 3.13. Install the latest version from source:
 
 ```bash
 pip install superstats
@@ -31,30 +38,33 @@ pip install superstats
 If you want the latest features, you can install from source:
 
 ```bash
-pip install git+https://github.com/LuSchumacher/superstats.git@dev"
+pip install git+https://github.com/LuSchumacher/superstats.git@dev
 ```
+
+### Deep learning backend
+
+Per default, `superstats` installs [JAX](https://docs.jax.dev/en/latest/installation.html) on Linux/MacOS machines and [PyTorch](https://pytorch.org/get-started/locally/) on Windows machines. This is because `JAX` does not natively support GPU acceleration on Windows. You can also manually install and configure any of the three backends:
+
+- [Install JAX](https://jax.readthedocs.io/en/latest/installation.html)
+- [Install PyTorch](https://pytorch.org/get-started/locally/)
+- [Install TensorFlow](https://www.tensorflow.org/install)
+
 
 ## Getting started
 
-A complete workflow: a diffusion decision model whose drift rate and thresold are free to vary across time:
+A complete workflow using a diffusion decision model whose drift rate and thresold are free to vary across time:
 
-```pythons
+```python
 import superstats as sup
 
 # 1. Assume which parameters move, and how
 joint_prior = sup.JointPrior(
-    v=sup.transition.RandomWalk(),
-    a=sup.transition.RandomWalk(),
-    tau=sup.Prior(dist="halfnormal", scale=0.15),
-    bias=0.5
+    v=sup.transition.RandomWalk(), a=sup.transition.RandomWalk(), tau=sup.Prior(dist="halfnormal", scale=0.15), bias=0.5
 )
 
 # 2. Plug in an observation model (any simulator will do)
 generative_model = sup.GenerativeModel(
-    prior=joint_prior,
-    model=sup.simulation.sample_ddm,
-    missing="random",
-    contamination="random_choice"
+    prior=joint_prior, model=sup.simulation.sample_ddm, missing="random", contamination="random_choice"
 )
 
 # 3. Train a neural approximator
@@ -67,19 +77,11 @@ samples = workflow.sample(data=rt_data, num_samples=250)
 
 It is highly recommended to use a GPU for fast training and inference. For an in-depth exposition, check out the examples below.
 
-## Examples
-
-| Notebook | What it covers |
-|---|---|
-| [Minimal workflow demo](examples/minimal_workflow_demo.ipynb) | Short path from prior to posterior |
-| Extensive workflow demo | Comming soon |
-
-More examples are always welcome — if you have an application, please consider opening a pull request.
-
 
 ## Contributing
 
-Contributions are welcome. Install from source and see [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+Contributions are welcome. Install from source and see [CONTRIBUTING.md](contributing.md) for details.
+
 
 ## Reporting issues
 
@@ -87,9 +89,10 @@ Please open an issue on [GitHub](https://github.com/LuSchumacher/superstats/issu
 feature requests. For questions about the underlying inference machinery, the
 [BayesFlow Forums](https://discuss.bayesflow.org/) are a good place to ask.
 
+
 ## Citation
 
-If you use `superstats` in your research, please cite:
+If you use Superstats in your research, please cite:
 
 ```bibtex
 @article{schumacher2023neural,
@@ -119,13 +122,12 @@ If you use `superstats` in your research, please cite:
 
 MIT
 
-```{toctree}
+:::{toctree}
 :maxdepth: 2
-:caption: Contents
+:hidden:
 
-getting_started
 user_guide/index
 examples/index
 api/index
 contributing
-```
+:::

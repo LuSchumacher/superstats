@@ -1,0 +1,18 @@
+superstats.transition.stochastic.gaussian\_process
+==================================================
+
+.. automodule:: superstats.transition.stochastic.gaussian_process
+
+   
+   .. rubric:: Functions
+
+   .. autosummary::
+   
+      sample_gaussian_process
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      GaussianProcess
+   

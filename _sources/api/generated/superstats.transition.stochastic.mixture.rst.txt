@@ -1,0 +1,12 @@
+superstats.transition.stochastic.mixture
+========================================
+
+.. automodule:: superstats.transition.stochastic.mixture
+
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      Mixture
+   

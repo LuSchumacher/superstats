@@ -1,0 +1,12 @@
+superstats.transition.stochastic.ornstein\_uhlenbeck
+====================================================
+
+.. automodule:: superstats.transition.stochastic.ornstein_uhlenbeck
+
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      OrnsteinUhlenbeck
+   

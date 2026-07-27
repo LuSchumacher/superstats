@@ -33,6 +33,7 @@
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css" />
   
   <!-- So that users can add custom icons -->
   <script defer src="../_static/scripts/fontawesome.js?digest=a95f357e85573c9b56d5"></script>
@@ -40,7 +41,7 @@
   <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=a95f357e85573c9b56d5" />
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=a95f357e85573c9b56d5" />
 
-    <script src="../_static/documentation_options.js?v=d45e8c67"></script>
+    <script src="../_static/documentation_options.js?v=e3a6060d"></script>
     <script src="../_static/doctools.js?v=9bcbadda"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/design-tabs.js?v=f930bc37"></script>
@@ -49,7 +50,7 @@
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="superstats.prior" href="generated/superstats.prior.html" />
-    <link rel="prev" title="Examples" href="../examples/index.html" />
+    <link rel="prev" title="Minimal Workflow Demonstration" href="../examples/minimal_workflow_demo.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="0.0" />
@@ -119,8 +120,14 @@
   
   
   
+    
+    
+      
+    
+    
+    <img src="../_static/superstats-square-dark.svg" class="logo__image only-light" alt="superstats - Home"/>
+    <img src="../_static/superstats-square-dark.svg" class="logo__image only-dark pst-js-only" alt="superstats - Home"/>
   
-    <p class="title logo__title">superstats</p>
   
 </a></div>
     
@@ -134,13 +141,6 @@
 <nav>
   <ul class="bd-navbar-elements navbar-nav">
     
-<li class="nav-item ">
-  <a class="nav-link nav-internal" href="../getting_started.html">
-    Getting Started
-  </a>
-</li>
-
-
 <li class="nav-item ">
   <a class="nav-link nav-internal" href="../user_guide/index.html">
     User Guide
@@ -264,13 +264,6 @@
   <ul class="bd-navbar-elements navbar-nav">
     
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../getting_started.html">
-    Getting Started
-  </a>
-</li>
-
-
-<li class="nav-item ">
   <a class="nav-link nav-internal" href="../user_guide/index.html">
     User Guide
   </a>
@@ -360,29 +353,24 @@
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="generated/superstats.transition.html">superstats.transition</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="generated/superstats.transition.auto_regression.html">superstats.transition.auto_regression</a></li>
-<li class="toctree-l2"><a class="reference internal" href="generated/superstats.transition.gaussian_process.html">superstats.transition.gaussian_process</a></li>
-<li class="toctree-l2"><a class="reference internal" href="generated/superstats.transition.jump.html">superstats.transition.jump</a></li>
-<li class="toctree-l2 has-children"><a class="reference internal" href="generated/superstats.transition.kernel.html">superstats.transition.kernel</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l3"><a class="reference internal" href="generated/superstats.transition.kernel.kernel.html">superstats.transition.kernel.kernel</a></li>
-<li class="toctree-l3"><a class="reference internal" href="generated/superstats.transition.kernel.linear.html">superstats.transition.kernel.linear</a></li>
-<li class="toctree-l3"><a class="reference internal" href="generated/superstats.transition.kernel.periodic.html">superstats.transition.kernel.periodic</a></li>
-<li class="toctree-l3"><a class="reference internal" href="generated/superstats.transition.kernel.rbf.html">superstats.transition.kernel.rbf</a></li>
-<li class="toctree-l3"><a class="reference internal" href="generated/superstats.transition.kernel.registry.html">superstats.transition.kernel.registry</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="generated/superstats.transition.deterministic.html">superstats.transition.deterministic</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="generated/superstats.transition.deterministic.deterministic_transition.html">superstats.transition.deterministic.deterministic_transition</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/superstats.transition.deterministic.linear.html">superstats.transition.deterministic.linear</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/superstats.transition.deterministic.polynomial.html">superstats.transition.deterministic.polynomial</a></li>
 </ul>
 </details></li>
-<li class="toctree-l2"><a class="reference internal" href="generated/superstats.transition.mixture.html">superstats.transition.mixture</a></li>
-<li class="toctree-l2"><a class="reference internal" href="generated/superstats.transition.ornstein_uhlenbeck.html">superstats.transition.ornstein_uhlenbeck</a></li>
-<li class="toctree-l2"><a class="reference internal" href="generated/superstats.transition.random_walk.html">superstats.transition.random_walk</a></li>
-<li class="toctree-l2"><a class="reference internal" href="generated/superstats.transition.transition.html">superstats.transition.transition</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="generated/superstats.transition.stochastic.html">superstats.transition.stochastic</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="generated/superstats.transition.stochastic.auto_regression.html">superstats.transition.stochastic.auto_regression</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/superstats.transition.stochastic.gaussian_process.html">superstats.transition.stochastic.gaussian_process</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/superstats.transition.stochastic.jump.html">superstats.transition.stochastic.jump</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/superstats.transition.stochastic.kernel.html">superstats.transition.stochastic.kernel</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/superstats.transition.stochastic.levy_flight.html">superstats.transition.stochastic.levy_flight</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/superstats.transition.stochastic.mixture.html">superstats.transition.stochastic.mixture</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/superstats.transition.stochastic.ornstein_uhlenbeck.html">superstats.transition.stochastic.ornstein_uhlenbeck</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/superstats.transition.stochastic.random_walk.html">superstats.transition.stochastic.random_walk</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/superstats.transition.stochastic.stochastic_transition.html">superstats.transition.stochastic.stochastic_transition</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="generated/superstats.transition.kernel.html">superstats.transition.kernel</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="generated/superstats.transition.kernel.kernel.html">superstats.transition.kernel.kernel</a></li>
-<li class="toctree-l2"><a class="reference internal" href="generated/superstats.transition.kernel.linear.html">superstats.transition.kernel.linear</a></li>
-<li class="toctree-l2"><a class="reference internal" href="generated/superstats.transition.kernel.periodic.html">superstats.transition.kernel.periodic</a></li>
-<li class="toctree-l2"><a class="reference internal" href="generated/superstats.transition.kernel.rbf.html">superstats.transition.kernel.rbf</a></li>
-<li class="toctree-l2"><a class="reference internal" href="generated/superstats.transition.kernel.registry.html">superstats.transition.kernel.registry</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="generated/superstats.simulation.html">superstats.simulation</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -523,31 +511,28 @@ without losing the small-library overview.</p>
 <tr class="row-even"><td><p><a class="reference internal" href="generated/superstats.transition.html#module-superstats.transition" title="superstats.transition"><code class="xref py py-obj docutils literal notranslate"><span class="pre">superstats.transition</span></code></a></p></td>
 <td><p>Transition models for latent time-varying parameters.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="generated/superstats.transition.kernel.html#module-superstats.transition.kernel" title="superstats.transition.kernel"><code class="xref py py-obj docutils literal notranslate"><span class="pre">superstats.transition.kernel</span></code></a></p></td>
-<td><p>Kernel implementations for Gaussian-process transitions.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="generated/superstats.simulation.html#module-superstats.simulation" title="superstats.simulation"><code class="xref py py-obj docutils literal notranslate"><span class="pre">superstats.simulation</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="generated/superstats.simulation.html#module-superstats.simulation" title="superstats.simulation"><code class="xref py py-obj docutils literal notranslate"><span class="pre">superstats.simulation</span></code></a></p></td>
 <td><p>Simulation models and built-in cognitive simulators.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="generated/superstats.simulation.cognitive.html#module-superstats.simulation.cognitive" title="superstats.simulation.cognitive"><code class="xref py py-obj docutils literal notranslate"><span class="pre">superstats.simulation.cognitive</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="generated/superstats.simulation.cognitive.html#module-superstats.simulation.cognitive" title="superstats.simulation.cognitive"><code class="xref py py-obj docutils literal notranslate"><span class="pre">superstats.simulation.cognitive</span></code></a></p></td>
 <td><p>Cognitive-model simulators.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="generated/superstats.workflow.html#module-superstats.workflow" title="superstats.workflow"><code class="xref py py-obj docutils literal notranslate"><span class="pre">superstats.workflow</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="generated/superstats.workflow.html#module-superstats.workflow" title="superstats.workflow"><code class="xref py py-obj docutils literal notranslate"><span class="pre">superstats.workflow</span></code></a></p></td>
 <td><p>Workflow orchestration for amortized Bayesian inference.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="generated/superstats.networks.html#module-superstats.networks" title="superstats.networks"><code class="xref py py-obj docutils literal notranslate"><span class="pre">superstats.networks</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="generated/superstats.networks.html#module-superstats.networks" title="superstats.networks"><code class="xref py py-obj docutils literal notranslate"><span class="pre">superstats.networks</span></code></a></p></td>
 <td><p>Neural network components for superstats workflows.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="generated/superstats.diagnostics.html#module-superstats.diagnostics" title="superstats.diagnostics"><code class="xref py py-obj docutils literal notranslate"><span class="pre">superstats.diagnostics</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="generated/superstats.diagnostics.html#module-superstats.diagnostics" title="superstats.diagnostics"><code class="xref py py-obj docutils literal notranslate"><span class="pre">superstats.diagnostics</span></code></a></p></td>
 <td><p>Metrics and plotting helpers for validating superstats workflows.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="generated/superstats.diagnostics.plots.html#module-superstats.diagnostics.plots" title="superstats.diagnostics.plots"><code class="xref py py-obj docutils literal notranslate"><span class="pre">superstats.diagnostics.plots</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="generated/superstats.diagnostics.plots.html#module-superstats.diagnostics.plots" title="superstats.diagnostics.plots"><code class="xref py py-obj docutils literal notranslate"><span class="pre">superstats.diagnostics.plots</span></code></a></p></td>
 <td><p>Plotting functions for priors, posteriors, and recovery diagnostics.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="generated/superstats.defaults.html#module-superstats.defaults" title="superstats.defaults"><code class="xref py py-obj docutils literal notranslate"><span class="pre">superstats.defaults</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="generated/superstats.defaults.html#module-superstats.defaults" title="superstats.defaults"><code class="xref py py-obj docutils literal notranslate"><span class="pre">superstats.defaults</span></code></a></p></td>
 <td><p>Default configuration values used across superstats.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="generated/superstats.utils.html#module-superstats.utils" title="superstats.utils"><code class="xref py py-obj docutils literal notranslate"><span class="pre">superstats.utils</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="generated/superstats.utils.html#module-superstats.utils" title="superstats.utils"><code class="xref py py-obj docutils literal notranslate"><span class="pre">superstats.utils</span></code></a></p></td>
 <td><p>General utility functions used across superstats.</p></td>
 </tr>
 </tbody>
@@ -566,12 +551,12 @@ without losing the small-library overview.</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="../examples/index.html"
+       href="../examples/minimal_workflow_demo.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Examples</p>
+        <p class="prev-next-title">Minimal Workflow Demonstration</p>
       </div>
     </a>
     <a class="right-next"

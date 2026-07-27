@@ -33,6 +33,7 @@
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css" />
   
   <!-- So that users can add custom icons -->
   <script defer src="../_static/scripts/fontawesome.js?digest=a95f357e85573c9b56d5"></script>
@@ -40,7 +41,7 @@
   <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=a95f357e85573c9b56d5" />
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=a95f357e85573c9b56d5" />
 
-    <script src="../_static/documentation_options.js?v=d45e8c67"></script>
+    <script src="../_static/documentation_options.js?v=e3a6060d"></script>
     <script src="../_static/doctools.js?v=9bcbadda"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/design-tabs.js?v=f930bc37"></script>
@@ -48,7 +49,7 @@
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Examples" href="../examples/index.html" />
+    <link rel="next" title="2. Simulator" href="simulator.html" />
     <link rel="prev" title="User Guide" href="index.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -119,8 +120,14 @@
   
   
   
+    
+    
+      
+    
+    
+    <img src="../_static/superstats-square-dark.svg" class="logo__image only-light" alt="superstats - Home"/>
+    <img src="../_static/superstats-square-dark.svg" class="logo__image only-dark pst-js-only" alt="superstats - Home"/>
   
-    <p class="title logo__title">superstats</p>
   
 </a></div>
     
@@ -134,13 +141,6 @@
 <nav>
   <ul class="bd-navbar-elements navbar-nav">
     
-<li class="nav-item ">
-  <a class="nav-link nav-internal" href="../getting_started.html">
-    Getting Started
-  </a>
-</li>
-
-
 <li class="nav-item current active">
   <a class="nav-link nav-internal" href="index.html">
     User Guide
@@ -263,13 +263,6 @@
 <nav>
   <ul class="bd-navbar-elements navbar-nav">
     
-<li class="nav-item ">
-  <a class="nav-link nav-internal" href="../getting_started.html">
-    Getting Started
-  </a>
-</li>
-
-
 <li class="nav-item current active">
   <a class="nav-link nav-internal" href="index.html">
     User Guide
@@ -355,6 +348,8 @@
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
   <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
 <li class="toctree-l1 current active"><a class="current reference internal" href="#">1. Introduction</a></li>
+<li class="toctree-l1"><a class="reference internal" href="simulator.html">2. Simulator</a></li>
+<li class="toctree-l1"><a class="reference internal" href="joint_prior.html">3. Joint Prior</a></li>
 </ul>
 </div>
 </nav></div>
@@ -415,19 +410,20 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="introduction">
+  <section class="tex2jax_ignore mathjax_ignore" id="introduction">
 <h1><span class="section-number">1. </span>Introduction<a class="headerlink" href="#introduction" title="Link to this heading">#</a></h1>
-<p>The core workflow has four pieces:</p>
+<p>In Superstats, a dynamic generative model is built from two pieces: a <strong>low-level observation model</strong> (e.g., a cognitive model such as the Diffusion Decision Model) that generates data at each time step, and a <strong>high-level transition model</strong> that describes how the model’s parameters evolve over time.</p>
+<p>A typical amortized Bayesian workflow (<a class="reference external" href="https://openreview.net/forum?id=osV7adJlKD">Li et al., 2026</a>) consists of the following steps:</p>
 <ol class="arabic simple">
-<li><p>Define priors for static parameters with <a class="reference internal" href="../api/generated/superstats.prior.html#superstats.prior.Prior" title="superstats.prior.Prior"><code class="xref py py-class docutils literal notranslate"><span class="pre">superstats.prior.Prior</span></code></a>.</p></li>
-<li><p>Define time-varying dynamics with transition models such as
-<a class="reference internal" href="../api/generated/superstats.transition.html#superstats.transition.RandomWalk" title="superstats.transition.RandomWalk"><code class="xref py py-class docutils literal notranslate"><span class="pre">superstats.transition.RandomWalk</span></code></a>,
-<a class="reference internal" href="../api/generated/superstats.transition.html#superstats.transition.AutoRegression" title="superstats.transition.AutoRegression"><code class="xref py py-class docutils literal notranslate"><span class="pre">superstats.transition.AutoRegression</span></code></a>, or
-<a class="reference internal" href="../api/generated/superstats.transition.html#superstats.transition.GaussianProcess" title="superstats.transition.GaussianProcess"><code class="xref py py-class docutils literal notranslate"><span class="pre">superstats.transition.GaussianProcess</span></code></a>.</p></li>
-<li><p>Combine parameters in <a class="reference internal" href="../api/generated/superstats.prior.html#superstats.prior.JointPrior" title="superstats.prior.JointPrior"><code class="xref py py-class docutils literal notranslate"><span class="pre">superstats.prior.JointPrior</span></code></a>.</p></li>
-<li><p>Connect the prior and simulator through
-<a class="reference internal" href="../api/generated/superstats.simulation.html#superstats.simulation.GenerativeModel" title="superstats.simulation.GenerativeModel"><code class="xref py py-class docutils literal notranslate"><span class="pre">superstats.simulation.GenerativeModel</span></code></a> and train a
-<a class="reference internal" href="../api/generated/superstats.workflow.html#superstats.workflow.Workflow" title="superstats.workflow.Workflow"><code class="xref py py-class docutils literal notranslate"><span class="pre">superstats.workflow.Workflow</span></code></a>.</p></li>
+<li><p><strong>Define the observation model</strong> as a data simulator.</p></li>
+<li><p><strong>Specify a joint prior</strong>, assigning a transition model to each parameter that should vary over time, and a standard prior to those that should not.</p></li>
+<li><p><strong>Prior push-forward checks:</strong> Simulate from the generative model and ask whether the implied parameter trajectories and data are consistent with your domain knowledge. Adjust the priors and transition models until they are.</p></li>
+<li><p><strong>Set up the amortized Bayesian workflow:</strong> specify a neural approximator consisting of a summary and inference network.</p></li>
+<li><p><strong>Train the neural approximator</strong> on simulations from the generative model.</p></li>
+<li><p><strong>Model verification:</strong> Check that the approximate posteriors are well calibrated (via simulation-based calibration) and that the model and design can answer your question at all (via parameter recovery and posterior contraction). If they cannot, return to steps 1–2 and revise.</p></li>
+<li><p><strong>Fit empirical data</strong> for any number of datasets, at negligible cost.</p></li>
+<li><p><strong>Evaluate the absolute model fit:</strong> Re-simulate data from the posterior and ask whether the model reproduces the patterns you care about. A model that misses them is not worth interpreting, no matter how well it did in step 6.</p></li>
+<li><p><strong>Inspect the posteriors</strong> of the time-varying and time-invariant parameters.</p></li>
 </ol>
 </section>
 
@@ -451,11 +447,11 @@
       </div>
     </a>
     <a class="right-next"
-       href="../examples/index.html"
+       href="simulator.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Examples</p>
+        <p class="prev-next-title"><span class="section-number">2. </span>Simulator</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>

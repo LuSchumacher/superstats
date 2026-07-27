@@ -1,0 +1,12 @@
+superstats.transition.stochastic.kernel.registry
+================================================
+
+.. automodule:: superstats.transition.stochastic.kernel.registry
+
+   
+   .. rubric:: Functions
+
+   .. autosummary::
+   
+      resolve_kernel
+   

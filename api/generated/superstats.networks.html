@@ -33,6 +33,7 @@
     <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../../_static/custom.css" />
   
   <!-- So that users can add custom icons -->
   <script defer src="../../_static/scripts/fontawesome.js?digest=a95f357e85573c9b56d5"></script>
@@ -40,7 +41,7 @@
   <link rel="preload" as="script" href="../../_static/scripts/bootstrap.js?digest=a95f357e85573c9b56d5" />
 <link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=a95f357e85573c9b56d5" />
 
-    <script src="../../_static/documentation_options.js?v=d45e8c67"></script>
+    <script src="../../_static/documentation_options.js?v=e3a6060d"></script>
     <script src="../../_static/doctools.js?v=9bcbadda"></script>
     <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/design-tabs.js?v=f930bc37"></script>
@@ -119,8 +120,14 @@
   
   
   
+    
+    
+      
+    
+    
+    <img src="../../_static/superstats-square-dark.svg" class="logo__image only-light" alt="superstats - Home"/>
+    <img src="../../_static/superstats-square-dark.svg" class="logo__image only-dark pst-js-only" alt="superstats - Home"/>
   
-    <p class="title logo__title">superstats</p>
   
 </a></div>
     
@@ -134,13 +141,6 @@
 <nav>
   <ul class="bd-navbar-elements navbar-nav">
     
-<li class="nav-item ">
-  <a class="nav-link nav-internal" href="../../getting_started.html">
-    Getting Started
-  </a>
-</li>
-
-
 <li class="nav-item ">
   <a class="nav-link nav-internal" href="../../user_guide/index.html">
     User Guide
@@ -264,13 +264,6 @@
   <ul class="bd-navbar-elements navbar-nav">
     
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../../getting_started.html">
-    Getting Started
-  </a>
-</li>
-
-
-<li class="nav-item ">
   <a class="nav-link nav-internal" href="../../user_guide/index.html">
     User Guide
   </a>
@@ -360,29 +353,24 @@
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="superstats.transition.html">superstats.transition</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="superstats.transition.auto_regression.html">superstats.transition.auto_regression</a></li>
-<li class="toctree-l2"><a class="reference internal" href="superstats.transition.gaussian_process.html">superstats.transition.gaussian_process</a></li>
-<li class="toctree-l2"><a class="reference internal" href="superstats.transition.jump.html">superstats.transition.jump</a></li>
-<li class="toctree-l2 has-children"><a class="reference internal" href="superstats.transition.kernel.html">superstats.transition.kernel</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l3"><a class="reference internal" href="superstats.transition.kernel.kernel.html">superstats.transition.kernel.kernel</a></li>
-<li class="toctree-l3"><a class="reference internal" href="superstats.transition.kernel.linear.html">superstats.transition.kernel.linear</a></li>
-<li class="toctree-l3"><a class="reference internal" href="superstats.transition.kernel.periodic.html">superstats.transition.kernel.periodic</a></li>
-<li class="toctree-l3"><a class="reference internal" href="superstats.transition.kernel.rbf.html">superstats.transition.kernel.rbf</a></li>
-<li class="toctree-l3"><a class="reference internal" href="superstats.transition.kernel.registry.html">superstats.transition.kernel.registry</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="superstats.transition.deterministic.html">superstats.transition.deterministic</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="superstats.transition.deterministic.deterministic_transition.html">superstats.transition.deterministic.deterministic_transition</a></li>
+<li class="toctree-l3"><a class="reference internal" href="superstats.transition.deterministic.linear.html">superstats.transition.deterministic.linear</a></li>
+<li class="toctree-l3"><a class="reference internal" href="superstats.transition.deterministic.polynomial.html">superstats.transition.deterministic.polynomial</a></li>
 </ul>
 </details></li>
-<li class="toctree-l2"><a class="reference internal" href="superstats.transition.mixture.html">superstats.transition.mixture</a></li>
-<li class="toctree-l2"><a class="reference internal" href="superstats.transition.ornstein_uhlenbeck.html">superstats.transition.ornstein_uhlenbeck</a></li>
-<li class="toctree-l2"><a class="reference internal" href="superstats.transition.random_walk.html">superstats.transition.random_walk</a></li>
-<li class="toctree-l2"><a class="reference internal" href="superstats.transition.transition.html">superstats.transition.transition</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="superstats.transition.stochastic.html">superstats.transition.stochastic</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="superstats.transition.stochastic.auto_regression.html">superstats.transition.stochastic.auto_regression</a></li>
+<li class="toctree-l3"><a class="reference internal" href="superstats.transition.stochastic.gaussian_process.html">superstats.transition.stochastic.gaussian_process</a></li>
+<li class="toctree-l3"><a class="reference internal" href="superstats.transition.stochastic.jump.html">superstats.transition.stochastic.jump</a></li>
+<li class="toctree-l3"><a class="reference internal" href="superstats.transition.stochastic.kernel.html">superstats.transition.stochastic.kernel</a></li>
+<li class="toctree-l3"><a class="reference internal" href="superstats.transition.stochastic.levy_flight.html">superstats.transition.stochastic.levy_flight</a></li>
+<li class="toctree-l3"><a class="reference internal" href="superstats.transition.stochastic.mixture.html">superstats.transition.stochastic.mixture</a></li>
+<li class="toctree-l3"><a class="reference internal" href="superstats.transition.stochastic.ornstein_uhlenbeck.html">superstats.transition.stochastic.ornstein_uhlenbeck</a></li>
+<li class="toctree-l3"><a class="reference internal" href="superstats.transition.stochastic.random_walk.html">superstats.transition.stochastic.random_walk</a></li>
+<li class="toctree-l3"><a class="reference internal" href="superstats.transition.stochastic.stochastic_transition.html">superstats.transition.stochastic.stochastic_transition</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="superstats.transition.kernel.html">superstats.transition.kernel</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="superstats.transition.kernel.kernel.html">superstats.transition.kernel.kernel</a></li>
-<li class="toctree-l2"><a class="reference internal" href="superstats.transition.kernel.linear.html">superstats.transition.kernel.linear</a></li>
-<li class="toctree-l2"><a class="reference internal" href="superstats.transition.kernel.periodic.html">superstats.transition.kernel.periodic</a></li>
-<li class="toctree-l2"><a class="reference internal" href="superstats.transition.kernel.rbf.html">superstats.transition.kernel.rbf</a></li>
-<li class="toctree-l2"><a class="reference internal" href="superstats.transition.kernel.registry.html">superstats.transition.kernel.registry</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="superstats.simulation.html">superstats.simulation</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -526,9 +514,9 @@
 <dd class="field-odd"><dl>
 <dt><strong>summary_dim</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">int</span></code></a>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code>, default: 64</span></dt><dd><p>Per-timestep output dimensionality.</p>
 </dd>
-<dt><strong>hidden_dim</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">int</span></code></a> or <a class="reference external" href="https://docs.python.org/3/glossary.html#term-sequence" title="(in Python v3.14)"><span>sequence</span></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">int</span></code></a>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code>, default: (64, 64)</span></dt><dd><p>Dimensionality of the hidden state in each recurrent layer.</p>
+<dt><strong>hidden_dim</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">int</span></code></a> or <a class="reference external" href="https://docs.python.org/3/glossary.html#term-sequence" title="(in Python v3.14)"><span>sequence</span></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">int</span></code></a>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code>, default: (128, 128)</span></dt><dd><p>Dimensionality of the hidden state in each recurrent layer.</p>
 </dd>
-<dt><strong>recurrent_type</strong><span class="classifier">{“lstm”, “gru”} <code class="xref py py-obj docutils literal notranslate"><span class="pre">or</span></code> <a class="reference external" href="https://docs.python.org/3/glossary.html#term-sequence" title="(in Python v3.14)"><span>sequence</span></a>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code>, default: “gru”</span></dt><dd><p>Type of recurrent unit to use in each layer.</p>
+<dt><strong>recurrent_type</strong><span class="classifier">{“lstm”, “gru”} <code class="xref py py-obj docutils literal notranslate"><span class="pre">or</span></code> <a class="reference external" href="https://docs.python.org/3/glossary.html#term-sequence" title="(in Python v3.14)"><span>sequence</span></a>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code>, default: “lstm”</span></dt><dd><p>Type of recurrent unit to use in each layer.</p>
 </dd>
 <dt><strong>bidirectional</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#bltin-boolean-values" title="(in Python v3.14)"><span class="xref std std-ref">bool</span></a> or <a class="reference external" href="https://docs.python.org/3/glossary.html#term-sequence" title="(in Python v3.14)"><span>sequence</span></a> <code class="xref py py-obj docutils literal notranslate"><span class="pre">of</span></code> <a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#bltin-boolean-values" title="(in Python v3.14)"><span class="xref std std-ref">bool</span></a>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code>, default: <a class="reference external" href="https://docs.python.org/3/library/constants.html#True" title="(in Python v3.14)"><code class="docutils literal notranslate"><span class="pre">True</span></code></a></span></dt><dd><p>If True, the layer is processed bidirectionally and the two
 directions are merged according to <cite>merge_mode</cite>. If False,

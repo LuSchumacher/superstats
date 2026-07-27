@@ -33,6 +33,7 @@
     <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css" />
   
   <!-- So that users can add custom icons -->
   <script defer src="_static/scripts/fontawesome.js?digest=a95f357e85573c9b56d5"></script>
@@ -40,15 +41,17 @@
   <link rel="preload" as="script" href="_static/scripts/bootstrap.js?digest=a95f357e85573c9b56d5" />
 <link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=a95f357e85573c9b56d5" />
 
-    <script src="_static/documentation_options.js?v=d45e8c67"></script>
+    <script src="_static/documentation_options.js?v=e3a6060d"></script>
     <script src="_static/doctools.js?v=9bcbadda"></script>
     <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/design-tabs.js?v=f930bc37"></script>
+    <script>window.MathJax = {"options": {"processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <script>DOCUMENTATION_OPTIONS.pagename = 'index';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Getting Started" href="getting_started.html" />
+    <link rel="next" title="User Guide" href="user_guide/index.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="0.0" />
@@ -118,8 +121,14 @@
   
   
   
+    
+    
+      
+    
+    
+    <img src="_static/superstats-square-dark.svg" class="logo__image only-light" alt="superstats - Home"/>
+    <img src="_static/superstats-square-dark.svg" class="logo__image only-dark pst-js-only" alt="superstats - Home"/>
   
-    <p class="title logo__title">superstats</p>
   
 </a></div>
     
@@ -133,13 +142,6 @@
 <nav>
   <ul class="bd-navbar-elements navbar-nav">
     
-<li class="nav-item ">
-  <a class="nav-link nav-internal" href="getting_started.html">
-    Getting Started
-  </a>
-</li>
-
-
 <li class="nav-item ">
   <a class="nav-link nav-internal" href="user_guide/index.html">
     User Guide
@@ -265,13 +267,6 @@
   <ul class="bd-navbar-elements navbar-nav">
     
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="getting_started.html">
-    Getting Started
-  </a>
-</li>
-
-
-<li class="nav-item ">
   <a class="nav-link nav-internal" href="user_guide/index.html">
     User Guide
   </a>
@@ -370,99 +365,75 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="superstats">
+  <section class="tex2jax_ignore mathjax_ignore" id="superstats">
 <h1>Superstats<a class="headerlink" href="#superstats" title="Link to this heading">#</a></h1>
-<p><strong>superstats</strong> is a Python library for simulation and Bayesian estimation of models with time-varying parameters.</p>
-<p>The library is general, but for now focuses on cognitive modeling. It provides users with:</p>
+<p>Superstats is a Python library for simulation and Bayesian estimation of dynamic models with time-varying parameters.</p>
+<p>The library aims to be domain-agnostic, but for now focuses on cognitive modeling. It provides users with:</p>
 <ul class="simple">
 <li><p>A lean API for non-stationary models: specify which parameters change across time, and how.</p></li>
-<li><p>A library of transition models: random walks, Ornstein–Uhlenbeck, autoregression, jump processes, mixtures, and Gaussian processes.</p></li>
+<li><p>A library of transition models: random walks, ARs, levy flights, jump processes, mixtures, and Gaussian processes.</p></li>
 <li><p>Built-in cognitive models, plus a plug-in interface for any simulator of your own.</p></li>
-<li><p>Amortized Bayesian inference build on top of <a class="reference external" href="https://github.com/bayesflow-org/bayesflow">BayesFlow</a>: train once, then quickly fit every data set.</p></li>
-<li><p>Diagnostic and visualization tools for every critical step in a principled Bayesian workflow.</p></li>
+<li><p>Amortized Bayesian inference built on top of <a class="reference external" href="https://github.com/bayesflow-org/bayesflow">BayesFlow</a>: train once, then quickly fit every data set.</p></li>
+<li><p>Diagnostics and visualization tools for every critical step in a principled Bayesian workflow.</p></li>
 </ul>
 <section id="conceptual-overview">
 <h2>Conceptual overview<a class="headerlink" href="#conceptual-overview" title="Link to this heading">#</a></h2>
-<p>A superstatistical model has two levels. A <strong>low-level observation model</strong> $\mathcal{G}$ generates the data at each time step.
-A <strong>high-level transition model</strong> $\mathcal{T}$ describes how the parameters of that model evolve:</p>
-<p>$$\theta_t = \mathcal{T}(\theta_{0:t-1}; \eta) \qquad x_t = \mathcal{G}(x_{1:t-1}; \theta_t, \lambda)$$</p>
-<p><code class="docutils literal notranslate"><span class="pre">superstats</span></code> trains a neural estimator on simulations from any generative model of this form and returns the joint posterior $p(\theta_{1:T}, \eta, \lambda \mid x_{1:T})$ over all time-varying parameters $\theta_{1:T}$ and time-invariant parameters $(\eta, \lambda)$.</p>
-</section>
-<section id="install">
-<h2>Install<a class="headerlink" href="#install" title="Link to this heading">#</a></h2>
-<p>We support Python 3.12 to 3.14. Install the latest version from source:</p>
+<div class="conceptual-overview docutils">
+<img alt="Overview graphic of superstats" src="_images/superstats-arch-light.svg" />
+</div>
+<div class="docutils">
+<p>A superstatistical model has two levels. A <strong>low-level observation model</strong> <span class="math notranslate nohighlight">\(\mathcal{G}\)</span> generates the data at each time step.
+A <strong>high-level transition model</strong> <span class="math notranslate nohighlight">\(\mathcal{T}\)</span> describes how the parameters of that model evolve:</p>
+<div class="math notranslate nohighlight">
+\[\theta_t = \mathcal{T}(\theta_{0:t-1}; \eta) \qquad x_t = \mathcal{G}(x_{1:t-1}; \theta_t, \lambda)\]</div>
+<p>Superstats trains a neural estimator on simulations from any generative model of this form and returns the joint posterior <span class="math notranslate nohighlight">\(p(\theta_{1:T}, \eta, \lambda \mid x_{1:T})\)</span> over all time-varying parameters <span class="math notranslate nohighlight">\(\theta_{1:T}\)</span> and time-invariant parameters <span class="math notranslate nohighlight">\((\eta, \lambda)\)</span>.</p>
+<p class="rubric" id="install">Install</p>
+<p>We support Python 3.12 to 3.13. Install the latest version from source:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>superstats
 </pre></div>
 </div>
 <p>If you want the latest features, you can install from source:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>git+https://github.com/LuSchumacher/superstats.git@dev<span class="s2">&quot;</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>git+https://github.com/LuSchumacher/superstats.git@dev
 </pre></div>
 </div>
-</section>
-<section id="getting-started">
-<h2>Getting started<a class="headerlink" href="#getting-started" title="Link to this heading">#</a></h2>
-<p>A complete workflow: a diffusion decision model whose drift rate and thresold are free to vary across time:</p>
-<div class="highlight-pythons notranslate"><div class="highlight"><pre><span></span>import superstats as sup
+<p class="rubric" id="deep-learning-backend">Deep learning backend</p>
+<p>Per default, <code class="docutils literal notranslate"><span class="pre">superstats</span></code> installs <a class="reference external" href="https://docs.jax.dev/en/latest/installation.html">JAX</a> on Linux/MacOS machines and <a class="reference external" href="https://pytorch.org/get-started/locally/">PyTorch</a> on Windows machines. This is because <code class="docutils literal notranslate"><span class="pre">JAX</span></code> does not natively support GPU acceleration on Windows. You can also manually install and configure any of the three backends:</p>
+<ul class="simple">
+<li><p><a class="reference external" href="https://jax.readthedocs.io/en/latest/installation.html">Install JAX</a></p></li>
+<li><p><a class="reference external" href="https://pytorch.org/get-started/locally/">Install PyTorch</a></p></li>
+<li><p><a class="reference external" href="https://www.tensorflow.org/install">Install TensorFlow</a></p></li>
+</ul>
+<p class="rubric" id="getting-started">Getting started</p>
+<p>A complete workflow using a diffusion decision model whose drift rate and thresold are free to vary across time:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">superstats</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sup</span>
 
-# 1. Assume which parameters move, and how
-joint_prior = sup.JointPrior(
-    v=sup.transition.RandomWalk(),
-    a=sup.transition.RandomWalk(),
-    tau=sup.Prior(dist=&quot;halfnormal&quot;, scale=0.15),
-    bias=0.5
-)
+<span class="c1"># 1. Assume which parameters move, and how</span>
+<span class="n">joint_prior</span> <span class="o">=</span> <span class="n">sup</span><span class="o">.</span><span class="n">JointPrior</span><span class="p">(</span>
+    <span class="n">v</span><span class="o">=</span><span class="n">sup</span><span class="o">.</span><span class="n">transition</span><span class="o">.</span><span class="n">RandomWalk</span><span class="p">(),</span> <span class="n">a</span><span class="o">=</span><span class="n">sup</span><span class="o">.</span><span class="n">transition</span><span class="o">.</span><span class="n">RandomWalk</span><span class="p">(),</span> <span class="n">tau</span><span class="o">=</span><span class="n">sup</span><span class="o">.</span><span class="n">Prior</span><span class="p">(</span><span class="n">dist</span><span class="o">=</span><span class="s2">&quot;halfnormal&quot;</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="mf">0.15</span><span class="p">),</span> <span class="n">bias</span><span class="o">=</span><span class="mf">0.5</span>
+<span class="p">)</span>
 
-# 2. Plug in an observation model (any simulator will do)
-generative_model = sup.GenerativeModel(
-    prior=joint_prior,
-    model=sup.simulation.sample_ddm,
-    missing=&quot;random&quot;,
-    contamination=&quot;random_choice&quot;
-)
+<span class="c1"># 2. Plug in an observation model (any simulator will do)</span>
+<span class="n">generative_model</span> <span class="o">=</span> <span class="n">sup</span><span class="o">.</span><span class="n">GenerativeModel</span><span class="p">(</span>
+    <span class="n">prior</span><span class="o">=</span><span class="n">joint_prior</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">sup</span><span class="o">.</span><span class="n">simulation</span><span class="o">.</span><span class="n">sample_ddm</span><span class="p">,</span> <span class="n">missing</span><span class="o">=</span><span class="s2">&quot;random&quot;</span><span class="p">,</span> <span class="n">contamination</span><span class="o">=</span><span class="s2">&quot;random_choice&quot;</span>
+<span class="p">)</span>
 
-# 3. Train a neural approximator
-workflow = sup.Workflow(simulator=generative_model)
-history = workflow.fit_online(num_steps=100, epochs=20, batch_size=16)
+<span class="c1"># 3. Train a neural approximator</span>
+<span class="n">workflow</span> <span class="o">=</span> <span class="n">sup</span><span class="o">.</span><span class="n">Workflow</span><span class="p">(</span><span class="n">simulator</span><span class="o">=</span><span class="n">generative_model</span><span class="p">)</span>
+<span class="n">history</span> <span class="o">=</span> <span class="n">workflow</span><span class="o">.</span><span class="n">fit_online</span><span class="p">(</span><span class="n">num_steps</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">epochs</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">16</span><span class="p">)</span>
 
-# 4. Fit any number of data sets, instantly
-samples = workflow.sample(data=rt_data, num_samples=250)
+<span class="c1"># 4. Fit any number of data sets, instantly</span>
+<span class="n">samples</span> <span class="o">=</span> <span class="n">workflow</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="n">rt_data</span><span class="p">,</span> <span class="n">num_samples</span><span class="o">=</span><span class="mi">250</span><span class="p">)</span>
 </pre></div>
 </div>
 <p>It is highly recommended to use a GPU for fast training and inference. For an in-depth exposition, check out the examples below.</p>
-</section>
-<section id="examples">
-<h2>Examples<a class="headerlink" href="#examples" title="Link to this heading">#</a></h2>
-<div class="pst-scrollable-table-container"><table class="table">
-<thead>
-<tr class="row-odd"><th class="head"><p>Notebook</p></th>
-<th class="head"><p>What it covers</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><a class="reference internal" href="#examples/minimal_workflow_demo.ipynb"><span class="xref myst">Minimal workflow demo</span></a></p></td>
-<td><p>Short path from prior to posterior</p></td>
-</tr>
-<tr class="row-odd"><td><p>Extensive workflow demo</p></td>
-<td><p>Comming soon</p></td>
-</tr>
-</tbody>
-</table>
-</div>
-<p>More examples are always welcome — if you have an application, please consider opening a pull request.</p>
-</section>
-<section id="contributing">
-<h2>Contributing<a class="headerlink" href="#contributing" title="Link to this heading">#</a></h2>
-<p>Contributions are welcome. Install from source and see <a class="reference internal" href="#CONTRIBUTING.md"><span class="xref myst">CONTRIBUTING.md</span></a> for details.</p>
-</section>
-<section id="reporting-issues">
-<h2>Reporting issues<a class="headerlink" href="#reporting-issues" title="Link to this heading">#</a></h2>
+<p class="rubric" id="contributing">Contributing</p>
+<p>Contributions are welcome. Install from source and see <a class="reference internal" href="contributing.html"><span class="std std-doc">CONTRIBUTING.md</span></a> for details.</p>
+<p class="rubric" id="reporting-issues">Reporting issues</p>
 <p>Please open an issue on <a class="reference external" href="https://github.com/LuSchumacher/superstats/issues">GitHub</a> for bug reports and
 feature requests. For questions about the underlying inference machinery, the
 <a class="reference external" href="https://discuss.bayesflow.org/">BayesFlow Forums</a> are a good place to ask.</p>
-</section>
-<section id="citation">
-<h2>Citation<a class="headerlink" href="#citation" title="Link to this heading">#</a></h2>
-<p>If you use <code class="docutils literal notranslate"><span class="pre">superstats</span></code> in your research, please cite:</p>
+<p class="rubric" id="citation">Citation</p>
+<p>If you use Superstats in your research, please cite:</p>
 <div class="highlight-bibtex notranslate"><div class="highlight"><pre><span></span><span class="nc">@article</span><span class="p">{</span><span class="nl">schumacher2023neural</span><span class="p">,</span>
 <span class="w">  </span><span class="na">title</span><span class="w">   </span><span class="p">=</span><span class="w"> </span><span class="s">{Neural superstatistics for {B}ayesian estimation of dynamic cognitive models}</span><span class="p">,</span>
 <span class="w">  </span><span class="na">author</span><span class="w">  </span><span class="p">=</span><span class="w"> </span><span class="s">{Schumacher, Lukas and B{\&quot;u}rkner, Paul-Christian and Voss, Andreas and K{\&quot;o}the, Ullrich and Radev, Stefan T.}</span><span class="p">,</span>
@@ -486,42 +457,10 @@ feature requests. For questions about the underlying inference machinery, the
 <span class="p">}</span>
 </pre></div>
 </div>
-</section>
-<section id="license">
-<h2>License<a class="headerlink" href="#license" title="Link to this heading">#</a></h2>
+<p class="rubric" id="license">License</p>
 <p>MIT</p>
 <div class="toctree-wrapper compound">
-<p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents</span></p>
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting Started</a></li>
-<li class="toctree-l1"><a class="reference internal" href="user_guide/index.html">User Guide</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/introduction.html">1. Introduction</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="examples/index.html">Examples</a><ul class="simple">
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="api/index.html">API Reference</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="api/generated/superstats.prior.html">superstats.prior</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/generated/superstats.transition.html">superstats.transition</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/generated/superstats.transition.kernel.html">superstats.transition.kernel</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/generated/superstats.simulation.html">superstats.simulation</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/generated/superstats.simulation.cognitive.html">superstats.simulation.cognitive</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/generated/superstats.workflow.html">superstats.workflow</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/generated/superstats.networks.html">superstats.networks</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/generated/superstats.diagnostics.html">superstats.diagnostics</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/generated/superstats.diagnostics.plots.html">superstats.diagnostics.plots</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/generated/superstats.defaults.html">superstats.defaults</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/generated/superstats.utils.html">superstats.utils</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="contributing.html">Contributing</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="contributing.html#requesting-a-feature">Requesting a feature</a></li>
-<li class="toctree-l2"><a class="reference internal" href="contributing.html#development-setup">Development setup</a></li>
-<li class="toctree-l2"><a class="reference internal" href="contributing.html#expectations">Expectations</a></li>
-</ul>
-</li>
-</ul>
+</div>
 </div>
 </section>
 </section>
@@ -537,11 +476,11 @@ feature requests. For questions about the underlying inference machinery, the
                   
 <div class="prev-next-area">
     <a class="right-next"
-       href="getting_started.html"
+       href="user_guide/index.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Getting Started</p>
+        <p class="prev-next-title">User Guide</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -565,13 +504,6 @@ feature requests. For questions about the underlying inference machinery, the
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#conceptual-overview">Conceptual overview</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#install">Install</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#getting-started">Getting started</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#examples">Examples</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#contributing">Contributing</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#reporting-issues">Reporting issues</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#citation">Citation</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#license">License</a></li>
 </ul>
   </nav></div>
 

@@ -1,0 +1,183 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "id": "797f6e7e",
+   "metadata": {},
+   "source": [
+    "# Simulator"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "1ed3b0ed",
+   "metadata": {},
+   "source": [
+    "The first step in our workflow is to formalize a data-generating process, which in Superstats we also call low-level observation model $\\mathcal{G}$. Formally, it implements\n",
+    "\n",
+    "$$x_t = \\mathcal{G}(\\theta_t, z_t), \\qquad t = 1, \\dots, T$$\n",
+    "\n",
+    "where $\\theta_t$ collects the model parameters at time step $t$ and $z_t$ is the simulator's own source of randomness (e.g. diffusion noise). Superstats relies entirely on amortized Bayesian inference for estimating parameters $\\theta$, and therefore only requires that $\\mathcal{G}$ can be *simulated* — no closed-form likelihood is needed.\n",
+    "\n",
+    "**Function signature.**\n",
+    "Superstats expects a function that:\n",
+    "\n",
+    "- takes each observation model parameter as a keyword argument, passed as an array of shape `(num_steps,)`, one value per time step. Time-invariant parameters are tiled internally to `num_steps` before the call, so every parameter arrives with the same shape regardless of whether it was declared as time-varying, time-invariant, or fixed.\n",
+    "- returns a dict mapping observation names to arrays of shape `(num_steps,)`, i.e. one named observed variable per time step.\n",
+    "\n",
+    "```python\n",
+    "def observation_model(\n",
+    "    param_1: np.ndarray,    # shape (num_steps,)\n",
+    "    param_2: np.ndarray,    # shape (num_steps,)\n",
+    "    ...\n",
+    ") -> dict[str, np.ndarray]: # variables with shape (num_steps,)\n",
+    "    ...\n",
+    "```\n",
+    "\n",
+    "**Simulation speed.**\n",
+    "You will probably need to simulate many datasets, both for simulation-based calibration and for model verification. We recommend using just-in-time compilation and parallelizing across simulated datasets, for example via `numba` or `jax`, to substantially speed up the simulator's execution.\n",
+    "\n",
+    "**Fixing parameters.**\n",
+    "We can fix parameters in two ways: either directly in the simulator, or in the next step, where we specify priors for the simulator. We recommend fixing a parameter in the simulator only if it is unlikely to be a target of inference, even though it could in theory be estimated (e.g., diffusion noise in an evidence accumulation model)."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "9e0e3caf",
+   "metadata": {
+    "vscode": {
+     "languageId": "plaintext"
+    }
+   },
+   "source": [
+    "## Example: Diffusion Decision Model (DDM)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "554d6ddb",
+   "metadata": {},
+   "source": [
+    "The diffusion decision model (DDM; [Ratcliff, 1978](https://doi.org/10.1037/0033-295X.85.2.59)) describes binary decisions as noisy evidence accumulation toward one of two boundaries:\n",
+    "\n",
+    "$$dx = v_t \\, dt + \\sigma \\, dW_t.$$\n",
+    "\n",
+    "Evidence $x$ starts at $\\text{bias}_t \\cdot a_t$ and accumulates until it hits $a_t$ (upper boundary, choice $=1$) or $0$ (lower boundary, choice $=0$); the response time is $\\tau_t$ (non-decision time) plus the time to reach a boundary. $v_t$ is the drift rate, $a_t$ the boundary separation (speed–accuracy trade-off), and $\\text{bias}_t \\in (0,1)$ the relative starting point — $0.5$ is unbiased, and values above or below shift the start point toward the upper or lower boundary, respectively.\n",
+    "\n",
+    "The DDM is already implemented in Superstats."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "5f1f583c",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import superstats as sup\n",
+    "\n",
+    "simulator = sup.simulation.cognitive.sample_ddm"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "0897a952",
+   "metadata": {},
+   "source": [
+    "`sample_ddm` integrates the DDM via Euler–Maruyama: at each step of size `dt`, it adds drift `v_t * dt` plus Gaussian noise scaled by `sigma * sqrt(dt)`, checking for a boundary crossing after each step. Trials that do not resolve within `max_steps` are marked as timeouts (RT $= -1.0$). Trials are simulated in parallel via `numba`."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "id": "3708bcc1",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import numpy as np\n",
+    "from numba import njit, prange\n",
+    "\n",
+    "@njit(parallel=True, fastmath=True)\n",
+    "def sample_ddm(\n",
+    "    v: np.ndarray,\n",
+    "    a: np.ndarray,\n",
+    "    tau: np.ndarray,\n",
+    "    bias: np.ndarray,\n",
+    "    sigma: float = 1.0,\n",
+    "    dt: float = 0.001,\n",
+    "    max_steps: int = 10000,\n",
+    ") -> dict[str, np.ndarray]:\n",
+    "    num_steps = v.shape[0]\n",
+    "    response_time = np.empty(num_steps, dtype=np.float32)\n",
+    "    choice = np.empty(num_steps, dtype=np.float32)\n",
+    "    noise_scale = sigma * np.sqrt(dt)\n",
+    "\n",
+    "    for i in prange(num_steps):\n",
+    "        v_t = v[i]\n",
+    "        a_t = a[i]\n",
+    "        t = tau[i]\n",
+    "        x = bias[i] * a_t\n",
+    "        drift_dt = v_t * dt\n",
+    "\n",
+    "        for step in range(max_steps):\n",
+    "            t += dt\n",
+    "            x += drift_dt + noise_scale * np.random.normal()\n",
+    "            if x >= a_t:\n",
+    "                response_time[i] = t\n",
+    "                choice[i] = 1.0\n",
+    "                break\n",
+    "            if x <= 0.0:\n",
+    "                response_time[i] = t\n",
+    "                choice[i] = 0.0\n",
+    "                break\n",
+    "        else:\n",
+    "            response_time[i] = -1.0\n",
+    "            choice[i] = -1.0\n",
+    "\n",
+    "    return {\"response_time\": response_time, \"choice\": choice}"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "f4d88ee2",
+   "metadata": {},
+   "source": [
+    "## Other Built-in Simulators"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "0898ce42",
+   "metadata": {},
+   "source": [
+    "Besides the DDM, Superstats has the following models implemented:\n",
+    "\n",
+    "- `sup.simulation.cognitive.sample_rdm` $-$ Racing Diffusion Model ([Tillman, et al., 2020](https://doi.org/10.3758/s13423-020-01719-6))\n",
+    "- `sup.simulation.cognitive.sample_cdm` $-$ Circular Diffusion Model ([Smith, 2016](https://doi.org/10.1037/rev0000023))\n",
+    "\n",
+    "Please feel free to contribute additional models, either by opening a pull request or an issue with a feature request."
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "superstats (3.13.14.final.0)",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.13.-1"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}

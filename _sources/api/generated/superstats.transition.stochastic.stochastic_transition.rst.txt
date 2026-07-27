@@ -1,0 +1,12 @@
+superstats.transition.stochastic.stochastic\_transition
+=======================================================
+
+.. automodule:: superstats.transition.stochastic.stochastic_transition
+
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      StochasticTransition
+   

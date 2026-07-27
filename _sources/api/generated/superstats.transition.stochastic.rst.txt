@@ -1,0 +1,21 @@
+superstats.transition.stochastic
+================================
+
+.. automodule:: superstats.transition.stochastic
+
+   
+.. rubric:: Modules
+
+.. autosummary::
+   :toctree:
+   :recursive:
+
+   auto_regression
+   gaussian_process
+   jump
+   kernel
+   levy_flight
+   mixture
+   ornstein_uhlenbeck
+   random_walk
+   stochastic_transition

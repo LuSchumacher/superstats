@@ -1,0 +1,12 @@
+superstats.transition.stochastic.levy\_flight
+=============================================
+
+.. automodule:: superstats.transition.stochastic.levy_flight
+
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      LevyFlight
+   

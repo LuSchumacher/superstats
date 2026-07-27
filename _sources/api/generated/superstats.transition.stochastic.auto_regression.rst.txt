@@ -1,0 +1,12 @@
+superstats.transition.stochastic.auto\_regression
+=================================================
+
+.. automodule:: superstats.transition.stochastic.auto_regression
+
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      AutoRegression
+   

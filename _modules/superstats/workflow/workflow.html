@@ -32,6 +32,7 @@
     <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/custom.css" />
   
   <!-- So that users can add custom icons -->
   <script defer src="../../../_static/scripts/fontawesome.js?digest=a95f357e85573c9b56d5"></script>
@@ -39,7 +40,7 @@
   <link rel="preload" as="script" href="../../../_static/scripts/bootstrap.js?digest=a95f357e85573c9b56d5" />
 <link rel="preload" as="script" href="../../../_static/scripts/pydata-sphinx-theme.js?digest=a95f357e85573c9b56d5" />
 
-    <script src="../../../_static/documentation_options.js?v=d45e8c67"></script>
+    <script src="../../../_static/documentation_options.js?v=e3a6060d"></script>
     <script src="../../../_static/doctools.js?v=9bcbadda"></script>
     <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../../_static/design-tabs.js?v=f930bc37"></script>
@@ -116,8 +117,14 @@
   
   
   
+    
+    
+      
+    
+    
+    <img src="../../../_static/superstats-square-dark.svg" class="logo__image only-light" alt="superstats - Home"/>
+    <img src="../../../_static/superstats-square-dark.svg" class="logo__image only-dark pst-js-only" alt="superstats - Home"/>
   
-    <p class="title logo__title">superstats</p>
   
 </a></div>
     
@@ -131,13 +138,6 @@
 <nav>
   <ul class="bd-navbar-elements navbar-nav">
     
-<li class="nav-item ">
-  <a class="nav-link nav-internal" href="../../../getting_started.html">
-    Getting Started
-  </a>
-</li>
-
-
 <li class="nav-item ">
   <a class="nav-link nav-internal" href="../../../user_guide/index.html">
     User Guide
@@ -258,13 +258,6 @@
 <nav>
   <ul class="bd-navbar-elements navbar-nav">
     
-<li class="nav-item ">
-  <a class="nav-link nav-internal" href="../../../getting_started.html">
-    Getting Started
-  </a>
-</li>
-
-
 <li class="nav-item ">
   <a class="nav-link nav-internal" href="../../../user_guide/index.html">
     User Guide
@@ -405,6 +398,7 @@
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">bayesflow</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">bf</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">keras</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">bayesflow.adapters</span><span class="w"> </span><span class="kn">import</span> <span class="n">Adapter</span>
 
@@ -420,6 +414,11 @@
 <span class="p">)</span>
 
 
+<span class="k">class</span><span class="w"> </span><span class="nc">_SuppressCheckpointExistsWarning</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">Filter</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">filter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">record</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;Checkpoint file exists&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">record</span><span class="o">.</span><span class="n">getMessage</span><span class="p">()</span>
+
+
 <div class="viewcode-block" id="Workflow">
 <a class="viewcode-back" href="../../../api/generated/superstats.workflow.workflow.html#superstats.workflow.Workflow">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">Workflow</span><span class="p">:</span>
@@ -431,16 +430,16 @@
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
-<span class="sd">    simulator         : GenerativeModel or None, optional, default: None</span>
+<span class="sd">    simulator            : GenerativeModel or None, optional, default: None</span>
 <span class="sd">        The simulator used for training and, when `adapter` is not</span>
 <span class="sd">        provided, for building a default adapter. Required in that case.</span>
-<span class="sd">    adapter           : Adapter or None, optional, default: None</span>
+<span class="sd">    adapter              : Adapter or None, optional, default: None</span>
 <span class="sd">        Data adapter for the workflow. If None, a default adapter is</span>
-<span class="sd">        built from `simulator.local_keys`, `simulator.hyper_keys`, and</span>
-<span class="sd">        `simulator.shared_keys` (which requires `simulator` to be set).</span>
-<span class="sd">    summary_network   : {&quot;recurrent&quot;, &quot;transformer&quot;} or keras.Layer, optional, default: &quot;recurrent&quot;.</span>
+<span class="sd">        built from the stochastic `simulator.local_keys`, `simulator.hyper_keys`,</span>
+<span class="sd">        and `simulator.shared_keys` (which requires `simulator` to be set).</span>
+<span class="sd">    summary_network      : {&quot;recurrent&quot;, &quot;transformer&quot;} or keras.Layer, optional, default: &quot;recurrent&quot;.</span>
 <span class="sd">        String names build a default summary network; otherwise, an already-created Keras layer is used directly.</span>
-<span class="sd">    inference_network : {&quot;coupling&quot;, &quot;coupling_flow&quot;} or keras.Layer, optional, default: &quot;coupling&quot;.</span>
+<span class="sd">    inference_network    : {&quot;coupling&quot;, &quot;coupling_flow&quot;} or keras.Layer, optional, default: &quot;coupling&quot;.</span>
 <span class="sd">        String names build a default inference network; otherwise, an already-created Keras</span>
 <span class="sd">        layer is used directly.</span>
 <span class="sd">    checkpoint_filepath  : str or None, optional, default: None</span>
@@ -481,12 +480,7 @@
 
         <span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_filepath</span> <span class="o">=</span> <span class="n">checkpoint_filepath</span>
 
-        <span class="k">if</span> <span class="n">restore_approximator</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_filepath</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_filepath</span><span class="p">):</span>
-            <span class="n">restore</span> <span class="o">=</span> <span class="kc">True</span>
-        <span class="k">elif</span> <span class="n">restore_approximator</span><span class="p">:</span>
-            <span class="n">restore</span> <span class="o">=</span> <span class="kc">False</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="n">restore</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;bayesflow&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">addFilter</span><span class="p">(</span><span class="n">_SuppressCheckpointExistsWarning</span><span class="p">())</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">workflow</span> <span class="o">=</span> <span class="n">bf</span><span class="o">.</span><span class="n">BasicWorkflow</span><span class="p">(</span>
             <span class="n">simulator</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">simulator</span><span class="p">,</span>
@@ -495,9 +489,12 @@
             <span class="n">inference_network</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">inference_network</span><span class="p">,</span>
             <span class="n">standardize</span><span class="o">=</span><span class="s2">&quot;all&quot;</span><span class="p">,</span>
             <span class="n">checkpoint_filepath</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_filepath</span><span class="p">,</span>
-            <span class="n">restore</span><span class="o">=</span><span class="n">restore</span><span class="p">,</span>
             <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
         <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">restore_approximator</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_filepath</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_filepath</span><span class="p">):</span>
+            <span class="n">path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_filepath</span><span class="p">,</span> <span class="s2">&quot;model.keras&quot;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">approximator</span> <span class="o">=</span> <span class="n">keras</span><span class="o">.</span><span class="n">saving</span><span class="o">.</span><span class="n">load_model</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
 
         <span class="k">if</span> <span class="n">restore_history</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_filepath</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_filepath</span><span class="p">):</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_load_history</span><span class="p">()</span>
@@ -706,8 +703,18 @@
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">approximator</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;The underlying trained bf approximator object.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The underlying trained BayesFlow approximator object.</span>
+
+<span class="sd">        Reads through to `self.workflow.approximator` by default (kept in</span>
+<span class="sd">        sync automatically by `bf.BasicWorkflow` during training), but can</span>
+<span class="sd">        be explicitly assigned - e.g. when restoring a checkpoint from</span>
+<span class="sd">        disk in `__init__`.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">workflow</span><span class="o">.</span><span class="n">approximator</span>
+
+    <span class="nd">@approximator</span><span class="o">.</span><span class="n">setter</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">approximator</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">workflow</span><span class="o">.</span><span class="n">approximator</span> <span class="o">=</span> <span class="n">value</span>
 
 <div class="viewcode-block" id="Workflow.sample">
 <a class="viewcode-back" href="../../../api/generated/superstats.workflow.workflow.html#superstats.workflow.Workflow.sample">[docs]</a>
@@ -801,11 +808,15 @@
             <span class="p">)</span>
 
         <span class="n">batch_size</span><span class="p">,</span> <span class="n">num_draws</span> <span class="o">=</span> <span class="n">example</span><span class="o">.</span><span class="n">shape</span><span class="p">[:</span><span class="mi">2</span><span class="p">]</span>
-        <span class="n">num_steps</span> <span class="o">=</span> <span class="n">example</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+        <span class="n">time_varying_keys</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">simulator</span><span class="o">.</span><span class="n">local_keys</span><span class="p">)</span> <span class="o">|</span> <span class="nb">set</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">simulator</span><span class="o">.</span><span class="n">deterministic_keys</span><span class="p">)</span>
+        <span class="n">time_varying_arrays</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">posterior_samples</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">time_varying_keys</span>
+        <span class="p">]</span>
+        <span class="n">num_steps</span> <span class="o">=</span> <span class="n">time_varying_arrays</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="k">if</span> <span class="n">time_varying_arrays</span> <span class="k">else</span> <span class="n">example</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
 
         <span class="n">sample_idx</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">integers</span><span class="p">(</span><span class="n">num_draws</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">num_sims</span><span class="p">))</span>
 
-        <span class="n">simulation_params</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">simulation_params</span> <span class="o">=</span> <span class="p">{}</span>
         <span class="n">fixed_params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">simulator</span><span class="o">.</span><span class="n">get_fixed_params</span><span class="p">()</span>
 
         <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">arr</span> <span class="ow">in</span> <span class="n">posterior_samples</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
@@ -817,7 +828,10 @@
 
             <span class="k">if</span> <span class="n">arr</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
                 <span class="n">selected</span> <span class="o">=</span> <span class="n">arr</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">batch_size</span><span class="p">)[:,</span> <span class="kc">None</span><span class="p">],</span> <span class="n">sample_idx</span><span class="p">,</span> <span class="p">:]</span>
-                <span class="n">simulation_params</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">selected</span>
+                <span class="c1"># Posterior samples for shared/hyperparameters have a</span>
+                <span class="c1"># singleton trailing time axis, whereas local and</span>
+                <span class="c1"># deterministic trajectories have one entry per step.</span>
+                <span class="n">simulation_params</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">selected</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="n">name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">time_varying_keys</span> <span class="k">else</span> <span class="n">selected</span>
             <span class="k">elif</span> <span class="n">arr</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">4</span><span class="p">:</span>
                 <span class="n">selected</span> <span class="o">=</span> <span class="n">arr</span><span class="p">[</span>
                     <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">batch_size</span><span class="p">)[:,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">],</span>
@@ -825,6 +839,12 @@
                     <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">num_steps</span><span class="p">)[</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="p">:],</span>
                     <span class="p">:,</span>
                 <span class="p">]</span>
+                <span class="k">if</span> <span class="n">name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">time_varying_keys</span><span class="p">:</span>
+                    <span class="c1"># Some adapters tile shared parameters over time and/or</span>
+                    <span class="c1"># retain a singleton feature axis. Only one value per</span>
+                    <span class="c1"># posterior draw is needed for simulation.</span>
+                    <span class="k">while</span> <span class="n">selected</span><span class="o">.</span><span class="n">ndim</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">:</span>
+                        <span class="n">selected</span> <span class="o">=</span> <span class="n">selected</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
                 <span class="n">simulation_params</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">selected</span>
             <span class="k">else</span><span class="p">:</span>
                 <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
@@ -833,12 +853,17 @@
                 <span class="p">)</span>
 
         <span class="c1"># Collapse sample axis into batch axis for simulation</span>
-        <span class="n">expanded_params</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">expanded_params</span> <span class="o">=</span> <span class="p">{}</span>
         <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">arr</span> <span class="ow">in</span> <span class="n">simulation_params</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-            <span class="k">if</span> <span class="n">arr</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">time_varying_keys</span><span class="p">:</span>
+                <span class="n">expanded_params</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">batch_size</span> <span class="o">*</span> <span class="n">num_sims</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="n">arr</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
                 <span class="n">expanded_params</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">batch_size</span> <span class="o">*</span> <span class="n">num_sims</span><span class="p">,</span> <span class="n">num_steps</span><span class="p">)</span>
             <span class="k">elif</span> <span class="n">arr</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
-                <span class="n">expanded_params</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">batch_size</span> <span class="o">*</span> <span class="n">num_sims</span><span class="p">,</span> <span class="n">num_steps</span><span class="p">,</span> <span class="n">arr</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+                <span class="k">if</span> <span class="n">arr</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">==</span> <span class="n">num_steps</span><span class="p">:</span>
+                    <span class="n">expanded_params</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">batch_size</span> <span class="o">*</span> <span class="n">num_sims</span><span class="p">,</span> <span class="n">num_steps</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">expanded_params</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">batch_size</span> <span class="o">*</span> <span class="n">num_sims</span><span class="p">,</span> <span class="n">num_steps</span><span class="p">,</span> <span class="n">arr</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
             <span class="k">elif</span> <span class="n">arr</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">4</span><span class="p">:</span>
                 <span class="n">expanded_params</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">batch_size</span> <span class="o">*</span> <span class="n">num_sims</span><span class="p">,</span> <span class="n">num_steps</span><span class="p">,</span> <span class="n">arr</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">3</span><span class="p">])</span>
             <span class="k">else</span><span class="p">:</span>
@@ -846,6 +871,28 @@
 
         <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">fixed_params</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
             <span class="n">expanded_params</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">broadcast_to</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">value</span><span class="p">),</span> <span class="p">(</span><span class="n">batch_size</span> <span class="o">*</span> <span class="n">num_sims</span><span class="p">,))</span>
+
+        <span class="c1"># Deterministic transitions are simulated but are intentionally not</span>
+        <span class="c1"># returned as inferred trajectories. Delegate reconstruction to each</span>
+        <span class="c1"># transition, keeping transition-specific hyperparameters out of the</span>
+        <span class="c1"># workflow implementation.</span>
+        <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">simulator</span><span class="o">.</span><span class="n">deterministic_keys</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">expanded_params</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="n">transition</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">simulator</span><span class="o">.</span><span class="n">prior</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="n">name</span><span class="p">]</span>
+            <span class="n">prefix</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">_&quot;</span>
+            <span class="n">transition_params</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="n">key</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">prefix</span><span class="p">)</span> <span class="p">:]:</span> <span class="n">value</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">expanded_params</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">key</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">prefix</span><span class="p">)</span>
+            <span class="p">}</span>
+            <span class="n">transition_fixed</span> <span class="o">=</span> <span class="n">transition</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">batch_size</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">num_steps</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;fixed_params&quot;</span><span class="p">,</span> <span class="p">{})</span>
+            <span class="n">transition_params</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
+                <span class="p">{</span><span class="n">key</span><span class="p">:</span> <span class="n">value</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">transition_fixed</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">transition_params</span><span class="p">}</span>
+            <span class="p">)</span>
+            <span class="n">expanded_params</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">transition</span><span class="o">.</span><span class="n">sample_from_parameters</span><span class="p">(</span>
+                <span class="n">transition_params</span><span class="p">,</span>
+                <span class="n">batch_size</span><span class="o">=</span><span class="n">batch_size</span> <span class="o">*</span> <span class="n">num_sims</span><span class="p">,</span>
+                <span class="n">num_steps</span><span class="o">=</span><span class="n">num_steps</span><span class="p">,</span>
+            <span class="p">)</span>
 
         <span class="n">raw_sim</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">simulator</span><span class="o">.</span><span class="n">simulate_from_parameters</span><span class="p">(</span>
             <span class="n">expanded_params</span><span class="p">,</span>

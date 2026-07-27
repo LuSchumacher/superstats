@@ -1,0 +1,12 @@
+superstats.transition.deterministic.polynomial
+==============================================
+
+.. automodule:: superstats.transition.deterministic.polynomial
+
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      Polynomial
+   

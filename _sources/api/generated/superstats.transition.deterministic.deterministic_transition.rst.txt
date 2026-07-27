@@ -1,0 +1,12 @@
+superstats.transition.deterministic.deterministic\_transition
+=============================================================
+
+.. automodule:: superstats.transition.deterministic.deterministic_transition
+
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      DeterministicTransition
+   

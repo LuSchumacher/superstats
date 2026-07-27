@@ -1,0 +1,13 @@
+superstats.transition.stochastic.kernel.kernel
+==============================================
+
+.. automodule:: superstats.transition.stochastic.kernel.kernel
+
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      CompositeKernel
+      Kernel
+   

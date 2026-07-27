@@ -32,6 +32,7 @@
     <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/custom.css" />
   
   <!-- So that users can add custom icons -->
   <script defer src="../../../_static/scripts/fontawesome.js?digest=a95f357e85573c9b56d5"></script>
@@ -39,7 +40,7 @@
   <link rel="preload" as="script" href="../../../_static/scripts/bootstrap.js?digest=a95f357e85573c9b56d5" />
 <link rel="preload" as="script" href="../../../_static/scripts/pydata-sphinx-theme.js?digest=a95f357e85573c9b56d5" />
 
-    <script src="../../../_static/documentation_options.js?v=d45e8c67"></script>
+    <script src="../../../_static/documentation_options.js?v=e3a6060d"></script>
     <script src="../../../_static/doctools.js?v=9bcbadda"></script>
     <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../../_static/design-tabs.js?v=f930bc37"></script>
@@ -116,8 +117,14 @@
   
   
   
+    
+    
+      
+    
+    
+    <img src="../../../_static/superstats-square-dark.svg" class="logo__image only-light" alt="superstats - Home"/>
+    <img src="../../../_static/superstats-square-dark.svg" class="logo__image only-dark pst-js-only" alt="superstats - Home"/>
   
-    <p class="title logo__title">superstats</p>
   
 </a></div>
     
@@ -131,13 +138,6 @@
 <nav>
   <ul class="bd-navbar-elements navbar-nav">
     
-<li class="nav-item ">
-  <a class="nav-link nav-internal" href="../../../getting_started.html">
-    Getting Started
-  </a>
-</li>
-
-
 <li class="nav-item ">
   <a class="nav-link nav-internal" href="../../../user_guide/index.html">
     User Guide
@@ -258,13 +258,6 @@
 <nav>
   <ul class="bd-navbar-elements navbar-nav">
     
-<li class="nav-item ">
-  <a class="nav-link nav-internal" href="../../../getting_started.html">
-    Getting Started
-  </a>
-</li>
-
-
 <li class="nav-item ">
   <a class="nav-link nav-internal" href="../../../user_guide/index.html">
     User Guide
@@ -414,9 +407,9 @@
 
 <span class="sd">    This class facilitates sampling parameters from a joint prior distribution</span>
 <span class="sd">    and generating simulated data using a user-provided model function. It handles</span>
-<span class="sd">    parameter broadcasting, flattening, and reshaping to support batched simulations</span>
-<span class="sd">    with time-varying parameters. Optionally, a missing-data process can be applied</span>
-<span class="sd">    to the simulated data to introduce and record missingness.</span>
+<span class="sd">    parameter broadcasting, flattening, and reshaping to support batched</span>
+<span class="sd">    simulations with time-varying parameters. Optionally, a missing-data process</span>
+<span class="sd">    can be applied to the simulated data to introduce and record missingness.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -431,8 +424,8 @@
 <span class="sd">        Process applied to simulated data to introduce missingness.</span>
 <span class="sd">        - Not provided (default) or `&quot;random&quot;`: uses `RandomMissingProcess()`,</span>
 <span class="sd">          the default MCAR missingness process.</span>
-<span class="sd">        - `None`: disables missingness augmentation and `sample` will not include</span>
-<span class="sd">          a `&quot;missing_mask&quot;` entry in its result.</span>
+<span class="sd">        - `None`: disables missingness augmentation and `sample` will not</span>
+<span class="sd">          include a `&quot;missing_mask&quot;` entry in its result.</span>
 <span class="sd">        - `MissingProcess` instance: used as-is.</span>
 <span class="sd">        - Plain `Callable`: must follow the same contract as</span>
 <span class="sd">          `MissingProcess.__call__`, i.e.</span>
@@ -471,6 +464,9 @@
         <span class="c1"># Run a pilot draw to determine key groups once</span>
         <span class="n">pilot</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">prior</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">batch_size</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">num_steps</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">local_keys</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">pilot</span><span class="p">[</span><span class="s2">&quot;local_params&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span> <span class="k">if</span> <span class="n">pilot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;local_params&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">deterministic_keys</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="nb">list</span><span class="p">(</span><span class="n">pilot</span><span class="p">[</span><span class="s2">&quot;deterministic_params&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span> <span class="k">if</span> <span class="n">pilot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;deterministic_params&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="p">[]</span>
+        <span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">hyper_keys</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">pilot</span><span class="p">[</span><span class="s2">&quot;hyper_params&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span> <span class="k">if</span> <span class="n">pilot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;hyper_params&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="p">[]</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">shared_keys</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">pilot</span><span class="p">[</span><span class="s2">&quot;shared_params&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span> <span class="k">if</span> <span class="n">pilot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;shared_params&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="p">[]</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">fixed_keys</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">pilot</span><span class="p">[</span><span class="s2">&quot;fixed_params&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span> <span class="k">if</span> <span class="n">pilot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;fixed_params&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="p">[]</span>
@@ -540,6 +536,7 @@
     <span class="k">def</span><span class="w"> </span><span class="nf">_infer_data_keys</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prior_draws</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Infer observation names from a one-step simulator call.&quot;&quot;&quot;</span>
         <span class="n">combined_params</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">prior_draws</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;local_params&quot;</span><span class="p">,</span> <span class="p">{}))</span>
+        <span class="n">combined_params</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">prior_draws</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;deterministic_params&quot;</span><span class="p">,</span> <span class="p">{}))</span>
         <span class="n">combined_params</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">prior_draws</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;shared_params&quot;</span><span class="p">,</span> <span class="p">{}))</span>
 
         <span class="n">fixed_params</span> <span class="o">=</span> <span class="n">prior_draws</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;fixed_params&quot;</span><span class="p">,</span> <span class="p">{})</span>
@@ -962,11 +959,13 @@
         <span class="c1"># Sample parameters</span>
         <span class="n">prior_draws</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">prior</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">batch_size</span><span class="o">=</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">num_steps</span><span class="o">=</span><span class="n">num_steps</span><span class="p">)</span>
         <span class="n">local_params</span> <span class="o">=</span> <span class="n">prior_draws</span><span class="p">[</span><span class="s2">&quot;local_params&quot;</span><span class="p">]</span>
+        <span class="n">deterministic_params</span> <span class="o">=</span> <span class="n">prior_draws</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;deterministic_params&quot;</span><span class="p">,</span> <span class="p">{})</span>
         <span class="n">shared_params</span> <span class="o">=</span> <span class="n">prior_draws</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;shared_params&quot;</span><span class="p">,</span> <span class="p">{})</span>
         <span class="n">fixed_params</span> <span class="o">=</span> <span class="n">prior_draws</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;fixed_params&quot;</span><span class="p">,</span> <span class="p">{})</span>
 
         <span class="c1"># Combine parameter dictionaries</span>
         <span class="n">combined_params</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">local_params</span><span class="p">)</span>
+        <span class="n">combined_params</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">deterministic_params</span><span class="p">)</span>
         <span class="n">combined_params</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">shared_params</span><span class="p">)</span>
 
         <span class="c1"># Include fixed params that are used by the model</span>
@@ -992,6 +991,7 @@
         <span class="n">sim_data</span><span class="p">,</span> <span class="n">missing_mask</span><span class="p">,</span> <span class="n">missing_extra</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_apply_missing</span><span class="p">(</span><span class="n">sim_data</span><span class="p">,</span> <span class="n">rng</span><span class="p">)</span>
 
         <span class="n">local_params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_normalize_local_params</span><span class="p">(</span><span class="n">local_params</span><span class="p">,</span> <span class="n">batch_size</span><span class="p">,</span> <span class="n">num_steps</span><span class="p">)</span>
+        <span class="n">deterministic_params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_normalize_local_params</span><span class="p">(</span><span class="n">deterministic_params</span><span class="p">,</span> <span class="n">batch_size</span><span class="p">,</span> <span class="n">num_steps</span><span class="p">)</span>
         <span class="n">hyper_params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_normalize_batch_params</span><span class="p">(</span><span class="n">prior_draws</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;hyper_params&quot;</span><span class="p">,</span> <span class="p">{}),</span> <span class="n">batch_size</span><span class="p">)</span>
         <span class="n">shared_params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_normalize_batch_params</span><span class="p">(</span><span class="n">shared_params</span><span class="p">,</span> <span class="n">batch_size</span><span class="p">)</span>
 
@@ -1012,6 +1012,8 @@
             <span class="n">result</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">missing_extra</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">local_params</span><span class="p">:</span>
             <span class="n">result</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">local_params</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">deterministic_params</span><span class="p">:</span>
+            <span class="n">result</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">deterministic_params</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">hyper_params</span><span class="p">:</span>
             <span class="n">result</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">hyper_params</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">shared_params</span><span class="p">:</span>

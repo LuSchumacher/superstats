@@ -1,0 +1,19 @@
+superstats.transition.stochastic.kernel.rbf
+===========================================
+
+.. automodule:: superstats.transition.stochastic.kernel.rbf
+
+   
+   .. rubric:: Functions
+
+   .. autosummary::
+   
+      build_sq_dist_mat
+      get_rbf_kernel
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      RBFKernel
+   

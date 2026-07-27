@@ -1,0 +1,12 @@
+superstats.transition.stochastic.jump
+=====================================
+
+.. automodule:: superstats.transition.stochastic.jump
+
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      Jump
+   

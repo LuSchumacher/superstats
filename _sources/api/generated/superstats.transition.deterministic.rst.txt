@@ -1,0 +1,15 @@
+superstats.transition.deterministic
+===================================
+
+.. automodule:: superstats.transition.deterministic
+
+   
+.. rubric:: Modules
+
+.. autosummary::
+   :toctree:
+   :recursive:
+
+   deterministic_transition
+   linear
+   polynomial

@@ -1,0 +1,12 @@
+superstats.transition.deterministic.linear
+==========================================
+
+.. automodule:: superstats.transition.deterministic.linear
+
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      Linear
+   
