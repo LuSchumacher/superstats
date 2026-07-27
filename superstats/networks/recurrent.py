@@ -63,7 +63,7 @@ class RecurrentNet(bf.networks.SummaryNetwork):
         self,
         summary_dim: int = 64,
         hidden_dim: int | Sequence[int] = (128, 128),
-        recurrent_type: str | Sequence[str] = "lstm",
+        recurrent_type: str | Sequence[str] = "gru",
         bidirectional: bool | Sequence[bool] = True,
         merge_mode: str | Sequence[str] = "sum",
         layer_norm: bool | Sequence[bool] = True,

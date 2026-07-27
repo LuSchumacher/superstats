@@ -5,7 +5,7 @@ from types import MappingProxyType
 DEFAULT_RECURRENT_NETWORK = MappingProxyType(
     {
         "summary_dim": 64,
-        "recurrent_type": "lstm",
+        "recurrent_type": "gru",
         "hidden_dim": (128, 128),
         "time_embed_dim": 16,
         "time_axis": 0,
