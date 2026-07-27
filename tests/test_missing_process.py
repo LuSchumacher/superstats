@@ -196,3 +196,13 @@ def test_random_missing_reproducible_with_seeded_rng():
     assert np.array_equal(result_a["missing_mask"], result_b["missing_mask"])
     for key in data_a:
         assert np.array_equal(result_a[key], result_b[key])
+
+
+def test_random_missing_does_not_mutate_input_arrays():
+    data = _named_data(batch_size=3, num_steps=5)
+    original = {key: value.copy() for key, value in data.items()}
+
+    RandomMissingProcess(p_missing=0.5, missing_value=-1).apply(data, rng=np.random.default_rng(101))
+
+    for key in data:
+        assert np.array_equal(data[key], original[key])

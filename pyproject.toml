@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "superstats"
-version = "0.0.1"
+version = "0.0.2"
 authors = [{ name = "Lukas Schumacher and Stefan Radev" }]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
@@ -16,19 +16,20 @@ classifiers = [
     "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
-    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 description = "Estimating time-varying parameters with deep learning"
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { file = "LICENSE" }
 
-requires-python = ">= 3.12"
+requires-python = ">= 3.12, < 3.14"
 dependencies = [
-    "jax >= 0.11.0",
-    "bayesflow>=2.0.12",
+    "bayesflow == 2.0.12",
+    "numpy >= 2.4, < 2.5",
+    "jax >= 0.11.0; sys_platform != 'win32'",
+    "torch; sys_platform == 'win32'",
     "numba >= 0.63.1",
-    "ipywidgets>=8.1.8",
+    "ipywidgets >= 8.1.8"
 ]
 [project.optional-dependencies]
 all = [
@@ -64,7 +65,7 @@ dev = [
     "ruff",
 ]
 cuda = [
-    "jax[cuda13] >= 0.11.0",
+    "jax[cuda13] >= 0.11.0; sys_platform != 'win32'",
 ]
 docs = [
     "myst-nb ~= 1.2",
@@ -181,6 +182,11 @@ find = {}
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+filterwarnings = [
+    "ignore:__array__ implementation doesn't accept a copy keyword.*:DeprecationWarning:keras.src.backend.jax.core",
+]
 
-[tool.uv.sources]
-bayesflow = { git = "https://github.com/bayesflow-org/bayesflow.git", rev = "dev" }
+[dependency-groups]
+dev = [
+    "sphinx-autobuild>=2025.8.25",
+]

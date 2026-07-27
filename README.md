@@ -1,8 +1,8 @@
 <div align="center">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="img/superstats-long-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="img/superstats-long-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="img/superstats-long-dark.svg">
-  <img alt="Overview graphic  of superstats" src="./img/superstats-long-light.svg">
+  <img alt="Superstats logo" src="./img/superstats-long-light.svg">
 </picture>
 </div>
 <br>
@@ -19,7 +19,7 @@ Superstats is a Python library for simulation and Bayesian estimation of dynamic
 The library aims to be domain-agnostic, but for now focuses on cognitive modeling. It provides users with:
 
 - A lean API for non-stationary models: specify which parameters change across time, and how.
-- A library of transition models: random walks, ARs, jump processes, mixtures, and Gaussian processes.
+- A library of transition models: random walks, ARs, levy flights, jump processes, mixtures, and Gaussian processes.
 - Built-in cognitive models, plus a plug-in interface for any simulator of your own.
 - Amortized Bayesian inference built on top of [BayesFlow](https://github.com/bayesflow-org/bayesflow): train once, then quickly fit every data set.
 - Diagnostics and visualization tools for every critical step in a principled Bayesian workflow.
@@ -28,9 +28,9 @@ The library aims to be domain-agnostic, but for now focuses on cognitive modelin
 
 <div align="center">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="img/superstats-arch-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="img/superstats-arch-light.svg">
-  <img alt="Overview graphic  of superstats" src="./img/superstats-arch-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="./img/superstats-arch-light.svg">
+  <source media="(prefers-color-scheme: light)" srcset="./img/superstats-arch-light.svg">
+  <img alt="Overview graphic of superstats" src="./img/superstats-arch-light.svg">
 </picture>
 </div>
 <br>
@@ -40,12 +40,12 @@ A **high-level transition model** $\mathcal{T}$ describes how the parameters of 
 
 $$\theta_t = \mathcal{T}(\theta_{0:t-1}; \eta) \qquad x_t = \mathcal{G}(x_{1:t-1}; \theta_t, \lambda)$$
 
-`superstats` trains a neural estimator on simulations from any generative model of this form and returns the joint posterior $p(\theta_{1:T}, \eta, \lambda \mid x_{1:T})$ over all time-varying parameters $\theta_{1:T}$ and time-invariant parameters $(\eta, \lambda)$.
+Superstats trains a neural estimator on simulations from any generative model of this form and returns the joint posterior $p(\theta_{1:T}, \eta, \lambda \mid x_{1:T})$ over all time-varying parameters $\theta_{1:T}$ and time-invariant parameters $(\eta, \lambda)$.
 
 
 ## Install
 
-We support Python 3.12 to 3.14. Install the latest version from source:
+We support Python 3.12 to 3.13. Install the latest version from source:
 
 ```bash
 pip install superstats
@@ -54,8 +54,16 @@ pip install superstats
 If you want the latest features, you can install from source:
 
 ```bash
-pip install git+https://github.com/LuSchumacher/superstats.git@dev"
+pip install git+https://github.com/LuSchumacher/superstats.git@dev
 ```
+
+### Deep learning backend
+
+Per default, `superstats` installs [JAX](https://docs.jax.dev/en/latest/installation.html) on Linux/MacOS machines and [PyTorch](https://pytorch.org/get-started/locally/) on Windows machines. This is because `JAX` does not natively support GPU acceleration on Windows. You can also manually install and configure any of the three backends:
+
+- [Install JAX](https://jax.readthedocs.io/en/latest/installation.html)
+- [Install PyTorch](https://pytorch.org/get-started/locally/)
+- [Install TensorFlow](https://www.tensorflow.org/install)
 
 ## Getting started
 
@@ -66,18 +74,12 @@ import superstats as sup
 
 # 1. Assume which parameters move, and how
 joint_prior = sup.JointPrior(
-    v=sup.transition.RandomWalk(),
-    a=sup.transition.RandomWalk(),
-    tau=sup.Prior(dist="halfnormal", scale=0.15),
-    bias=0.5
+    v=sup.transition.RandomWalk(), a=sup.transition.RandomWalk(), tau=sup.Prior(dist="halfnormal", scale=0.15), bias=0.5
 )
 
 # 2. Plug in an observation model (any simulator will do)
 generative_model = sup.GenerativeModel(
-    prior=joint_prior,
-    model=sup.simulation.sample_ddm,
-    missing="random",
-    contamination="random_choice"
+    prior=joint_prior, model=sup.simulation.sample_ddm, missing="random", contamination="random_choice"
 )
 
 # 3. Train a neural approximator
@@ -112,7 +114,7 @@ feature requests. For questions about the underlying inference machinery, the
 
 ## Citation
 
-If you use `superstats` in your research, please cite:
+If you use Superstats in your research, please cite:
 
 ```bibtex
 @article{schumacher2023neural,
@@ -137,7 +139,3 @@ If you use `superstats` in your research, please cite:
   doi     = {10.1007/s42113-024-00218-4}
 }
 ```
-
-## License
-
-MIT

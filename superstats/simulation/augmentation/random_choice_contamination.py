@@ -29,9 +29,9 @@ class RandomChoiceContamination(ContaminationProcess):
     the observed choice range (if choices are continuous); this is
     determined once from the whole batch, not per dataset.
 
-    [1] Wu, Y., Radev, S. T., & Tuerlinckx, F. (2026). Testing and improving the robustness
-    of amortized Bayesian inference for cognitive models. Psychological Methods.
-    https://arxiv.org/abs/2412.20586
+    [1] Wu, Y., Radev, S. T., & Tuerlinckx, F. (2026). Testing and improving the
+        robustness of amortized Bayesian inference for cognitive models.
+        Psychological Methods. https://arxiv.org/abs/2412.20586
 
     Parameters
     ----------

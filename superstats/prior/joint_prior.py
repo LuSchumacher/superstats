@@ -10,7 +10,7 @@ from superstats.diagnostics.plots.prior_samples import (
     plot_time_varying_prior,
 )
 from .prior import Prior
-from superstats.transition.transition import Transition
+from superstats.transition import DeterministicTransition, StochasticTransition
 
 
 class JointPrior:
@@ -18,23 +18,28 @@ class JointPrior:
 
     Parameters
     ----------
-    **kwargs : Transition, Prior, float, int
-        Named model parameters. Use `Transition` for time-varying
-        parameters with hyperparameters, `Prior` for inferred stationary
+    **kwargs : StochasticTransition, DeterministicTransition, Prior, float, int
+        Named model parameters.
+
+        Use `StochasticTransition` for stochastic time-varying parameters with
+        hyperparameters, `DeterministicTransition` for deterministic
+        time-varying parameters, `Prior` for inferred time-invariant
         parameters, and scalar values for fixed parameters.
 
     Notes
     -----
     Sample outputs are grouped into:
 
-    - `local_params`: time-varying trajectories.
-    - `hyper_params`: inferred transition hyperparameters.
-    - `shared_params`: inferred stationary parameters.
-    - `fixed_params`: fixed scalar values.
+    - `local_params`: stochastic time-varying parameters (inferred).
+    - `deterministic_params`: deterministic time-varying parameters (no inferred).
+    - `hyper_params`: hyperparameters for transition models (inferred).
+    - `shared_params`: time-invariant parameters (inferred).
+    - `fixed_params`: fixed parameters (no inferred).
     """
 
-    def __init__(self, **kwargs: Transition | Prior | float | int):
+    def __init__(self, **kwargs: StochasticTransition | DeterministicTransition | Prior | float | int):
         self.params = kwargs
+        self._last_hyper_param_groups = {}
 
     def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
         """Draw a joint parameter sample.
@@ -49,7 +54,8 @@ class JointPrior:
         Returns
         -------
         result : dict - sampled parameter groups `local_params`,
-            `hyper_params`, `shared_params`, and `fixed_params`
+            `deterministic_params` `hyper_params`, `shared_params`,
+            and `fixed_params`.
 
         Raises
         ------
@@ -61,33 +67,45 @@ class JointPrior:
         if num_steps <= 0:
             raise ValueError("num_steps must be a positive integer")
 
-        local_params: Dict[str, np.ndarray] = {}
-        hyper_params: Dict[str, np.ndarray] = {}
-        shared_params: Dict[str, np.ndarray] = {}
-        fixed_params: Dict[str, Any] = {}
+        local_params = {}
+        deterministic_params = {}
+        hyper_params = {}
+        shared_params = {}
+        fixed_params = {}
+        hyper_param_groups = {}
 
         for name, param in self.params.items():
-            if isinstance(param, Transition):
-                samples = param.sample(batch_size=batch_size, num_steps=num_steps)
-                local_params[name] = samples["local_params"]
-
-                for key, value in samples["hyper_params"].items():
-                    hyper_params[f"{name}_{key}"] = value
-
-                for key, value in samples["fixed_params"].items():
-                    fixed_params[f"{name}_{key}"] = value
-
+            if isinstance(param, StochasticTransition):
+                target = local_params
+                sample_key = "local_params"
+            elif isinstance(param, DeterministicTransition):
+                target = deterministic_params
+                sample_key = "deterministic_params"
             elif isinstance(param, Prior):
                 shared_params[name] = param.sample(batch_size=batch_size)
-
+                continue
             elif np.isscalar(param):
-                fixed_params[name] = int(param) if isinstance(param, int) else float(param)
-
+                fixed_params[name] = param
+                continue
             else:
                 raise TypeError(f"Unknown parameter type for '{name}': {type(param).__name__}")
 
+            samples = param.sample(batch_size=batch_size, num_steps=num_steps)
+            target[name] = samples[sample_key]
+
+            hyper_param_groups[name] = []
+            for key, value in samples["hyper_params"].items():
+                full_key = f"{name}_{key}"
+                hyper_params[full_key] = value
+                hyper_param_groups[name].append(full_key)
+
+            for key, value in samples["fixed_params"].items():
+                fixed_params[f"{name}_{key}"] = value
+
+        self._last_hyper_param_groups = hyper_param_groups
         return {
             "local_params": local_params,
+            "deterministic_params": deterministic_params,
             "hyper_params": hyper_params,
             "shared_params": shared_params,
             "fixed_params": fixed_params,
@@ -133,8 +151,9 @@ class JointPrior:
         fig : plt.Figure - the generated figure
         """
         samples = self.sample(batch_size=num_trajectories, num_steps=num_steps)
+        local_params = {**samples["local_params"], **samples["deterministic_params"]}
         return plot_time_varying_prior(
-            local_params=samples["local_params"],
+            local_params=local_params,
             param_bounds=self._param_bounds(),
             **kwargs,
         )
@@ -182,12 +201,14 @@ class JointPrior:
         fig : plt.Figure - the generated figure
         """
         samples = self.sample(batch_size=num_draws, num_steps=num_steps)
-        local_params = {k: v[:num_trajectories] for k, v in samples["local_params"].items()}
+        all_local_params = {**samples["local_params"], **samples["deterministic_params"]}
+        local_params = {k: v[:num_trajectories] for k, v in all_local_params.items()}
         return plot_joint_prior(
             local_params=local_params,
             hyper_params=samples["hyper_params"],
             shared_params=samples["shared_params"],
             param_bounds=self._param_bounds(),
             mixture_names=self._mixture_names(),
+            hyper_param_groups=self._last_hyper_param_groups,
             **kwargs,
         )

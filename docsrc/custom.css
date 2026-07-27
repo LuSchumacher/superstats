@@ -1,0 +1,37 @@
+.sd-figure {
+    background: transparent !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+}
+
+.sd-figure > div,
+figure {
+    background: transparent !important;
+    box-shadow: none !important;
+    border: 0 !important;
+}
+
+.sd-figure img,
+figure img,
+.bd-content img {
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+.conceptual-overview {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 1.25rem;
+    margin: 1.5rem auto 2rem;
+    background: linear-gradient(180deg, #17333a 0%, #10252b 100%);
+    border-radius: 1rem;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.12);
+}
+
+.conceptual-overview img {
+    display: block;
+    width: min(100%, 980px);
+    height: auto;
+    background: transparent !important;
+}

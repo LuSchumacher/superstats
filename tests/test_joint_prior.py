@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from superstats.prior import JointPrior, Prior
-from superstats.transition import RandomWalk
+from superstats.transition.stochastic import RandomWalk
 
 BATCH_SIZE = 6
 NUM_STEPS = 10
@@ -21,9 +21,16 @@ def test_joint_prior_sample_groups_and_shapes():
     prior = _build_joint_prior()
     result = prior.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS)
 
-    assert set(result.keys()) == {"local_params", "hyper_params", "shared_params", "fixed_params"}
+    assert set(result.keys()) == {
+        "local_params",
+        "deterministic_params",
+        "hyper_params",
+        "shared_params",
+        "fixed_params",
+    }
 
     assert result["local_params"]["v"].shape == (BATCH_SIZE, NUM_STEPS)
+    assert result["deterministic_params"] == {}
     assert "v_sigma" in result["hyper_params"]
     assert result["hyper_params"]["v_sigma"].shape == (BATCH_SIZE,)
 

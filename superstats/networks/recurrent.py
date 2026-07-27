@@ -23,9 +23,9 @@ class RecurrentNet(bf.networks.SummaryNetwork):
     ----------
     summary_dim    : int, optional, default: 64
         Per-timestep output dimensionality.
-    hidden_dim     : int or sequence of int, optional, default: (64, 64)
+    hidden_dim     : int or sequence of int, optional, default: (128, 128)
         Dimensionality of the hidden state in each recurrent layer.
-    recurrent_type : {"lstm", "gru"} or sequence, optional, default: "gru"
+    recurrent_type : {"lstm", "gru"} or sequence, optional, default: "lstm"
         Type of recurrent unit to use in each layer.
     bidirectional  : bool or sequence of bool, optional, default: True
         If True, the layer is processed bidirectionally and the two
@@ -62,7 +62,7 @@ class RecurrentNet(bf.networks.SummaryNetwork):
     def __init__(
         self,
         summary_dim: int = 64,
-        hidden_dim: int | Sequence[int] = (64, 64),
+        hidden_dim: int | Sequence[int] = (128, 128),
         recurrent_type: str | Sequence[str] = "gru",
         bidirectional: bool | Sequence[bool] = True,
         merge_mode: str | Sequence[str] = "sum",

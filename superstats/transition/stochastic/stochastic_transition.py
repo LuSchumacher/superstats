@@ -1,25 +1,26 @@
-"""Base transition interface and shared parameter helpers."""
+"""Base stochastic transition interface."""
 
 from abc import ABC, abstractmethod
-from typing import Tuple, Dict, Any, Union
+from collections.abc import Sequence
+from typing import Dict, Any, Union
 import numpy as np
 
-from superstats.prior import Prior
-from superstats.defaults.transition_defaults import (
-    DEFAULT_HYPER_PRIORS,
+from superstats.prior.prior import Prior
+from superstats.defaults import (
+    DEFAULT_STOCHASTIC_HYPER_PRIORS,
     DEFAULT_BOUNDS,
     DEFAULT_INITIAL_PRIOR,
 )
 
-ParamSpec = Union[Prior, float, None]
+ParamSpec = Union[Prior, float, int, None]
 
 
-class Transition(ABC):
-    """Base class for time-varying parameter transitions.
+class StochasticTransition(ABC):
+    """Base class for stochastic transition models.
 
-    Subclasses implement stochastic dynamics for a single scalar latent
-    parameter. Subclasses must implement `sample` (generate full
-    trajectories) and `sample_one_step` (advance a single time step).
+    Subclasses implement deterministic dynamics for a single scalar latent
+    parameter. Subclasses must implement `sample` to generate complete
+    trajectories from resolved parameter values.
 
     Parameters
     ----------
@@ -40,13 +41,15 @@ class Transition(ABC):
         Mapping from hyperparameter names to either a `Prior` (to be
         sampled per-batch) or a scalar fixed value. Populated by
         subclasses.
+    transition_name : str
+        Short model name, such as ``"rw"`` or ``"ar1"``.
     """
 
     dtype = np.float32
 
     def __init__(
         self,
-        bounds: Tuple[float, float] | np.ndarray | None = None,
+        bounds: Sequence[float, float] | None = None,
         initial_prior: Prior | None = None,
     ):
         self._user_defined_bounds = bounds is not None
@@ -57,7 +60,8 @@ class Transition(ABC):
         )
 
         self.initial_prior = initial_prior if initial_prior is not None else DEFAULT_INITIAL_PRIOR
-        self.hyper_specs: Dict[str, ParamSpec] = {}
+        self.hyper_specs = {}
+        self.transition_name = self.__class__.__name__
 
     def _resolve(self, name: str, spec: ParamSpec) -> tuple[Prior | float, bool]:
         """Resolve a single hyperparameter spec to a value and sample flag.
@@ -87,18 +91,18 @@ class Transition(ABC):
             If `spec` is not None, a `Prior`, or a numeric scalar.
         """
         if spec is None:
-            default = DEFAULT_HYPER_PRIORS.get(name)
+            default = DEFAULT_STOCHASTIC_HYPER_PRIORS.get(name)
             if default is None:
                 raise KeyError(f"No default hyperprior found for '{name}'")
             if isinstance(default, Prior):
                 return default, True
-            return float(default), False
+            return default, False
 
         if isinstance(spec, Prior):
             return spec, True
 
         if isinstance(spec, (float, int)):
-            return float(spec), False
+            return spec, False
 
         raise TypeError(f"Invalid hyperparameter '{name}': {type(spec)}")
 
@@ -157,8 +161,8 @@ class Transition(ABC):
             `(batch_size,)` and `fixed_params` maps names to fixed
             floats
         """
-        hyper_params: Dict[str, np.ndarray] = {}
-        fixed_params: Dict[str, float] = {}
+        hyper_params = {}
+        fixed_params = {}
 
         for name, spec in self.hyper_specs.items():
             value, infer = self._resolve(name, spec)

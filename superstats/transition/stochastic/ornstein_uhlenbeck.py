@@ -4,7 +4,7 @@ from typing import Tuple, Dict, Any
 import numpy as np
 from numba import njit, prange
 
-from .transition import Transition, Prior
+from .stochastic_transition import StochasticTransition, Prior
 from superstats.utils.transformations import scaled_sigmoid
 
 
@@ -82,7 +82,7 @@ def _one_step_ou(
     return x + theta * (mu - x) + sigma * noise
 
 
-class OrnsteinUhlenbeck(Transition):
+class OrnsteinUhlenbeck(StochasticTransition):
     """Ornstein-Uhlenbeck mean-reverting transition.
 
     Parameters
@@ -120,7 +120,7 @@ class OrnsteinUhlenbeck(Transition):
             "theta": theta,
         }
 
-        self.transition_type = "ou"
+        self.transition_name = "ou"
 
     def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
         """Draw `batch_size` Ornstein-Uhlenbeck trajectories of length `num_steps`.
@@ -138,7 +138,7 @@ class OrnsteinUhlenbeck(Transition):
             `hyper_params`, and `fixed_params`
         """
         local_params = np.empty((batch_size, num_steps), dtype=self.dtype)
-        local_params[:, 0] = self.initial_prior.sample(batch_size).astype(self.dtype)
+        local_params[:, 0] = self.initial_prior.sample(batch_size)
 
         hyper, fixed = self._resolve_hyperparams(batch_size)
 
@@ -159,9 +159,9 @@ class OrnsteinUhlenbeck(Transition):
 
         local_params = _sample_ou(
             local_params,
-            mu.astype(self.dtype),
-            theta.astype(self.dtype),
-            sigma.astype(self.dtype),
+            mu,
+            theta,
+            sigma,
             self.bounds,
         )
 
@@ -185,12 +185,9 @@ class OrnsteinUhlenbeck(Transition):
         -------
         x_next : float - the next latent state
         """
-        mu = float(params["mu"])
-        theta = float(params["theta"])
-        sigma = float(params["sigma"])
         return _one_step_ou(
             x,
-            mu,
-            theta,
-            sigma,
+            params["mu"],
+            params["theta"],
+            params["sigma"],
         )

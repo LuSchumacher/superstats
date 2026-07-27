@@ -2,16 +2,34 @@ import numpy as np
 import pytest
 
 from superstats.prior import Prior
-from superstats.transition import (
+from superstats.transition.stochastic import (
     AutoRegression,
     Jump,
     Mixture,
     OrnsteinUhlenbeck,
     RandomWalk,
+    StochasticTransition,
 )
 
 BATCH_SIZE = 8
 NUM_STEPS = 12
+
+
+def test_transition_models_use_stochastic_transition_base_class():
+    transitions = [RandomWalk(), AutoRegression(), OrnsteinUhlenbeck(), Jump()]
+    assert all(isinstance(transition, StochasticTransition) for transition in transitions)
+    assert isinstance(
+        Mixture(
+            transitions=[RandomWalk(), Jump()],
+            initial_prior=Prior("normal"),
+        ),
+        StochasticTransition,
+    )
+
+
+def test_transition_models_expose_name():
+    transitions = [RandomWalk(), AutoRegression(), OrnsteinUhlenbeck(), Jump()]
+    assert [transition.transition_name for transition in transitions] == ["rw", "ar1", "ou", "jump"]
 
 
 @pytest.mark.parametrize(
@@ -47,30 +65,30 @@ def test_transition_sample_shape_and_keys(transition, expected_hyper_keys, expec
 
 def test_random_walk_sample_one_step_returns_finite_float():
     transition = RandomWalk()
-    x_next = transition.sample_one_step(x=0.0, params={"sigma": 0.1, "delta": 0.0})
+    x_next = transition.sample_one_step(x=2.0, params={"sigma": 0.0, "delta": 0.5})
     assert isinstance(x_next, float)
-    assert np.isfinite(x_next)
+    assert x_next == pytest.approx(2.5)
 
 
 def test_auto_regression_sample_one_step_returns_finite_float():
     transition = AutoRegression()
-    x_next = transition.sample_one_step(x=0.0, params={"sigma": 0.1, "phi": 0.9, "delta": 0.0})
+    x_next = transition.sample_one_step(x=2.0, params={"sigma": 0.0, "phi": 0.9, "delta": 0.5})
     assert isinstance(x_next, float)
-    assert np.isfinite(x_next)
+    assert x_next == pytest.approx(2.3)
 
 
 def test_ornstein_uhlenbeck_sample_one_step_returns_finite_float():
     transition = OrnsteinUhlenbeck()
-    x_next = transition.sample_one_step(x=0.0, params={"mu": 0.0, "theta": 0.1, "sigma": 0.1})
+    x_next = transition.sample_one_step(x=2.0, params={"mu": 0.0, "theta": 0.1, "sigma": 0.0})
     assert isinstance(x_next, float)
-    assert np.isfinite(x_next)
+    assert x_next == pytest.approx(1.8)
 
 
 def test_jump_sample_one_step_returns_finite_float():
     transition = Jump()
-    x_next = transition.sample_one_step(x=0.0, params={"p_jump": 1.0})
+    x_next = transition.sample_one_step(x=2.0, params={"p_jump": 0.0})
     assert isinstance(x_next, float)
-    assert np.isfinite(x_next)
+    assert x_next == pytest.approx(2.0)
 
 
 def test_mixture_sample_shape_and_keys():
@@ -97,6 +115,8 @@ def test_mixture_sample_shape_and_keys():
     assert "rw_delta" in result["fixed_params"]
     assert "jump_p_jump" in result["fixed_params"]
     assert "mixture_weights" in result["fixed_params"]
+    assert result["hyper_params"]["rw_sigma"].shape == (BATCH_SIZE,)
+    assert np.all(np.isfinite(result["hyper_params"]["rw_sigma"]))
 
 
 def test_mixture_requires_at_least_two_transitions():

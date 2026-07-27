@@ -1,19 +1,27 @@
 """Transition models for latent time-varying parameters."""
 
-from .random_walk import RandomWalk
-from .auto_regression import AutoRegression
-from .ornstein_uhlenbeck import OrnsteinUhlenbeck
-from .gaussian_process import GaussianProcess
-from .jump import Jump
-from .mixture import Mixture
-from .transition import Transition
+from .stochastic import (
+    RandomWalk,
+    AutoRegression,
+    LevyFlight,
+    OrnsteinUhlenbeck,
+    Jump,
+    Mixture,
+    GaussianProcess,
+    StochasticTransition,
+)
+from .deterministic import DeterministicTransition, Linear, Polynomial
 
 __all__ = [
     "RandomWalk",
     "AutoRegression",
+    "LevyFlight",
     "OrnsteinUhlenbeck",
-    "GaussianProcess",
     "Jump",
     "Mixture",
-    "Transition",
+    "GaussianProcess",
+    "StochasticTransition",
+    "DeterministicTransition",
+    "Linear",
+    "Polynomial",
 ]

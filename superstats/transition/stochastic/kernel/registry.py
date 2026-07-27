@@ -1,13 +1,11 @@
 """Kernel name registry and resolution."""
 
-from typing import Dict
-
 from .kernel import Kernel
 from .rbf import RBFKernel
 from .linear import LinearKernel
 from .periodic import PeriodicKernel
 
-KERNEL_REGISTRY: Dict[str, Kernel] = {
+KERNEL_REGISTRY = {
     "rbf": RBFKernel(),
     "linear": LinearKernel(),
     "periodic": PeriodicKernel(),

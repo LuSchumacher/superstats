@@ -4,11 +4,11 @@ from typing import Sequence, Tuple, Dict, Any
 import numpy as np
 import warnings
 
-from .transition import Transition, Prior
+from .stochastic_transition import StochasticTransition, Prior
 from superstats.utils.transformations import scaled_sigmoid
 
 
-class Mixture(Transition):
+class Mixture(StochasticTransition):
     """Mixture over multiple transitions, switching regimes at each step.
 
     Parameters
@@ -30,7 +30,7 @@ class Mixture(Transition):
         transitions. Required at sample time.
     names           : sequence of str or None, optional, default: None
         Names for each component, used to prefix hyperparameter keys.
-        Defaults to each component's `transition_type`.
+        Defaults to each component's `transition_name`.
 
     Raises
     ------
@@ -47,7 +47,7 @@ class Mixture(Transition):
 
     def __init__(
         self,
-        transitions: Sequence[Transition],
+        transitions: Sequence[StochasticTransition],
         mixture_weights: Prior | Tuple[float, ...] | None = None,
         bounds: Sequence[float] | None = None,
         initial_prior: Prior | None = None,
@@ -58,7 +58,7 @@ class Mixture(Transition):
             initial_prior=initial_prior,
         )
 
-        self.transitions = list(transitions)
+        self.transitions = transitions
 
         if len(self.transitions) < 2:
             raise ValueError("Mixture must contain at least two transitions.")
@@ -70,19 +70,19 @@ class Mixture(Transition):
             if t._user_defined_bounds:
                 raise ValueError(
                     f"Transition at index {i} "
-                    f"({t.transition_type}) defines bounds={t.bounds}. "
+                    f"({t.transition_name}) defines bounds={t.bounds}. "
                     "Transitions inside Mixture cannot define bounds. "
                     "Specify bounds in Mixture(...) instead."
                 )
             if t._user_defined_initial_prior:
                 raise ValueError(
                     f"Transition at index {i} "
-                    f"({t.transition_type}) defines initial_prior. "
+                    f"({t.transition_name}) defines initial_prior. "
                     "Transitions inside Mixture cannot define "
                     "initial_prior. "
                     "Specify initial_prior in Mixture(...) instead."
                 )
-            if t.transition_type == "jump":
+            if t.transition_name == "jump":
                 if getattr(t, "_user_defined_p_jump", False):
                     raise ValueError(
                         f"Jump transition at index {i} defines p_jump. "
@@ -93,7 +93,7 @@ class Mixture(Transition):
             t.bounds = self.bounds
             t.initial_prior = self.initial_prior
 
-        self.names = names or [t.transition_type for t in self.transitions]
+        self.names = names or [t.transition_name for t in self.transitions]
 
         if len(self.names) != self.K:
             raise ValueError("names must match number of transitions")
@@ -103,10 +103,7 @@ class Mixture(Transition):
                 "mixture_weights must be tuple/list, Dirichlet Prior, or None. Scalar values are ambiguous."
             )
 
-        if isinstance(mixture_weights, tuple):
-            mixture_weights = list(mixture_weights)
-
-        if isinstance(mixture_weights, list):
+        if isinstance(mixture_weights, (tuple, list)):
             w = np.asarray(mixture_weights, dtype=self.dtype)
 
             if w.shape[0] != self.K:
@@ -121,7 +118,7 @@ class Mixture(Transition):
                 warnings.warn(f"mixture_weights sum to {s:.2f}, normalizing to simplex.", RuntimeWarning)
                 w = w / s
 
-            self.mixture_weights = tuple(w.tolist())
+            self.mixture_weights = tuple(w)
 
         elif isinstance(mixture_weights, Prior):
             if mixture_weights.dist != "dirichlet":
@@ -132,7 +129,7 @@ class Mixture(Transition):
         else:
             raise TypeError("Invalid type for mixture_weights")
 
-        self.transition_type = "mixture"
+        self.transition_name = "mixture"
 
     def _sample_mixture_weights(self, batch_size: int) -> np.ndarray:
         """Sample per-batch mixture weights.
@@ -150,7 +147,7 @@ class Mixture(Transition):
         """
         # Dirichlet prior
         if isinstance(self.mixture_weights, Prior):
-            w = self.mixture_weights.sample(batch_size).astype(self.dtype)
+            w = self.mixture_weights.sample(batch_size)
 
             return w
 
@@ -216,7 +213,7 @@ class Mixture(Transition):
         local_params = np.empty((batch_size, num_steps), dtype=self.dtype)
 
         # initial state
-        local_params[:, 0] = self.initial_prior.sample(batch_size).astype(self.dtype)
+        local_params[:, 0] = self.initial_prior.sample(batch_size)
 
         # mixture weights + regimes
         weights = self._sample_mixture_weights(batch_size)
@@ -229,11 +226,11 @@ class Mixture(Transition):
         for model in self.transitions:
             hyper, fixed = model._resolve_hyperparams(batch_size)
 
-            params: Dict[str, np.ndarray] = {}
+            params = {}
 
             # sampled hyperparameters
             for k, v in hyper.items():
-                params[k] = v.astype(self.dtype)
+                params[k] = v
 
             # fixed hyperparameters
             for k, v in fixed.items():
@@ -253,9 +250,7 @@ class Mixture(Transition):
                 model = self.transitions[k]
                 params_all = resolved_params[k]["params"]
 
-                params = {
-                    key: float(val[b]) if hasattr(val, "__len__") else float(val) for key, val in params_all.items()
-                }
+                params = {key: val[b] for key, val in params_all.items()}
 
                 local_params[b, t] = model.sample_one_step(
                     local_params[b, t - 1],
@@ -265,17 +260,17 @@ class Mixture(Transition):
             local_params[b, :] = scaled_sigmoid(local_params[b, :], self.bounds[0], self.bounds[1])
 
         # collect outputs
-        hyper_params: Dict[str, np.ndarray] = {}
-        fixed_params: Dict[str, float] = {}
+        hyper_params = {}
+        fixed_params = {}
 
         for name, resolved in zip(self.names, resolved_params):
             # sampled hyperparameters
             for k, v in resolved["hyper"].items():
-                hyper_params[f"{name}_{k}"] = v.astype(self.dtype)
+                hyper_params[f"{name}_{k}"] = v
 
             # fixed hyperparameters
             for k, v in resolved["fixed"].items():
-                fixed_params[f"{name}_{k}"] = float(v)
+                fixed_params[f"{name}_{k}"] = v
 
         if isinstance(self.mixture_weights, Prior):
             hyper_params["mixture_weights"] = weights

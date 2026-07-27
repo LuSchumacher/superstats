@@ -4,7 +4,7 @@ from typing import Tuple, Dict, Any
 import numpy as np
 from numba import njit, prange
 
-from .transition import Transition, Prior
+from .stochastic_transition import StochasticTransition, Prior
 from superstats.utils.transformations import scaled_sigmoid
 
 
@@ -77,7 +77,7 @@ def _one_step_jump(
     return x
 
 
-class Jump(Transition):
+class Jump(StochasticTransition):
     """Simple jump process: stay or jump to a proposal draw.
 
     Parameters
@@ -114,7 +114,7 @@ class Jump(Transition):
         }
 
         self.proposal_prior = proposal_prior or Prior("normal", loc=0.0, scale=1.0)
-        self.transition_type = "jump"
+        self.transition_name = "jump"
 
     def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
         """Draw `batch_size` jump-process trajectories of length `num_steps`.
@@ -132,7 +132,7 @@ class Jump(Transition):
             `hyper_params`, and `fixed_params`
         """
         local_params = np.empty((batch_size, num_steps), dtype=self.dtype)
-        local_params[:, 0] = self.initial_prior.sample(batch_size).astype(self.dtype)
+        local_params[:, 0] = self.initial_prior.sample(batch_size)
 
         hyper, fixed = self._resolve_hyperparams(batch_size)
 
@@ -141,13 +141,9 @@ class Jump(Transition):
         else:
             p_jump = np.full(batch_size, fixed["p_jump"], dtype=self.dtype)
 
-        proposals = (
-            self.proposal_prior.sample(batch_size * (num_steps - 1))
-            .reshape(
-                batch_size,
-                num_steps - 1,
-            )
-            .astype(self.dtype)
+        proposals = self.proposal_prior.sample(batch_size * (num_steps - 1)).reshape(
+            batch_size,
+            num_steps - 1,
         )
 
         local_params = _sample_jump_process(
@@ -177,10 +173,8 @@ class Jump(Transition):
         -------
         x_next : float - the next latent state
         """
-        p_jump = float(params["p_jump"])
-        proposal = float(self.proposal_prior.sample(1)[0])
         return _one_step_jump(
             x,
-            p_jump,
-            proposal,
+            params["p_jump"],
+            self.proposal_prior.sample(1)[0],
         )
