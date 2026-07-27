@@ -11,6 +11,7 @@ import pandas as pd
 
 import bayesflow as bf
 import keras
+import logging
 
 from bayesflow.adapters import Adapter
 
@@ -26,6 +27,11 @@ from superstats.diagnostics.plots import (
 )
 
 
+class _SuppressCheckpointExistsWarning(logging.Filter):
+    def filter(self, record):
+        return "Checkpoint file exists" not in record.getMessage()
+
+
 class Workflow:
     """Lightweight amortized Bayesian inference workflow wrapper.
 
@@ -35,16 +41,16 @@ class Workflow:
 
     Parameters
     ----------
-    simulator         : GenerativeModel or None, optional, default: None
+    simulator            : GenerativeModel or None, optional, default: None
         The simulator used for training and, when `adapter` is not
         provided, for building a default adapter. Required in that case.
-    adapter           : Adapter or None, optional, default: None
+    adapter              : Adapter or None, optional, default: None
         Data adapter for the workflow. If None, a default adapter is
         built from the stochastic `simulator.local_keys`, `simulator.hyper_keys`,
         and `simulator.shared_keys` (which requires `simulator` to be set).
-    summary_network   : {"recurrent", "transformer"} or keras.Layer, optional, default: "recurrent".
+    summary_network      : {"recurrent", "transformer"} or keras.Layer, optional, default: "recurrent".
         String names build a default summary network; otherwise, an already-created Keras layer is used directly.
-    inference_network : {"coupling", "coupling_flow"} or keras.Layer, optional, default: "coupling".
+    inference_network    : {"coupling", "coupling_flow"} or keras.Layer, optional, default: "coupling".
         String names build a default inference network; otherwise, an already-created Keras
         layer is used directly.
     checkpoint_filepath  : str or None, optional, default: None
@@ -85,12 +91,7 @@ class Workflow:
 
         self.checkpoint_filepath = checkpoint_filepath
 
-        if restore_approximator and self.checkpoint_filepath is not None and os.path.isdir(self.checkpoint_filepath):
-            restore = True
-        elif restore_approximator:
-            restore = False
-        else:
-            restore = False
+        logging.getLogger("bayesflow").addFilter(_SuppressCheckpointExistsWarning())
 
         self.workflow = bf.BasicWorkflow(
             simulator=self.simulator,
@@ -99,9 +100,12 @@ class Workflow:
             inference_network=self.inference_network,
             standardize="all",
             checkpoint_filepath=self.checkpoint_filepath,
-            restore=restore,
             **kwargs,
         )
+
+        if restore_approximator and self.checkpoint_filepath is not None and os.path.isdir(self.checkpoint_filepath):
+            path = os.path.join(self.checkpoint_filepath, "model.keras")
+            self.approximator = keras.saving.load_model(path)
 
         if restore_history and self.checkpoint_filepath is not None and os.path.isdir(self.checkpoint_filepath):
             self._load_history()
@@ -304,8 +308,18 @@ class Workflow:
 
     @property
     def approximator(self):
-        """The underlying trained bf approximator object."""
+        """The underlying trained BayesFlow approximator object.
+
+        Reads through to `self.workflow.approximator` by default (kept in
+        sync automatically by `bf.BasicWorkflow` during training), but can
+        be explicitly assigned - e.g. when restoring a checkpoint from
+        disk in `__init__`.
+        """
         return self.workflow.approximator
+
+    @approximator.setter
+    def approximator(self, value):
+        self.workflow.approximator = value
 
     def sample(
         self,
