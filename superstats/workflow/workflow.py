@@ -16,7 +16,7 @@ import logging
 from bayesflow.adapters import Adapter
 
 from superstats.simulation import GenerativeModel
-from superstats.utils.dispatch import find_inference_network, find_summary_network
+from superstats.utils.dispatch import find_inference_network, find_embedding_network
 from superstats.utils.logging import warning as log_warning
 from superstats.diagnostics.plots import (
     plot_time_varying_verification,
@@ -35,7 +35,7 @@ class _SuppressCheckpointExistsWarning(logging.Filter):
 class Workflow:
     """Lightweight amortized Bayesian inference workflow wrapper.
 
-    Wraps `bf.BasicWorkflow` with sensible defaults for the summary and
+    Wraps `bf.BasicWorkflow` with sensible defaults for the embedding and
     inference networks, an auto-built adapter when one isn't supplied,
     and optional checkpoint/history restoration.
 
@@ -48,8 +48,8 @@ class Workflow:
         Data adapter for the workflow. If None, a default adapter is
         built from the stochastic `simulator.local_keys`, `simulator.hyper_keys`,
         and `simulator.shared_keys` (which requires `simulator` to be set).
-    summary_network      : {"recurrent", "transformer"} or keras.Layer, optional, default: "recurrent".
-        String names build a default summary network; otherwise, an already-created Keras layer is used directly.
+    embedding_network      : {"recurrent", "transformer"} or keras.Layer, optional, default: "recurrent".
+        String names build a default embedding network; otherwise, an already-created Keras layer is used directly.
     inference_network    : {"coupling", "coupling_flow"} or keras.Layer, optional, default: "coupling".
         String names build a default inference network; otherwise, an already-created Keras
         layer is used directly.
@@ -72,7 +72,7 @@ class Workflow:
         self,
         simulator: GenerativeModel | None = None,
         adapter: Adapter | None = None,
-        summary_network: Literal["recurrent", "transformer"] | keras.Layer = "recurrent",
+        embedding_network: Literal["recurrent", "transformer"] | keras.Layer = "recurrent",
         inference_network: Literal["coupling", "coupling_flow"] | keras.Layer = "coupling",
         checkpoint_filepath: str | None = None,
         restore_approximator: bool = True,
@@ -81,7 +81,7 @@ class Workflow:
     ):
         self.simulator = simulator
 
-        self.summary_network = find_summary_network(summary_network)
+        self.embedding_network = find_embedding_network(embedding_network)
         self.inference_network = find_inference_network(inference_network)
 
         if adapter is not None:
@@ -96,7 +96,7 @@ class Workflow:
         self.workflow = bf.BasicWorkflow(
             simulator=self.simulator,
             adapter=self.adapter,
-            summary_network=self.summary_network,
+            summary_network=self.embedding_network,
             inference_network=self.inference_network,
             standardize="all",
             checkpoint_filepath=self.checkpoint_filepath,

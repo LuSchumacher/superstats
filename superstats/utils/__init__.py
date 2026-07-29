@@ -6,7 +6,7 @@ from .dispatch import (
     find_contamination,
     find_inference_network,
     find_missing,
-    find_summary_network,
+    find_embedding_network,
 )
 from .logging import error, info, logger, warn_once, warning
 
@@ -16,7 +16,7 @@ __all__ = [
     "find_inference_network",
     "find_missing",
     "find_contamination",
-    "find_summary_network",
+    "find_embedding_network",
     "logger",
     "info",
     "warning",
