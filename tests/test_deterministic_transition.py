@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from superstats.prior import JointPrior
+from superstats.prior import JointPrior, Prior
 from superstats.transition import DeterministicTransition, Linear, Polynomial
 
 
@@ -61,6 +61,35 @@ def test_polynomial_reconstructs_trajectory_from_resolved_parameters():
     )
 
     np.testing.assert_allclose(trajectory[0], [1.0, 2.75, 6.0])
+
+
+@pytest.mark.parametrize("degree", [1, 2, 3])
+def test_polynomial_trajectory_matches_reported_hyperparameters(degree):
+    transition = Polynomial(
+        intercept=Prior("normal", loc=1.0, scale=0.5),
+        betas=Prior("normal", loc=2.0, scale=0.5),
+        degree=degree,
+        bounds=(-100.0, 100.0),
+    )
+    result = transition.sample(batch_size=8, num_steps=10)
+
+    reconstructed = transition.sample_from_parameters(
+        {**result["hyper_params"], **result["fixed_params"]}, batch_size=8, num_steps=10
+    )
+    np.testing.assert_allclose(reconstructed, result["deterministic_params"])
+
+
+def test_polynomial_reported_beta_matches_change_across_trajectory():
+    transition = Polynomial(
+        intercept=Prior("normal", loc=1.0, scale=0.5),
+        betas=Prior("normal", loc=2.0, scale=0.5),
+        degree=1,
+        bounds=(-100.0, 100.0),
+    )
+    result = transition.sample(batch_size=8, num_steps=10)
+
+    trajectory = result["deterministic_params"]
+    np.testing.assert_allclose(result["hyper_params"]["beta_1"], trajectory[:, -1] - trajectory[:, 0], atol=1e-5)
 
 
 def test_polynomial_rejects_wrong_number_of_coefficients():

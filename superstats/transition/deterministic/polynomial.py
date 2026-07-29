@@ -110,25 +110,20 @@ class Polynomial(DeterministicTransition):
         """Draw `batch_size` polynomial trajectories of length `num_steps`."""
         hyper, fixed = self._resolve_hyperparams(batch_size)
 
-        intercept = (
-            self._sample(hyper["intercept"], batch_size)
-            if "intercept" in hyper
-            else np.full(batch_size, fixed["intercept"], dtype=self.dtype)
-        )
+        resolved = {
+            name: hyper[name] if name in hyper else np.full(batch_size, fixed[name], dtype=self.dtype)
+            for name in self.hyper_specs
+        }
 
         if self.normalize_steps:
             index = np.linspace(0.0, 1.0, num_steps, dtype=self.dtype)
         else:
             index = np.arange(num_steps, dtype=self.dtype)
 
-        local = np.repeat(intercept[:, None], num_steps, axis=1)
+        local = np.repeat(resolved["intercept"][:, None], num_steps, axis=1)
 
         for power in range(1, self.degree + 1):
-            name = f"beta_{power}"
-            spec = self.hyper_specs[name]
-            value, infer = self._resolve_beta(spec)
-            beta = self._sample(value, batch_size) if infer else np.full(batch_size, value, dtype=self.dtype)
-            local += beta[:, None] * np.power(index[None, :], power)
+            local += resolved[f"beta_{power}"][:, None] * np.power(index[None, :], power)
 
         return {
             "deterministic_params": self._bound(local),
