@@ -4,7 +4,7 @@ import logging as _logging
 
 from . import prior, diagnostics, simulation, workflow, networks
 from .prior import JointPrior, Prior
-from .simulation import GenerativeModel
+from .simulation import Model
 from .workflow import Workflow
 
 _logging.basicConfig(level=_logging.INFO)
@@ -18,7 +18,7 @@ __all__ = [
     "networks",
     "JointPrior",
     "Prior",
-    "GenerativeModel",
+    "Model",
     "Workflow",
 ]
 

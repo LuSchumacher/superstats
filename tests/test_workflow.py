@@ -85,7 +85,7 @@ def test_fit_offline_delegates_and_saves_history(basic_workflow, tmp_path):
 
 def test_fit_online_restores_sampler_after_training(basic_workflow):
     simulator = SimpleNamespace(sample=Mock(name="sample"))
-    workflow = Workflow(simulator=simulator, adapter=object())
+    workflow = Workflow(model=simulator, adapter=object())
     original_sample = simulator.sample
 
     workflow.fit_online(num_steps=7, epochs=2, num_batches_per_epoch=3, batch_size=4, save_history=False)
@@ -97,7 +97,7 @@ def test_fit_online_restores_sampler_after_training(basic_workflow):
 
 def test_fit_online_restores_sampler_when_training_fails(basic_workflow):
     simulator = SimpleNamespace(sample=Mock(name="sample"))
-    workflow = Workflow(simulator=simulator, adapter=object())
+    workflow = Workflow(model=simulator, adapter=object())
     original_sample = simulator.sample
     workflow.workflow.fit_online.side_effect = RuntimeError("training failed")
 
