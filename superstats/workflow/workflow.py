@@ -428,9 +428,6 @@ class Workflow:
 
             if arr.ndim == 3:
                 selected = arr[np.arange(batch_size)[:, None], sample_idx, :]
-                # Posterior samples for shared/hyperparameters have a
-                # singleton trailing time axis, whereas local and
-                # deterministic trajectories have one entry per step.
                 simulation_params[name] = selected[..., 0] if name not in time_varying_keys else selected
             elif arr.ndim == 4:
                 selected = arr[
@@ -440,9 +437,6 @@ class Workflow:
                     :,
                 ]
                 if name not in time_varying_keys:
-                    # Some adapters tile shared parameters over time and/or
-                    # retain a singleton feature axis. Only one value per
-                    # posterior draw is needed for simulation.
                     while selected.ndim > 2:
                         selected = selected[..., 0]
                 simulation_params[name] = selected
@@ -472,10 +466,6 @@ class Workflow:
         for name, value in fixed_params.items():
             expanded_params[name] = np.broadcast_to(np.asarray(value), (batch_size * num_sims,))
 
-        # Deterministic transitions are simulated but are intentionally not
-        # returned as inferred trajectories. Delegate reconstruction to each
-        # transition, keeping transition-specific hyperparameters out of the
-        # workflow implementation.
         for name in self.simulator.deterministic_keys:
             if name in expanded_params:
                 continue

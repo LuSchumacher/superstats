@@ -483,7 +483,6 @@ class GenerativeModel:
             params = inspect.signature(self.missing).parameters
             accepts_rng = "rng" in params or any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values())
         except (TypeError, ValueError):
-            # signature introspection can fail for some callables/builtins
             accepts_rng = False
 
         result = self.missing(sim_data, rng=rng) if accepts_rng else self.missing(sim_data)

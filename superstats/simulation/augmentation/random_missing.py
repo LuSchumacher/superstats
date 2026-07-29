@@ -101,8 +101,7 @@ class RandomMissingProcess(MissingProcess):
 
     def apply(self, data: Mapping[str, np.ndarray], rng: np.random.Generator | None = None) -> dict:
         rng = self._default_rng(rng)
-        # Augmentation returns a transformed copy; callers may reuse the
-        # original simulated data for another augmentation or comparison.
+
         data = {key: np.array(value, copy=True) for key, value in data.items()}
 
         keys = list(data)

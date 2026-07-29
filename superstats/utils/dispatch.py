@@ -72,7 +72,7 @@ def find_missing(arg, *args, **kwargs):
 
 
 @find_missing.register
-def _(arg: type(None), *args, **kwargs):
+def _(arg: None, *args, **kwargs):
     return None
 
 
@@ -95,7 +95,7 @@ def find_contamination(arg, *args, **kwargs):
 
 
 @find_contamination.register
-def _(arg: type(None), *args, **kwargs):
+def _(arg: None, *args, **kwargs):
     return None
 
 
