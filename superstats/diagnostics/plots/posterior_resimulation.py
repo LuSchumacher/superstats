@@ -9,9 +9,7 @@ import matplotlib.lines as mlines
 import matplotlib.patches as mpatches
 import seaborn as sns
 
-from superstats.defaults import (
-    BASE_COLOR,
-)
+from superstats.defaults import BASE_COLOR
 
 plt.rcParams["axes.axisbelow"] = True
 plt.rcParams["font.family"] = "serif"

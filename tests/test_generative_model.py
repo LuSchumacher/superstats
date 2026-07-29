@@ -210,7 +210,7 @@ def test_workflow_prepare_conditions_adds_default_mask_when_configured(caplog):
     assert "No missing_mask provided" in caplog.text
 
 
-def test_workflow_df_to_dict_normalizes_negative_discrete_time():
+def test_workflow_prepare_data_normalizes_negative_discrete_time():
     gm = _build_model()
     workflow = object.__new__(Workflow)
     workflow.model = gm
@@ -223,7 +223,7 @@ def test_workflow_df_to_dict_normalizes_negative_discrete_time():
         }
     )
 
-    data = workflow.df_to_dict(
+    data = workflow.prepare_data(
         df,
         id_col="participant",
         time_col="time",
@@ -237,7 +237,7 @@ def test_workflow_df_to_dict_normalizes_negative_discrete_time():
     assert np.array_equal(data["missing_mask"], np.array([[False, False, False], [False, True, False]]))
 
 
-def test_workflow_df_to_dict_rejects_continuous_time():
+def test_workflow_prepare_data_rejects_continuous_time():
     gm = _build_model()
     workflow = object.__new__(Workflow)
     workflow.model = gm
@@ -251,7 +251,7 @@ def test_workflow_df_to_dict_rejects_continuous_time():
     )
 
     with pytest.raises(ValueError, match="discrete integer-like"):
-        workflow.df_to_dict(
+        workflow.prepare_data(
             df,
             id_col="participant",
             time_col="time",
@@ -259,7 +259,7 @@ def test_workflow_df_to_dict_rejects_continuous_time():
         )
 
 
-def test_workflow_df_to_dict_uses_simulator_missing_value():
+def test_workflow_prepare_data_uses_model_missing_value():
     gm = _build_model(missing=RandomMissingProcess(p_missing=0.0, missing_value=-999.0))
     workflow = object.__new__(Workflow)
     workflow.model = gm
@@ -271,7 +271,7 @@ def test_workflow_df_to_dict_uses_simulator_missing_value():
         }
     )
 
-    data = workflow.df_to_dict(
+    data = workflow.prepare_data(
         df,
         id_col="participant",
         data_mapping={"rt": "response_time", "choice": "choice"},

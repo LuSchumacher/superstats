@@ -25,6 +25,7 @@ from superstats.diagnostics.plots import (
     plot_time_varying_posterior,
     plot_time_invariant_posterior,
 )
+from superstats.defaults import BASE_COLOR
 
 
 class _SuppressCheckpointExistsWarning(logging.Filter):
@@ -505,7 +506,7 @@ class Workflow:
         -------
         fig : plt.Figure - the loss curve figure
         """
-        return bf.diagnostics.plots.loss(history, train_color="#822621")
+        return bf.diagnostics.plots.loss(history, train_color=BASE_COLOR)
 
     def verify_time_varying(
         self,
@@ -859,7 +860,7 @@ class Workflow:
             **kwargs,
         )
 
-    def df_to_dict(
+    def prepare_data(
         self,
         df: pd.DataFrame,
         id_col: str,
@@ -892,7 +893,7 @@ class Workflow:
             of first appearance, to form the batch dimension.
         data_mapping : Mapping[str, str]
             Maps a column name in `df` to the corresponding key expected by
-            the generative model, e.g. `{"rt": "response_time", "correct":
+            the model, e.g. `{"rt": "response_time", "correct":
             "choice"}`. The set of values (not keys) must exactly match
             `self.model.data_keys`.
         missing_value : int or float
@@ -906,14 +907,14 @@ class Workflow:
         Returns
         -------
         data : dict of np.ndarray
-            One entry per generative-model data key, each of shape
+            One entry per model data key, each of shape
             (batch_size, num_steps), plus `"missing_mask"` (1 where any
             mapped column equals `missing_value` at that step, 0 otherwise)
             and `"time_steps"` (each row equal to `1..num_steps`).
         """
         model = getattr(self, "model", None)
         if model is None:
-            raise AttributeError("df_to_dict needs a Workflow with a model.")
+            raise AttributeError("prepare_data needs a Workflow with a model.")
 
         required_cols = [id_col, *data_mapping]
         if time_col is not None:
@@ -923,7 +924,7 @@ class Workflow:
         if missing_cols:
             raise KeyError(f"df is missing required column(s): {missing_cols}")
         if df.empty:
-            raise ValueError("df_to_dict requires at least one row.")
+            raise ValueError("prepare_data requires at least one row.")
 
         mapped_keys = list(data_mapping.values())
         expected_keys = list(model.data_keys)
