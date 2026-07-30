@@ -1,4 +1,4 @@
-"""Generative-model wrapper for joint priors and simulators."""
+"""Generative-simulator wrapper for joint priors and simulators."""
 
 from typing import Callable, Dict, Optional, Literal
 from collections.abc import Mapping, Sequence
@@ -13,11 +13,11 @@ from superstats.simulation.augmentation.contamination import ContaminationProces
 from superstats.utils.dispatch import find_contamination, find_missing
 
 
-class GenerativeModel:
-    """A generative model that combines a joint prior with a simulation function.
+class Model:
+    """A generative simulator that combines a joint prior with a simulation function.
 
     This class facilitates sampling parameters from a joint prior distribution
-    and generating simulated data using a user-provided model function. It handles
+    and generating simulated data using a user-provided simulator function. It handles
     parameter broadcasting, flattening, and reshaping to support batched
     simulations with time-varying parameters. Optionally, a missing-data process
     can be applied to the simulated data to introduce and record missingness.
@@ -25,9 +25,9 @@ class GenerativeModel:
     Parameters
     ----------
     prior : JointPrior
-        The joint prior distribution over model parameters, which may
+        The joint prior distribution over simulator parameters, which may
         include both time-varying transitions and time-invariant priors.
-    model : Callable
+    simulator : Callable
         The simulation function that takes parameter values and returns
         simulated data. The function signature determines the expected
         parameter names and order.
@@ -45,19 +45,19 @@ class GenerativeModel:
     Raises
     ------
     TypeError
-        If `model` is not callable, or if `missing` is neither
+        If `simulator` is not callable, or if `missing` is neither
         `None`, `"random"`, nor callable.
     """
 
     def __init__(
         self,
         prior: JointPrior,
-        model: Callable,
+        simulator: Callable,
         missing: MissingProcess | Callable | Literal["random"] | None = "random",
         contamination: ContaminationProcess | Callable | Literal["random_choice"] | None = None,
     ):
         self.prior = prior
-        self.model = model
+        self.simulator = simulator
 
         self.missing = find_missing(missing)
 
@@ -69,7 +69,7 @@ class GenerativeModel:
         self.contamination = find_contamination(contamination)
 
         # Inspect simulator signature
-        self.signature = inspect.signature(model)
+        self.signature = inspect.signature(simulator)
         self.param_order = list(self.signature.parameters.keys())
 
         # Run a pilot draw to determine key groups once
@@ -90,7 +90,7 @@ class GenerativeModel:
         num_steps: int,
         missing_context: str,
     ) -> list:
-        """Prepare model arguments in signature order."""
+        """Prepare simulator arguments in signature order."""
         flat_params = self._prepare_flat_params(
             combined_params,
             batch_size=batch_size,
@@ -106,7 +106,7 @@ class GenerativeModel:
 
             default = self.signature.parameters[name].default
             if default is inspect.Parameter.empty:
-                raise ValueError(f"Parameter '{name}' required by model but missing in {missing_context}.")
+                raise ValueError(f"Parameter '{name}' required by simulator but missing in {missing_context}.")
             ordered_params.append(default)
 
         return ordered_params
@@ -120,16 +120,16 @@ class GenerativeModel:
     ) -> Dict[str, np.ndarray]:
         """Validate and reshape a named simulator output dict."""
         if not isinstance(model_output, Mapping):
-            raise TypeError(f"model must return a dict of named arrays, got {type(model_output)}.")
+            raise TypeError(f"simulator must return a dict of named arrays, got {type(model_output)}.")
         if not model_output:
-            raise ValueError("model must return a non-empty dict of named arrays.")
+            raise ValueError("simulator must return a non-empty dict of named arrays.")
 
         expected_shape = (batch_size * num_steps,)
         reshaped = {}
 
         for name, value in model_output.items():
             if not isinstance(name, str):
-                raise TypeError(f"model output keys must be strings, got {name!r}.")
+                raise TypeError(f"simulator output keys must be strings, got {name!r}.")
 
             arr = np.asarray(value)
             if arr.shape != expected_shape:
@@ -161,7 +161,7 @@ class GenerativeModel:
             num_steps=1,
             missing_context="prior",
         )
-        model_output = self.model(*ordered_params)
+        model_output = self.simulator(*ordered_params)
         return list(self._reshape_model_output(model_output, batch_size=1, num_steps=1).keys())
 
     def _prepare_flat_params(
@@ -181,7 +181,7 @@ class GenerativeModel:
         Parameters
         ----------
         combined_params : dict of np.ndarray
-            Mapping from model parameter name to a value of ndim 0, 1,
+            Mapping from simulator parameter name to a value of ndim 0, 1,
             2, or 3:
             - ndim 0 (scalar): broadcast to every trial and step.
             - ndim 1: shape (batch_size,), broadcast across steps.
@@ -189,7 +189,7 @@ class GenerativeModel:
               (batch_size, dim) broadcast across steps.
             - ndim 3: shape (batch_size, num_steps, dim).
             Keys not present in `combined_params` are skipped if the
-            model parameter has a default value.
+            simulator parameter has a default value.
         batch_size      : int
             Number of independent simulation batches.
         num_steps       : int
@@ -199,12 +199,12 @@ class GenerativeModel:
         -------
         flat_params : dict of np.ndarray - mapping from parameter name
             to a flattened array of shape (batch_size * num_steps,) or
-            (batch_size * num_steps, dim), ready to pass to `self.model`
+            (batch_size * num_steps, dim), ready to pass to `self.simulator`
 
         Raises
         ------
         ValueError
-            If a required parameter (no default in the model signature)
+            If a required parameter (no default in the simulator signature)
             is missing from `combined_params`, or if a parameter's
             shape doesn't match any of the supported ndim-0/1/2/3 cases.
         """
@@ -214,7 +214,7 @@ class GenerativeModel:
             if name not in combined_params:
                 param = self.signature.parameters[name]
                 if param.default is inspect.Parameter.empty:
-                    raise ValueError(f"Parameter '{name}' required by model but missing in {missing_context}.")
+                    raise ValueError(f"Parameter '{name}' required by simulator but missing in {missing_context}.")
                 continue
 
             p = np.asarray(combined_params[name])
@@ -261,10 +261,10 @@ class GenerativeModel:
         return flat_params
 
     def get_fixed_params(self) -> Dict[str, np.ndarray]:
-        """Return deterministic fixed parameters from the prior for model simulation.
+        """Return deterministic fixed parameters from the prior for simulator simulation.
 
         Draws a single pilot sample from `self.prior` and keeps only the
-        fixed-parameter entries that the model actually consumes.
+        fixed-parameter entries that the simulator actually consumes.
 
         Returns
         -------
@@ -281,12 +281,12 @@ class GenerativeModel:
         batch_size: int,
         num_steps: int,
     ) -> Dict[str, np.ndarray]:
-        """Simulate model outputs for given parameter values.
+        """Simulate simulator outputs for given parameter values.
 
         Parameters
         ----------
         params     : dict of np.ndarray
-            Parameter values to simulate from, keyed by model parameter
+            Parameter values to simulate from, keyed by simulator parameter
             name. See `_prepare_flat_params` for the accepted shapes.
         batch_size : int
             Number of independent simulation batches.
@@ -303,7 +303,7 @@ class GenerativeModel:
         ------
         ValueError
             If a required parameter is missing from `params` and has no
-            default in the model signature, or has an unsupported shape.
+            default in the simulator signature, or has an unsupported shape.
         """
         combined_params = dict(params)
 
@@ -314,7 +314,7 @@ class GenerativeModel:
             missing_context="params and has no default",
         )
 
-        model_output = self.model(*ordered_params)
+        model_output = self.simulator(*ordered_params)
         return self._reshape_model_output(model_output, batch_size, num_steps, expected_data_keys=self.data_keys)
 
     def _normalize_local_params(
@@ -483,7 +483,6 @@ class GenerativeModel:
             params = inspect.signature(self.missing).parameters
             accepts_rng = "rng" in params or any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values())
         except (TypeError, ValueError):
-            # signature introspection can fail for some callables/builtins
             accepts_rng = False
 
         result = self.missing(sim_data, rng=rng) if accepts_rng else self.missing(sim_data)
@@ -506,7 +505,7 @@ class GenerativeModel:
         This method performs a complete generative process:
         1. Samples parameters from the joint prior distribution
         2. Prepares parameters for vectorized simulation
-        3. Runs the simulation model
+        3. Runs the simulation simulator
         4. Reshapes outputs back to trajectory format
         5. Applies `self.missing` to the data, if configured
 
@@ -571,7 +570,7 @@ class GenerativeModel:
         combined_params.update(deterministic_params)
         combined_params.update(shared_params)
 
-        # Include fixed params that are used by the model
+        # Include fixed params that are used by the simulator
         for name in self.param_order:
             if name in fixed_params:
                 combined_params[name] = fixed_params[name]
@@ -584,7 +583,7 @@ class GenerativeModel:
         )
 
         # Run simulator
-        model_output = self.model(*ordered_params)
+        model_output = self.simulator(*ordered_params)
         sim_data = self._reshape_model_output(model_output, batch_size, num_steps, expected_data_keys=self.data_keys)
 
         # Apply contamination augmentation, if configured
@@ -638,7 +637,7 @@ class GenerativeModel:
         spaghetti: bool = False,
         **kwargs,
     ) -> plt.Figure:
-        """Render prior push-forward diagnostics for the generative model.
+        """Render prior push-forward diagnostics for the generative simulator.
 
         Parameters
         ----------

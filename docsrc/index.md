@@ -63,12 +63,12 @@ joint_prior = sup.JointPrior(
 )
 
 # 2. Plug in an observation model (any simulator will do)
-generative_model = sup.GenerativeModel(
-    prior=joint_prior, model=sup.simulation.sample_ddm, missing="random", contamination="random_choice"
+model = sup.Model(
+    prior=joint_prior, simulator=sup.simulation.sample_ddm, missing="random", contamination="random_choice"
 )
 
 # 3. Train a neural approximator
-workflow = sup.Workflow(simulator=generative_model)
+workflow = sup.Workflow(model=model)
 history = workflow.fit_online(num_steps=100, epochs=20, batch_size=16)
 
 # 4. Fit any number of data sets, instantly

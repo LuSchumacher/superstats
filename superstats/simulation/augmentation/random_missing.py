@@ -55,7 +55,7 @@ class RandomMissingProcess(MissingProcess):
 
         Note: `Prior.sample` draws from the global `np.random` state, not
         from the `rng` passed into `apply`, so draws from a `Prior` are not
-        controlled by the seed threaded through `GenerativeModel.sample`.
+        controlled by the seed threaded through `Model.sample`.
         """
         p = self.p_missing
         if isinstance(p, Prior):
@@ -101,8 +101,7 @@ class RandomMissingProcess(MissingProcess):
 
     def apply(self, data: Mapping[str, np.ndarray], rng: np.random.Generator | None = None) -> dict:
         rng = self._default_rng(rng)
-        # Augmentation returns a transformed copy; callers may reuse the
-        # original simulated data for another augmentation or comparison.
+
         data = {key: np.array(value, copy=True) for key, value in data.items()}
 
         keys = list(data)

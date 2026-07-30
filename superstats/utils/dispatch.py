@@ -18,13 +18,13 @@ def _merge_defaults(defaults, kwargs):
 
 
 @singledispatch
-def find_summary_network(arg, *args, **kwargs):
+def find_embedding_network(arg, *args, **kwargs):
     raise TypeError(
-        f"summary_network must be one of 'recurrent', 'transformer', or a keras.Layer instance, not {arg!r}."
+        f"embedding network must be one of 'recurrent', 'transformer', or a keras.Layer instance, not {arg!r}."
     )
 
 
-@find_summary_network.register
+@find_embedding_network.register
 def _(name: str, *args, **kwargs):
     match name.lower():
         case "recurrent":
@@ -35,10 +35,10 @@ def _(name: str, *args, **kwargs):
                 **_merge_defaults(DEFAULT_TRANSFORMER_NETWORK, kwargs),
             )
         case unknown_network:
-            raise ValueError(f"Unknown summary network: {unknown_network!r}.")
+            raise ValueError(f"Unknown embedding network: {unknown_network!r}.")
 
 
-@find_summary_network.register
+@find_embedding_network.register
 def _(network: keras.Layer, *args, **kwargs):
     return network
 
@@ -72,7 +72,7 @@ def find_missing(arg, *args, **kwargs):
 
 
 @find_missing.register
-def _(arg: type(None), *args, **kwargs):
+def _(arg: None, *args, **kwargs):
     return None
 
 
@@ -95,7 +95,7 @@ def find_contamination(arg, *args, **kwargs):
 
 
 @find_contamination.register
-def _(arg: type(None), *args, **kwargs):
+def _(arg: None, *args, **kwargs):
     return None
 
 

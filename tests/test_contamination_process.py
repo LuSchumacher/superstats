@@ -1,15 +1,15 @@
-"""Tests for GenerativeModel's contamination integration."""
+"""Tests for Model's contamination integration."""
 
 import numpy as np
 import pytest
 
-from superstats.simulation.generative_model import GenerativeModel
+from superstats.simulation.model import Model
 from superstats.simulation.augmentation.contamination import ContaminationProcess
 from superstats.simulation.augmentation.random_choice_contamination import RandomChoiceContamination
 
 
 def _make_bare_model(contamination=None, missing=None, data_keys=("response_time", "choice")):
-    """Build a GenerativeModel-like object without running the real __init__.
+    """Build a Model-like object without running the real __init__.
 
     __init__ requires a JointPrior and simulator to do a pilot draw; the
     contamination integration only depends on `self.contamination`,
@@ -17,7 +17,7 @@ def _make_bare_model(contamination=None, missing=None, data_keys=("response_time
     directly to keep these tests fast and independent of prior/simulator
     machinery.
     """
-    model = object.__new__(GenerativeModel)
+    model = object.__new__(Model)
     model.contamination = contamination
     model.missing = missing
     model.data_keys = list(data_keys)

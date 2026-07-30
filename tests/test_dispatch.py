@@ -21,7 +21,7 @@ from superstats.utils.dispatch import (
     find_contamination,
     find_inference_network,
     find_missing,
-    find_summary_network,
+    find_embedding_network,
 )
 
 
@@ -35,8 +35,8 @@ def test_network_defaults_are_frozen():
         DEFAULT_RECURRENT_NETWORK["hidden_dim"] = 64
 
 
-def test_summary_network_dispatches_recurrent_defaults():
-    network = find_summary_network("recurrent", hidden_dim=16, summary_dim=8)
+def test_embedding_network_dispatches_recurrent_defaults():
+    network = find_embedding_network("recurrent", hidden_dim=16, summary_dim=8)
 
     assert isinstance(network, RecurrentNet)
     assert network.recurrent_type == "gru"
@@ -44,8 +44,8 @@ def test_summary_network_dispatches_recurrent_defaults():
     assert network.time_axis == 0
 
 
-def test_summary_network_dispatches_transformer_defaults():
-    network = find_summary_network("transformer", summary_dim=8, embed_dims=(16,), num_heads=(2,))
+def test_embedding_network_dispatches_transformer_defaults():
+    network = find_embedding_network("transformer", summary_dim=8, embed_dims=(16,), num_heads=(2,))
     data = np.random.normal(size=(2, 5, 3)).astype("float32")
 
     out = network(data)
@@ -63,19 +63,19 @@ def test_inference_network_dispatches_coupling_defaults():
 def test_network_dispatch_passes_existing_layers_through():
     network = keras.layers.Dense(4)
 
-    assert find_summary_network(network) is network
+    assert find_embedding_network(network) is network
     assert find_inference_network(network) is network
 
 
 def test_network_dispatch_rejects_unsupported_inputs():
     with pytest.raises(ValueError):
-        find_summary_network("mlp")
+        find_embedding_network("mlp")
     with pytest.raises(ValueError):
-        find_summary_network("lstm")
+        find_embedding_network("lstm")
     with pytest.raises(TypeError):
-        find_summary_network(RecurrentNet)
+        find_embedding_network(RecurrentNet)
     with pytest.raises(TypeError):
-        find_summary_network(None)
+        find_embedding_network(None)
 
     with pytest.raises(ValueError):
         find_inference_network("consistency")
