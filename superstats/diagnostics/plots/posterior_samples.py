@@ -10,15 +10,15 @@ from typing import Literal
 
 from superstats.defaults import (
     BASE_COLOR,
+    BASE_COL_WIDTH,
+    BASE_ROW_HEIGHT,
     CATEGORICAL_PALETTE,
+    LABEL_PAD,
 )
 
 plt.rcParams["axes.axisbelow"] = True
 plt.rcParams["font.family"] = "serif"
 plt.rcParams["font.serif"] = ["Palatino", "Palatino Linotype", "DejaVu Serif"]
-
-BASE_COL_WIDTH = 6.0
-BASE_ROW_HEIGHT = 3.0
 
 BAND_LABELS = {
     "std": "±1 SD",
@@ -291,7 +291,7 @@ def plot_time_varying_posterior(
                 if panel < D:
                     ax.set_title(f"Dataset {d}", fontsize=title_fontsize, pad=15)
                 if d == 0:
-                    ax.set_ylabel(name, fontsize=label_fontsize, rotation=0, labelpad=20)
+                    ax.set_ylabel(name, fontsize=label_fontsize, rotation=0, labelpad=LABEL_PAD)
                 if panel >= (P - 1) * D:
                     ax.set_xlabel("Step", fontsize=label_fontsize)
             else:
@@ -544,7 +544,7 @@ def plot_time_invariant_posterior(
                 if p == 0:
                     ax.set_title(f"Dataset {d}", fontsize=title_fontsize, pad=15)
                 if d == 0:
-                    ax.set_ylabel(param_name, fontsize=label_fontsize, rotation=0, labelpad=80)
+                    ax.set_ylabel(param_name, fontsize=label_fontsize, rotation=0, labelpad=LABEL_PAD)
                 else:
                     ax.set_ylabel("")
             else:

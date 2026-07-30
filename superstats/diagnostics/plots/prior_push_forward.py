@@ -12,6 +12,9 @@ import seaborn as sns
 
 from superstats.defaults import (
     BASE_COLOR,
+    BASE_COL_WIDTH,
+    BASE_ROW_HEIGHT,
+    LABEL_PAD,
 )
 
 plt.rcParams["axes.axisbelow"] = True
@@ -24,9 +27,6 @@ BAND_LABELS = {
     "mad": "±1.48 MAD",
     "95hdi": "95% HDI",
 }
-
-BASE_COL_WIDTH = 6.0
-BASE_ROW_HEIGHT = 3.0
 
 
 def _select_data_variable(data: Mapping[str, np.ndarray], data_dim: int | str) -> np.ndarray:
@@ -238,7 +238,7 @@ def plot_push_forward(
                 linewidth=2.5,
                 zorder=3,
             )
-            ax.set_xlabel("Step", fontsize=label_fontsize, labelpad=10)
+            ax.set_xlabel("Step", fontsize=label_fontsize, labelpad=LABEL_PAD)
             ax.grid(alpha=0.3)
             ax.tick_params(labelsize=tick_fontsize)
             if discrete:

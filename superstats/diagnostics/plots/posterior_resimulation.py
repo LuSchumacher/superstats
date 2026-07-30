@@ -11,6 +11,8 @@ import seaborn as sns
 
 from superstats.defaults import (
     BASE_COLOR,
+    BASE_COL_WIDTH,
+    BASE_ROW_HEIGHT,
 )
 
 plt.rcParams["axes.axisbelow"] = True
@@ -18,9 +20,6 @@ plt.rcParams["font.family"] = "serif"
 plt.rcParams["font.serif"] = ["Palatino", "Palatino Linotype", "DejaVu Serif"]
 
 BAND_LABELS = {"std": "±1 SD", "95ci": "95% CI", "mad": "±1.48 MAD", "95hdi": "95% HDI"}
-
-BASE_COL_WIDTH = 4.0
-BASE_ROW_HEIGHT = 3.0
 
 
 def _select_resimulation_variable(

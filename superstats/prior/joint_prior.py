@@ -1,9 +1,11 @@
 """Joint priors over time-varying and time-invariant parameters."""
 
-from typing import Any, Dict
+from typing import Any, Dict, Literal
 
 import numpy as np
+from matplotlib.figure import Figure
 
+from superstats.defaults import BASE_COLOR
 from superstats.diagnostics.plots.prior_samples import (
     plot_joint_prior,
     plot_time_invariant_prior,
@@ -133,72 +135,162 @@ class JointPrior:
         """
         return {name: obj.names for name, obj in self.params.items() if hasattr(obj, "names")}
 
-    def plot_time_varying_prior(self, num_steps: int = 200, num_trajectories: int = 20, **kwargs):
+    def plot_time_varying_prior(
+        self,
+        num_steps: int = 200,
+        num_trajectories: int = 20,
+        num_cols: int | None = None,
+        marginal: bool = True,
+        dist_type: Literal["hist", "kde", "both"] = "hist",
+        alpha: float = 0.5,
+        color: str = BASE_COLOR,
+        title_fontsize: int = 22,
+        label_fontsize: int = 18,
+        tick_fontsize: int = 16,
+        figsize: tuple[float, float] | None = None,
+    ) -> Figure:
         """Plot sampled time-varying prior trajectories.
 
         Parameters
         ----------
-        num_steps        : int, optional, default: 200
+        num_steps : int, optional, default: 200
             Number of time steps to sample per trajectory.
         num_trajectories : int, optional, default: 20
             Number of trajectories to draw.
-        **kwargs         : dict, optional, default: {}
-            Further optional keyword arguments propagated to the
-            underlying `plot_time_varying_prior` plotting function.
+        num_cols : int or None, optional, default: None
+            Number of panel columns. If None, uses one column for a single
+            parameter and two columns otherwise.
+        marginal : bool, optional, default: True
+            Whether to display a marginal distribution beside each trajectory.
+        dist_type : {"hist", "kde", "both"}, optional, default: "hist"
+            Distribution type used for marginal panels.
+        alpha : float, optional, default: 0.5
+            Opacity of individual trajectories.
+        color : str, optional, default: BASE_COLOR
+            Color used for trajectories and marginal distributions.
+        title_fontsize : int, optional, default: 22
+            Font size for panel titles.
+        label_fontsize : int, optional, default: 18
+            Font size for axis labels and the figure legend.
+        tick_fontsize : int, optional, default: 16
+            Font size for tick labels.
+        figsize : tuple of two floats or None, optional, default: None
+            Explicit figure size in inches.
 
         Returns
         -------
-        fig : plt.Figure - the generated figure
+        fig : matplotlib.figure.Figure
+            The generated figure.
         """
         samples = self.sample(batch_size=num_trajectories, num_steps=num_steps)
         local_params = {**samples["local_params"], **samples["deterministic_params"]}
         return plot_time_varying_prior(
             local_params=local_params,
             param_bounds=self._param_bounds(),
-            **kwargs,
+            num_cols=num_cols,
+            marginal=marginal,
+            dist_type=dist_type,
+            alpha=alpha,
+            color=color,
+            title_fontsize=title_fontsize,
+            label_fontsize=label_fontsize,
+            tick_fontsize=tick_fontsize,
+            figsize=figsize,
         )
 
-    def plot_time_invariant_prior(self, num_draws: int = 1000, **kwargs):
+    def plot_time_invariant_prior(
+        self,
+        num_draws: int = 1000,
+        dist_type: Literal["hist", "kde", "both"] = "hist",
+        color: str = BASE_COLOR,
+        num_cols: int | None = None,
+        title_fontsize: int = 22,
+        label_fontsize: int = 18,
+        tick_fontsize: int = 16,
+        figsize: tuple[float, float] | None = None,
+    ) -> Figure:
         """Plot marginal distributions for time-invariant prior parameters.
 
         Parameters
         ----------
         num_draws : int, optional, default: 1000
             Number of draws used to sample `hyper_params` and `shared_params`.
-        **kwargs  : dict, optional, default: {}
-            Further optional keyword arguments propagated to the
-            underlying `plot_time_invariant_prior` plotting function.
+        dist_type : {"hist", "kde", "both"}, optional, default: "both"
+            Distribution plot type.
+        color : str, optional, default: BASE_COLOR
+            Color used for non-mixture distributions.
+        num_cols : int or None, optional, default: None
+            Number of panel columns. If None, uses up to four columns.
+        title_fontsize : int, optional, default: 22
+            Font size for panel titles.
+        label_fontsize : int, optional, default: 18
+            Font size for axis labels.
+        tick_fontsize : int, optional, default: 16
+            Font size for tick labels and legends.
+        figsize : tuple of two floats or None, optional, default: None
+            Explicit figure size in inches.
 
         Returns
         -------
-        fig : plt.Figure - the generated figure
+        fig : matplotlib.figure.Figure
+            The generated figure.
         """
         samples = self.sample(batch_size=num_draws, num_steps=1)
         return plot_time_invariant_prior(
             hyper_params=samples["hyper_params"],
             shared_params=samples["shared_params"],
             mixture_names=self._mixture_names(),
-            **kwargs,
+            dist_type=dist_type,
+            color=color,
+            num_cols=num_cols,
+            title_fontsize=title_fontsize,
+            label_fontsize=label_fontsize,
+            tick_fontsize=tick_fontsize,
+            figsize=figsize,
         )
 
-    def plot_joint_prior(self, num_steps: int = 200, num_trajectories: int = 20, num_draws: int = 1000, **kwargs):
+    def plot_joint_prior(
+        self,
+        num_steps: int = 200,
+        num_trajectories: int = 20,
+        num_draws: int = 1000,
+        marginal: bool = True,
+        dist_type: Literal["hist", "kde", "both"] = "hist",
+        color: str = BASE_COLOR,
+        title_fontsize: int = 22,
+        tick_fontsize: int = 16,
+        alpha: float = 0.5,
+        figsize: tuple[float, float] | None = None,
+    ) -> Figure:
         """Plot joint prior diagnostics across local and shared parameters.
 
         Parameters
         ----------
-        num_steps        : int, optional, default: 200
+        num_steps : int, optional, default: 200
             Number of time steps for local trajectory sampling.
         num_trajectories : int, optional, default: 20
             Number of local trajectories to plot.
-        num_draws        : int, optional, default: 1000
+        num_draws : int, optional, default: 1000
             Number of draws used for time-invariant parameter sampling.
-        **kwargs         : dict, optional, default: {}
-            Further optional keyword arguments propagated to the
-            underlying `plot_joint_prior` plotting function.
+        marginal : bool, optional, default: True
+            Whether to display a marginal distribution beside trajectories.
+        dist_type : {"hist", "kde", "both"}, optional, default: "hist"
+            Distribution type used for marginal panels.
+        color : str, optional, default: BASE_COLOR
+            Color used for trajectories and distributions.
+        title_fontsize : int, optional, default: 22
+            Font size for panel titles.
+        tick_fontsize : int, optional, default: 16
+            Font size for tick labels.
+        alpha : float, optional, default: 0.5
+            Opacity of individual trajectories.
+        figsize : tuple of two floats or None, optional, default: None
+            Explicit figure size in inches.
 
         Returns
         -------
-        fig : plt.Figure - the generated figure
+        fig : matplotlib.figure.Figure
+            The generated figure.
         """
         samples = self.sample(batch_size=num_draws, num_steps=num_steps)
         all_local_params = {**samples["local_params"], **samples["deterministic_params"]}
@@ -210,5 +302,11 @@ class JointPrior:
             param_bounds=self._param_bounds(),
             mixture_names=self._mixture_names(),
             hyper_param_groups=self._last_hyper_param_groups,
-            **kwargs,
+            marginal=marginal,
+            dist_type=dist_type,
+            color=color,
+            title_fontsize=title_fontsize,
+            tick_fontsize=tick_fontsize,
+            alpha=alpha,
+            figsize=figsize,
         )

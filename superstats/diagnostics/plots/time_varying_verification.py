@@ -17,7 +17,7 @@ from superstats.diagnostics.metrics import (
 
 from superstats.utils import prepare_plot_data
 
-from superstats.defaults import METRIC_COLORS
+from superstats.defaults import BASE_COL_WIDTH, BASE_ROW_HEIGHT, LABEL_PAD, METRIC_COLORS
 
 METRIC_LABELS = {
     "correlation": "Correlation\n(Truth vs. Estimate)",
@@ -29,9 +29,6 @@ METRIC_LABELS = {
 plt.rcParams["axes.axisbelow"] = True
 plt.rcParams["font.family"] = "serif"
 plt.rcParams["font.serif"] = ["Palatino", "Palatino Linotype", "DejaVu Serif"]
-
-BASE_COL_WIDTH = 6.0
-BASE_ROW_HEIGHT = 3.0
 
 
 def plot_time_varying_verification(
@@ -146,7 +143,7 @@ def plot_time_varying_verification(
             if row_i == 0:
                 ax.set_title(param_names[col_i], fontsize=title_fontsize, pad=15)
             if row_i == num_rows - 1:
-                ax.set_xlabel("Step", fontsize=label_fontsize, labelpad=10)
+                ax.set_xlabel("Step", fontsize=label_fontsize, labelpad=LABEL_PAD)
 
     plt.draw()
 
