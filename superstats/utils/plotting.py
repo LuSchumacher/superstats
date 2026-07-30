@@ -8,6 +8,26 @@ import seaborn as sns
 from matplotlib.axes import Axes
 
 
+def get_default_num_cols(
+    num_panels: int,
+) -> int:
+    """Return the compact default number of plot columns."""
+
+    num_cols = {
+        1: 1,
+        2: 2,
+        3: 3,
+        4: 2,
+        5: 3,
+        6: 3,
+        7: 4,
+        8: 4,
+        9: 3,
+        10: 4,
+    }
+    return num_cols.get(num_panels, 4)
+
+
 def get_layout(
     num_rows: int,
     num_cols: int,
@@ -39,8 +59,7 @@ def plot_dist(
     dist_type: Literal["hist", "kde", "both"],
     color: str,
     orientation: Literal["horizontal", "vertical"] = "horizontal",
-    bins: int = 40,
-    density: bool = False,
+    num_bins: int | None = 40,
     label: str | None = None,
     hide_axis: bool = False,
 ) -> None:
@@ -58,11 +77,8 @@ def plot_dist(
         Plot color.
     orientation : {"horizontal", "vertical"}, optional, default: "horizontal"
         Put values on the x-axis (horizontal) or y-axis (vertical).
-    bins : int, optional, default: 40
-        Number of histogram bins.
-    density : bool, optional, default: False
-        Whether a histogram-only plot should show density instead of counts.
-        Histograms are always densities when combined with a KDE.
+    num_bins : int or None, optional, default: 40
+        Number of histogram bins. If None, Seaborn selects the bins.
     label : str or None, optional, default: None
         Legend label for the distribution.
     hide_axis : bool, optional, default: False
@@ -77,15 +93,18 @@ def plot_dist(
         raise ValueError("dist_type must be one of 'hist', 'kde', or 'both'.")
     if orientation not in {"horizontal", "vertical"}:
         raise ValueError("orientation must be 'horizontal' or 'vertical'.")
+    if num_bins is not None and num_bins < 1:
+        raise ValueError("num_bins must be at least 1.")
 
     values = np.asarray(values).reshape(-1)
     data = {"x": values} if orientation == "horizontal" else {"y": values}
+    hist_kwargs = {} if num_bins is None else {"bins": num_bins}
 
     if dist_type == "hist":
         sns.histplot(
             **data,
-            bins=bins,
-            stat="density" if density else "count",
+            **hist_kwargs,
+            stat="count",
             color=color,
             alpha=1.0,
             label=label,
@@ -104,7 +123,7 @@ def plot_dist(
     else:
         sns.histplot(
             **data,
-            bins=bins,
+            **hist_kwargs,
             stat="density",
             color=color,
             alpha=1.0,

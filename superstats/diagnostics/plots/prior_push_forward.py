@@ -15,7 +15,9 @@ from superstats.defaults import (
     BASE_COL_WIDTH,
     BASE_ROW_HEIGHT,
     LABEL_PAD,
+    Y_LABEL_PAD,
 )
+from superstats.utils.plotting import get_default_num_cols, get_layout, plot_dist
 
 plt.rcParams["axes.axisbelow"] = True
 plt.rcParams["font.family"] = "serif"
@@ -54,13 +56,15 @@ def _select_data_variable(data: Mapping[str, np.ndarray], data_dim: int | str) -
 def plot_push_forward(
     data: Mapping[str, np.ndarray],
     data_dim: int | str = 0,
-    kind: Literal["trajectory", "dist"] = "dist",
+    kind: Literal["time_series", "dist"] = "dist",
     aggregation: Callable | None = None,
     uncertainty_fun: Literal["std", "95ci", "mad", "95hdi"] | Callable | None = "95ci",
     marginal: bool = True,
+    dist_type: Literal["hist", "kde", "both"] = "hist",
+    num_bins: int | None = 40,
     spaghetti: bool = False,
     alpha: float = 0.5,
-    num_cols: int = 3,
+    num_cols: int | None = None,
     color: str = BASE_COLOR,
     title_fontsize: int = 22,
     label_fontsize: int = 18,
@@ -78,9 +82,9 @@ def plot_push_forward(
     data_dim            : int or str, optional, default: 0
         Which observation variable to plot. Strings select by key and
         integers index the mapping's key order.
-    kind                : {"dist", "trajectory"}, optional, default: "dist"
+    kind                : {"dist", "time_series"}, optional, default: "dist"
         Plot type: distribution of summary statistics or time-series
-        trajectories.
+        values.
     aggregation         : callable or None, optional, default: None
         Aggregation function over the dataset dimension, called as
         `aggregation(x, axis=...)` (e.g. np.mean, np.median).
@@ -88,13 +92,18 @@ def plot_push_forward(
         If specified, all datasets are aggregated into a single panel.
     uncertainty_fun     : {"std", "95ci", "mad", "95hdi"} or callable or None, optional, default: "95ci"
         Uncertainty function. Only used when `aggregation` is not None
-        and `kind` is "trajectory". Ignored (with a warning) otherwise.
+        and `kind` is "time_series". Ignored (with a warning) otherwise.
     marginal            : bool, optional, default: True
-        Whether to draw marginal distributions beside trajectory plots.
+        Whether to draw marginal distributions beside time-series plots.
+    dist_type           : {"hist", "kde", "both"}, optional, default: "hist"
+        Distribution type used for continuous distributions and marginals.
+    num_bins            : int or None, optional, default: 40
+        Number of histogram bins. If None, Seaborn selects the bins.
     spaghetti           : bool, optional, default: False
-        Whether to draw individual trajectories behind the aggregate line.
-    num_cols            : int, optional, default: 3
-        Number of columns when rendering individual panels.
+        Whether to draw individual time series behind the aggregate line.
+    num_cols            : int or None, optional, default: None
+        Number of columns when rendering individual panels. If None, uses
+        the same compact layout as `plot_time_invariant_prior`.
     alpha               : float in [0, 1], optional, default: 0.5
         Alpha value for individual dataset traces.
     color               : str, optional, default: "#822621"
@@ -118,11 +127,13 @@ def plot_push_forward(
     Raises
     ------
     ValueError
-        If `kind` is not "dist" or "trajectory", or if `data` has an
+        If `kind` is not "dist" or "time_series", or if `data` has an
         unsupported shape.
     """
-    if kind not in {"dist", "trajectory"}:
-        raise ValueError("kind must be 'dist' or 'trajectory'.")
+    if kind not in {"dist", "time_series"}:
+        raise ValueError("kind must be 'dist' or 'time_series'.")
+    if dist_type not in {"hist", "kde", "both"}:
+        raise ValueError("dist_type must be one of 'hist', 'kde', or 'both'.")
 
     x = _select_data_variable(data, data_dim)
     show_aggregate = aggregation is not None
@@ -145,6 +156,11 @@ def plot_push_forward(
         show_uncertainty = False
 
     batch_size, steps = x.shape
+    if num_cols is None:
+        num_cols = get_default_num_cols(batch_size)
+    elif num_cols < 1:
+        raise ValueError("num_cols must be at least 1.")
+
     flat = x.reshape(-1)
     flat = flat[np.isfinite(flat)]
     categories = np.unique(flat)
@@ -154,14 +170,20 @@ def plot_push_forward(
         and categories.size <= max_discrete_values
     )
 
-    layout_rect = None
+    legend_bottom = None
 
     if show_aggregate:
-        if kind == "trajectory":
+        if kind == "time_series":
             t = np.arange(steps)
 
-            default_figsize = (BASE_COL_WIDTH * 1.75, BASE_ROW_HEIGHT * 1.5)
-            fig, base_ax = plt.subplots(figsize=figsize if figsize is not None else default_figsize)
+            plot_figsize, legend_bottom, legend_y = get_layout(
+                1,
+                1,
+                figsize,
+                col_width=BASE_COL_WIDTH * 1.75,
+                row_height=BASE_ROW_HEIGHT * 1.5,
+            )
+            fig, base_ax = plt.subplots(figsize=plot_figsize)
             if marginal:
                 sub = base_ax.get_subplotspec().subgridspec(1, 2, width_ratios=[4.2, 0.8], wspace=0.0)
                 ax = fig.add_subplot(sub[0])
@@ -239,20 +261,47 @@ def plot_push_forward(
                 zorder=3,
             )
             ax.set_xlabel("Step", fontsize=label_fontsize, labelpad=LABEL_PAD)
+            ax.set_ylabel("Value", fontsize=label_fontsize, labelpad=Y_LABEL_PAD)
             ax.grid(alpha=0.3)
             ax.tick_params(labelsize=tick_fontsize)
-            if discrete:
-                ax.set_yticks(categories)
+
+            center_values = np.asarray(center).reshape(-1)
+            finite_center = center_values[np.isfinite(center_values)]
+            center_categories = np.unique(finite_center)
+            center_is_discrete = (
+                finite_center.size > 0
+                and np.all(
+                    np.isclose(
+                        center_categories,
+                        np.round(center_categories),
+                    )
+                )
+                and center_categories.size <= max_discrete_values
+            )
+            if center_is_discrete:
+                ax.set_yticks(center_categories)
 
             if ax_marg is not None:
-                values = x.reshape(-1)
-                if discrete:
-                    counts = np.array([np.sum(values == category) for category in categories])
-                    density = counts / counts.sum()
-                    ax_marg.barh(categories, density, color=color, alpha=1)
-                    ax_marg.set_yticks(categories)
+                if center_is_discrete:
+                    counts = np.array([np.sum(center_values == category) for category in center_categories])
+                    heights = counts if dist_type == "hist" else counts / counts.sum()
+                    ax_marg.barh(
+                        center_categories,
+                        heights,
+                        color=color,
+                        alpha=1,
+                    )
+                    ax_marg.set_yticks(center_categories)
                 else:
-                    sns.kdeplot(y=values, ax=ax_marg, color=color, fill=True, alpha=1)
+                    plot_dist(
+                        center_values,
+                        ax=ax_marg,
+                        dist_type=dist_type,
+                        color=color,
+                        orientation="vertical",
+                        num_bins=num_bins,
+                        hide_axis=True,
+                    )
                 ax_marg.set_ylim(ax.get_ylim())
                 ax_marg.set_axis_off()
             aggregate_label = getattr(aggregation, "__name__", "aggregate").capitalize()
@@ -286,16 +335,16 @@ def plot_push_forward(
                 ncol=len(handles),
                 fontsize=label_fontsize,
                 framealpha=0.0,
-                bbox_to_anchor=(0.5, -0.02),
+                bbox_to_anchor=(0.5, legend_y),
             )
-            layout_rect = [0, 0.08, 1, 1]
 
         elif kind == "dist":
             default_figsize = (BASE_COL_WIDTH * 1.75, BASE_ROW_HEIGHT * 1.5)
             fig, ax = plt.subplots(figsize=figsize if figsize is not None else default_figsize)
 
             if discrete:
-                counts = np.array([[np.mean(row.reshape(-1) == category) for category in categories] for row in x])
+                category_fun = np.sum if dist_type == "hist" else np.mean
+                counts = np.array([[category_fun(row.reshape(-1) == category) for category in categories] for row in x])
                 heights = aggregation(counts, axis=0)
 
                 ax.bar(categories, heights, color=color, alpha=1)
@@ -303,26 +352,27 @@ def plot_push_forward(
             else:
                 stats = aggregation(x, axis=-1)
 
-                sns.histplot(
+                plot_dist(
                     stats,
-                    bins=30,
-                    stat="density",
-                    kde=True,
-                    line_kws={"linewidth": 2.0},
                     ax=ax,
+                    dist_type=dist_type,
                     color=color,
-                    alpha=1,
+                    num_bins=num_bins,
                 )
 
             ax.set_xlabel("")
-            ax.set_ylabel("")
+            ax.set_ylabel(
+                "Count" if dist_type == "hist" else "Density",
+                fontsize=label_fontsize,
+                labelpad=Y_LABEL_PAD,
+            )
             ax.grid(alpha=0.3)
             ax.tick_params(labelsize=tick_fontsize)
 
         else:
-            raise ValueError("kind must be 'dist' or 'trajectory'.")
+            raise ValueError("kind must be 'dist' or 'time_series'.")
 
-    elif kind == "trajectory":
+    elif kind == "time_series":
         num_rows = int(np.ceil(batch_size / num_cols))
         default_figsize = (BASE_COL_WIDTH * num_cols, BASE_ROW_HEIGHT * num_rows + 0.5)
         fig, axes = plt.subplots(num_rows, num_cols, figsize=figsize if figsize is not None else default_figsize)
@@ -345,7 +395,16 @@ def plot_push_forward(
 
             ax.plot(t, x[i], color=color, alpha=1.0, linewidth=1.5)
             ax.set_title(f"Dataset {i}", fontsize=title_fontsize)
-            ax.set_xlabel("Step" if show_xlabel else "", fontsize=label_fontsize)
+            ax.set_xlabel(
+                "Step" if show_xlabel else "",
+                fontsize=label_fontsize,
+                labelpad=LABEL_PAD,
+            )
+            ax.set_ylabel(
+                "Value" if show_ylabel else "",
+                fontsize=label_fontsize,
+                labelpad=Y_LABEL_PAD,
+            )
             ax.grid(alpha=0.3)
             ax.tick_params(
                 labelsize=tick_fontsize,
@@ -358,11 +417,19 @@ def plot_push_forward(
             if ax_marg is not None:
                 if discrete:
                     counts = np.array([np.sum(x[i] == category) for category in categories])
-                    density = counts / counts.sum()
-                    ax_marg.barh(categories, density, color=color, alpha=1)
+                    heights = counts if dist_type == "hist" else counts / counts.sum()
+                    ax_marg.barh(categories, heights, color=color, alpha=1)
                     ax_marg.set_yticks(categories)
                 else:
-                    sns.kdeplot(y=x[i], ax=ax_marg, color=color, fill=True, alpha=1)
+                    plot_dist(
+                        x[i],
+                        ax=ax_marg,
+                        dist_type=dist_type,
+                        color=color,
+                        orientation="vertical",
+                        num_bins=num_bins,
+                        hide_axis=True,
+                    )
                 ax_marg.set_ylim(ax.get_ylim())
                 ax_marg.set_axis_off()
 
@@ -379,19 +446,16 @@ def plot_push_forward(
             ax = axes[i]
             if discrete:
                 counts = np.array([np.sum(x[i] == category) for category in categories])
-                density = counts / counts.sum()
-                ax.bar(categories, density, color=color, alpha=1)
+                heights = counts if dist_type == "hist" else counts / counts.sum()
+                ax.bar(categories, heights, color=color, alpha=1)
                 ax.set_xticks(categories)
             else:
-                sns.histplot(
+                plot_dist(
                     x[i],
-                    bins=30,
-                    stat="density",
-                    kde=True,
-                    line_kws={"linewidth": 2.0},
                     ax=ax,
+                    dist_type=dist_type,
                     color=color,
-                    alpha=1,
+                    num_bins=num_bins,
                 )
 
             show_xlabel = i // num_cols == num_rows - 1
@@ -399,7 +463,11 @@ def plot_push_forward(
 
             ax.set_title(f"Dataset {i}", fontsize=title_fontsize)
             ax.set_xlabel("")
-            ax.set_ylabel("")
+            ax.set_ylabel(
+                ("Count" if dist_type == "hist" else "Density") if show_ylabel else "",
+                fontsize=label_fontsize,
+                labelpad=Y_LABEL_PAD,
+            )
             ax.grid(alpha=0.3)
             ax.tick_params(
                 labelsize=tick_fontsize,
@@ -411,9 +479,8 @@ def plot_push_forward(
             axes[j].axis("off")
 
     sns.despine()
-    if layout_rect is None:
-        plt.tight_layout()
-    else:
-        plt.tight_layout(rect=layout_rect)
+    plt.tight_layout()
+    if legend_bottom is not None:
+        fig.subplots_adjust(bottom=legend_bottom)
 
     return fig

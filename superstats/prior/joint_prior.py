@@ -142,6 +142,7 @@ class JointPrior:
         num_cols: int | None = None,
         marginal: bool = True,
         dist_type: Literal["hist", "kde", "both"] = "hist",
+        num_bins: int | None = 40,
         alpha: float = 0.5,
         color: str = BASE_COLOR,
         title_fontsize: int = 22,
@@ -158,12 +159,13 @@ class JointPrior:
         num_trajectories : int, optional, default: 20
             Number of trajectories to draw.
         num_cols : int or None, optional, default: None
-            Number of panel columns. If None, uses one column for a single
-            parameter and two columns otherwise.
+            Number of panel columns. If None, uses the compact dynamic layout.
         marginal : bool, optional, default: True
             Whether to display a marginal distribution beside each trajectory.
         dist_type : {"hist", "kde", "both"}, optional, default: "hist"
             Distribution type used for marginal panels.
+        num_bins : int or None, optional, default: 40
+            Number of histogram bins. If None, Seaborn selects the bins.
         alpha : float, optional, default: 0.5
             Opacity of individual trajectories.
         color : str, optional, default: BASE_COLOR
@@ -190,6 +192,7 @@ class JointPrior:
             num_cols=num_cols,
             marginal=marginal,
             dist_type=dist_type,
+            num_bins=num_bins,
             alpha=alpha,
             color=color,
             title_fontsize=title_fontsize,
@@ -202,6 +205,7 @@ class JointPrior:
         self,
         num_draws: int = 1000,
         dist_type: Literal["hist", "kde", "both"] = "hist",
+        num_bins: int | None = 40,
         color: str = BASE_COLOR,
         num_cols: int | None = None,
         title_fontsize: int = 22,
@@ -217,6 +221,8 @@ class JointPrior:
             Number of draws used to sample `hyper_params` and `shared_params`.
         dist_type : {"hist", "kde", "both"}, optional, default: "both"
             Distribution plot type.
+        num_bins : int or None, optional, default: 40
+            Number of histogram bins. If None, Seaborn selects the bins.
         color : str, optional, default: BASE_COLOR
             Color used for non-mixture distributions.
         num_cols : int or None, optional, default: None
@@ -241,6 +247,7 @@ class JointPrior:
             shared_params=samples["shared_params"],
             mixture_names=self._mixture_names(),
             dist_type=dist_type,
+            num_bins=num_bins,
             color=color,
             num_cols=num_cols,
             title_fontsize=title_fontsize,
@@ -256,6 +263,7 @@ class JointPrior:
         num_draws: int = 1000,
         marginal: bool = True,
         dist_type: Literal["hist", "kde", "both"] = "hist",
+        num_bins: int | None = 40,
         color: str = BASE_COLOR,
         title_fontsize: int = 22,
         tick_fontsize: int = 16,
@@ -276,6 +284,8 @@ class JointPrior:
             Whether to display a marginal distribution beside trajectories.
         dist_type : {"hist", "kde", "both"}, optional, default: "hist"
             Distribution type used for marginal panels.
+        num_bins : int or None, optional, default: 40
+            Number of histogram bins. If None, Seaborn selects the bins.
         color : str, optional, default: BASE_COLOR
             Color used for trajectories and distributions.
         title_fontsize : int, optional, default: 22
@@ -304,6 +314,7 @@ class JointPrior:
             hyper_param_groups=self._last_hyper_param_groups,
             marginal=marginal,
             dist_type=dist_type,
+            num_bins=num_bins,
             color=color,
             title_fontsize=title_fontsize,
             tick_fontsize=tick_fontsize,

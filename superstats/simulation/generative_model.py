@@ -631,11 +631,14 @@ class GenerativeModel:
         num_sim: int = 20,
         num_steps: int = 200,
         data_dim: int | str = 0,
-        kind: str = "dist",
+        kind: Literal["time_series", "dist"] = "dist",
         aggregation: Callable | None = None,
         uncertainty_fun: str | Callable | None = None,
         marginal: bool = True,
+        dist_type: Literal["hist", "kde", "both"] = "hist",
+        num_bins: int | None = 40,
         spaghetti: bool = False,
+        num_cols: int | None = None,
         **kwargs,
     ) -> plt.Figure:
         """Render prior push-forward diagnostics for the generative model.
@@ -649,7 +652,7 @@ class GenerativeModel:
         data_dim        : int or str, optional, default: 0
             Observation variable to plot. Integers index
             `self.data_keys`; strings select a variable by name.
-        kind            : {"dist", "trajectory"}, optional, default: "dist"
+        kind            : {"dist", "time_series"}, optional, default: "dist"
             Plot type.
         aggregation     : callable or None, optional, default: None
             Aggregation function over the dataset dimension, called as
@@ -657,13 +660,19 @@ class GenerativeModel:
             If None, individual datasets are shown in separate panels.
             If specified, all datasets are aggregated into a single panel.
         uncertainty_fun : {"std", "95ci", "mad", "95hdi"} or callable or None, optional, default: None
-            Uncertainty function for aggregate trajectory plots. Forwarded
+            Uncertainty function for aggregate time-series plots. Forwarded
             directly to `plot_push_forward`, so the accepted values must
             match that function's own supported set.
         marginal        : bool, optional, default: True
-            If True, include marginal distributions beside trajectories.
+            If True, include marginal distributions beside time-series plots.
+        dist_type       : {"hist", "kde", "both"}, optional, default: "hist"
+            Distribution type used for continuous distributions and marginals.
+        num_bins        : int or None, optional, default: 40
+            Number of histogram bins. If None, Seaborn selects the bins.
         spaghetti       : bool, optional, default: False
-            If True, include individual trajectories.
+            If True, include individual time series.
+        num_cols        : int or None, optional, default: None
+            Number of panel columns. If None, uses the compact dynamic layout.
         **kwargs
             Forwarded to `plot_push_forward`.
 
@@ -681,5 +690,8 @@ class GenerativeModel:
             uncertainty_fun=uncertainty_fun,
             spaghetti=spaghetti,
             marginal=marginal,
+            dist_type=dist_type,
+            num_bins=num_bins,
+            num_cols=num_cols,
             **kwargs,
         )

@@ -17,8 +17,9 @@ from superstats.defaults import (
     BASE_ROW_HEIGHT,
     CATEGORICAL_PALETTE,
     LABEL_PAD,
+    Y_LABEL_PAD,
 )
-from superstats.utils.plotting import get_layout, plot_dist
+from superstats.utils.plotting import get_default_num_cols, get_layout, plot_dist
 
 
 plt.rcParams["axes.axisbelow"] = True
@@ -36,6 +37,7 @@ def plot_time_varying_prior(
     num_cols: int | None = None,
     marginal: bool = True,
     dist_type: Literal["hist", "kde", "both"] = "hist",
+    num_bins: int | None = 40,
     alpha: float = 0.5,
     color: str = BASE_COLOR,
     title_fontsize: int = 22,
@@ -58,12 +60,14 @@ def plot_time_varying_prior(
         Optional mapping from parameter names to ``(lower, upper)`` y-axis
         limits.
     num_cols : int or None, optional, default: None
-        Number of subplot columns. If ``None``, uses one column for a single
-        parameter and two columns otherwise.
+        Number of subplot columns. If ``None``, uses the compact dynamic
+        layout shared by the distribution plots.
     marginal : bool, optional, default: True
         Whether to display a marginal panel.
     dist_type : {"hist", "kde", "both"}, optional, default: "hist"
         Marginal plot type: ``"hist"``, ``"kde"``, or ``"both"``.
+    num_bins : int or None, optional, default: 40
+        Number of histogram bins. If None, Seaborn selects the bins.
     alpha : float, optional, default: 0.5
         Opacity of individual trajectories.
     color : str, optional, default: BASE_COLOR
@@ -90,7 +94,7 @@ def plot_time_varying_prior(
 
     n = len(local_params)
     if num_cols is None:
-        num_cols = min(n, 2)
+        num_cols = get_default_num_cols(n)
     num_rows = int(np.ceil(n / num_cols))
 
     plot_figsize, legend_bottom, legend_y = get_layout(
@@ -163,7 +167,7 @@ def plot_time_varying_prior(
             ax_traj.set_ylabel(
                 "Value",
                 fontsize=label_fontsize,
-                labelpad=LABEL_PAD,
+                labelpad=Y_LABEL_PAD,
             )
 
         ax_traj.grid(alpha=0.3)
@@ -176,6 +180,7 @@ def plot_time_varying_prior(
                 dist_type=dist_type,
                 color=color,
                 orientation="vertical",
+                num_bins=num_bins,
                 hide_axis=True,
             )
             ax_marginal.set_ylim(ax_traj.get_ylim())
@@ -219,6 +224,7 @@ def plot_time_invariant_prior(
     shared_params: Mapping[str, np.ndarray],
     mixture_names: Mapping[str, Sequence[str]] | None = None,
     dist_type: Literal["hist", "kde", "both"] = "hist",
+    num_bins: int | None = 40,
     color: str = BASE_COLOR,
     num_cols: int | None = None,
     title_fontsize: int = 22,
@@ -241,6 +247,8 @@ def plot_time_invariant_prior(
         Optional mapping from parameter names to mixture-component labels.
     dist_type : {"hist", "kde", "both"}, optional, default: "both"
         Distribution plot type.
+    num_bins : int or None, optional, default: 40
+        Number of histogram bins. If None, Seaborn selects the bins.
     color : str, optional, default: BASE_COLOR
         Color for non-mixture distributions.
     num_cols : int or None, optional, default: None
@@ -274,19 +282,7 @@ def plot_time_invariant_prior(
 
     n = len(labeled_params)
     if num_cols is None:
-        default_num_cols = {
-            1: 1,
-            2: 2,
-            3: 3,
-            4: 2,
-            5: 3,
-            6: 3,
-            7: 4,
-            8: 4,
-            9: 3,
-            10: 4,
-        }
-        num_cols = default_num_cols.get(n, 4)
+        num_cols = get_default_num_cols(n)
 
     num_rows = int(np.ceil(n / num_cols))
 
@@ -322,8 +318,7 @@ def plot_time_invariant_prior(
                     ax=ax,
                     dist_type=dist_type,
                     color=CATEGORICAL_PALETTE[k % len(CATEGORICAL_PALETTE)],
-                    bins=40,
-                    # density=True,
+                    num_bins=num_bins,
                     label=component_names[k],
                 )
 
@@ -337,8 +332,7 @@ def plot_time_invariant_prior(
                 ax=ax,
                 dist_type=dist_type,
                 color=color,
-                bins=40,
-                # density=True,
+                num_bins=num_bins,
             )
 
         ax.set_title(
@@ -358,9 +352,9 @@ def plot_time_invariant_prior(
 
         if i % num_cols == 0:
             ax.set_ylabel(
-                "Density",
+                "Count" if dist_type == "hist" else "Density",
                 fontsize=label_fontsize,
-                labelpad=LABEL_PAD,
+                labelpad=Y_LABEL_PAD,
             )
 
         ax.grid(alpha=0.3)
@@ -385,6 +379,7 @@ def plot_joint_prior(
     hyper_param_groups: Mapping[str, Sequence[str]] | None = None,
     marginal: bool = True,
     dist_type: Literal["hist", "kde", "both"] = "hist",
+    num_bins: int | None = 40,
     color: str = BASE_COLOR,
     title_fontsize: int = 22,
     tick_fontsize: int = 16,
@@ -416,6 +411,8 @@ def plot_joint_prior(
         Whether to display a marginal trajectory panel.
     dist_type : {"hist", "kde", "both"}, optional, default: "hist"
         Marginal plot type: ``"hist"``, ``"kde"``, or ``"both"``.
+    num_bins : int or None, optional, default: 40
+        Number of histogram bins. If None, Seaborn selects the bins.
     color : str, optional, default: BASE_COLOR
         Color used for trajectories and distributions.
     title_fontsize : int, optional, default: 22
@@ -524,15 +521,12 @@ def plot_joint_prior(
                 ]
 
                 for k in range(arr.shape[1]):
-                    sns.histplot(
+                    plot_dist(
                         arr[:, k],
-                        bins=30,
-                        stat="density",
-                        kde=True,
-                        line_kws={"linewidth": 2.0},
                         ax=ax,
+                        dist_type=dist_type,
                         color=CATEGORICAL_PALETTE[k % len(CATEGORICAL_PALETTE)],
-                        alpha=1,
+                        num_bins=num_bins,
                         label=component_names[k],
                     )
 
@@ -541,15 +535,12 @@ def plot_joint_prior(
                     framealpha=0.0,
                 )
             else:
-                sns.histplot(
+                plot_dist(
                     arr.reshape(-1),
-                    bins=30,
-                    stat="density",
-                    kde=True,
-                    line_kws={"linewidth": 2.0},
                     ax=ax,
+                    dist_type=dist_type,
                     color=color,
-                    alpha=1,
+                    num_bins=num_bins,
                 )
 
             short_label = label[len(prefix) :] if label.startswith(prefix) else label
@@ -567,15 +558,12 @@ def plot_joint_prior(
         if shared_arr is not None:
             ax = axes[row_i, 0]
 
-            sns.histplot(
+            plot_dist(
                 shared_arr.reshape(-1),
-                bins=30,
-                stat="density",
-                kde=True,
-                line_kws={"linewidth": 2.0},
                 ax=ax,
+                dist_type=dist_type,
                 color=color,
-                alpha=1,
+                num_bins=num_bins,
             )
 
             ax.set_xlabel("")
@@ -634,6 +622,7 @@ def plot_joint_prior(
                     dist_type=dist_type,
                     color=color,
                     orientation="vertical",
+                    num_bins=num_bins,
                     hide_axis=True,
                 )
                 ax_marginal.set_ylim(ax_traj.get_ylim())
@@ -657,7 +646,7 @@ def plot_joint_prior(
             ha="right",
             va="center",
             fontsize=title_fontsize,
-            labelpad=LABEL_PAD,
+            labelpad=Y_LABEL_PAD,
         )
 
     fig.legend(

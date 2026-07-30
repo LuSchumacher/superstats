@@ -21,6 +21,7 @@ from .plotting import (
     CATEGORICAL_PALETTE,
     LABEL_PAD,
     METRIC_COLORS,
+    Y_LABEL_PAD,
 )
 
 __all__ = [
@@ -38,4 +39,5 @@ __all__ = [
     "METRIC_COLORS",
     "CATEGORICAL_PALETTE",
     "LABEL_PAD",
+    "Y_LABEL_PAD",
 ]

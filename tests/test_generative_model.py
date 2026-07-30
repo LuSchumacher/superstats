@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import superstats.simulation.generative_model as generative_model_module
 from superstats.prior import JointPrior, Prior
 from superstats.simulation import GenerativeModel, sample_ddm
 from superstats.simulation.augmentation import (
@@ -72,6 +73,43 @@ def test_generative_model_sample_shapes():
     assert "bias" not in result
     assert np.all(np.isfinite(result["response_time"]))
     assert np.all(np.isin(result["choice"], [-1.0, 0.0, 1.0]))
+
+
+def test_generative_model_plot_push_forward_forwards_new_arguments(monkeypatch):
+    gm = _build_generative_model()
+    sentinel = object()
+    captured = {}
+
+    monkeypatch.setattr(
+        gm,
+        "sample",
+        lambda batch_size, num_steps: {key: np.ones((batch_size, num_steps)) for key in gm.data_keys},
+    )
+
+    def fake_plot_push_forward(**kwargs):
+        captured.update(kwargs)
+        return sentinel
+
+    monkeypatch.setattr(
+        generative_model_module,
+        "plot_push_forward",
+        fake_plot_push_forward,
+    )
+
+    result = gm.plot_push_forward(
+        num_sim=3,
+        num_steps=5,
+        kind="time_series",
+        dist_type="both",
+        num_bins=13,
+        num_cols=1,
+    )
+
+    assert result is sentinel
+    assert captured["kind"] == "time_series"
+    assert captured["dist_type"] == "both"
+    assert captured["num_bins"] == 13
+    assert captured["num_cols"] == 1
 
 
 def test_generative_model_sample_include_fixed():

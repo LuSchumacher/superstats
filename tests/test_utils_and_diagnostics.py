@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 import matplotlib.pyplot as plt
 
+import superstats.utils.plotting as plotting_module
 from superstats.defaults import (
     BASE_COLOR,
     BASE_COL_WIDTH,
@@ -9,6 +10,7 @@ from superstats.defaults import (
     CATEGORICAL_PALETTE,
     LABEL_PAD,
     METRIC_COLORS,
+    Y_LABEL_PAD,
 )
 from superstats.diagnostics.metrics import (
     calibration_error_per_step,
@@ -22,7 +24,12 @@ from superstats.diagnostics.plots.prior_samples import (
     plot_time_varying_prior,
 )
 from superstats.networks.utils import expand_singletons_to_common_length
-from superstats.utils.plotting import get_layout, plot_dist, prepare_plot_data
+from superstats.utils.plotting import (
+    get_default_num_cols,
+    get_layout,
+    plot_dist,
+    prepare_plot_data,
+)
 
 
 def test_expand_singletons_broadcasts_scalars_and_singletons():
@@ -73,6 +80,26 @@ def test_layout_preserves_physical_legend_spacing(num_rows):
     assert legend_y * figsize[1] == pytest.approx(0.1)
 
 
+@pytest.mark.parametrize(
+    ("num_panels", "expected_cols"),
+    [
+        (1, 1),
+        (2, 2),
+        (3, 3),
+        (4, 2),
+        (5, 3),
+        (6, 3),
+        (7, 4),
+        (8, 4),
+        (9, 3),
+        (10, 4),
+        (11, 4),
+    ],
+)
+def test_default_columns(num_panels, expected_cols):
+    assert get_default_num_cols(num_panels) == expected_cols
+
+
 @pytest.mark.parametrize("dist_type", ["hist", "kde", "both"])
 @pytest.mark.parametrize("orientation", ["horizontal", "vertical"])
 def test_plot_dist_supports_all_types_and_orientations(dist_type, orientation):
@@ -83,6 +110,11 @@ def test_plot_dist_supports_all_types_and_orientations(dist_type, orientation):
 
     if dist_type in {"hist", "both"}:
         assert ax.patches
+    if dist_type == "hist":
+        total_count = sum(
+            patch.get_height() if orientation == "horizontal" else patch.get_width() for patch in ax.patches
+        )
+        assert total_count == pytest.approx(values.size)
     if dist_type == "kde":
         assert ax.collections
     if dist_type == "both":
@@ -97,6 +129,42 @@ def test_plot_dist_rejects_invalid_options():
         plot_dist(np.ones(3), ax=ax, dist_type="invalid", color=BASE_COLOR)
     with pytest.raises(ValueError, match="orientation"):
         plot_dist(np.ones(3), ax=ax, dist_type="hist", color=BASE_COLOR, orientation="invalid")
+    with pytest.raises(ValueError, match="num_bins"):
+        plot_dist(np.ones(3), ax=ax, dist_type="hist", color=BASE_COLOR, num_bins=0)
+    plt.close(fig)
+
+
+def test_plot_dist_omits_bins_when_num_bins_is_none(monkeypatch):
+    captured = {}
+
+    def fake_histplot(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(plotting_module.sns, "histplot", fake_histplot)
+
+    fig, ax = plt.subplots()
+    plot_dist(
+        np.arange(10),
+        ax=ax,
+        dist_type="hist",
+        color=BASE_COLOR,
+        num_bins=None,
+    )
+
+    assert "bins" not in captured
+    plt.close(fig)
+
+
+def test_plot_dist_uses_40_bins_by_default():
+    fig, ax = plt.subplots()
+    plot_dist(
+        np.linspace(0, 1, 100),
+        ax=ax,
+        dist_type="hist",
+        color=BASE_COLOR,
+    )
+
+    assert len(ax.patches) == 40
     plt.close(fig)
 
 
@@ -106,12 +174,16 @@ def test_time_invariant_prior_supports_dist_type(dist_type):
         hyper_params={"mu": np.random.default_rng(0).normal(size=100)},
         shared_params={},
         dist_type=dist_type,
+        num_bins=7,
         num_cols=1,
     )
 
     ax = fig.axes[0]
     assert ax.get_xlabel() == "Value"
-    assert ax.get_ylabel() == "Density"
+    expected_ylabel = "Count" if dist_type == "hist" else "Density"
+    assert ax.get_ylabel() == expected_ylabel
+    if dist_type in {"hist", "both"}:
+        assert len(ax.patches) == 7
     plt.close(fig)
 
 
@@ -150,7 +222,7 @@ def test_time_varying_prior_labels_y_axis():
     )
 
     assert fig.axes[0].get_ylabel() == "Value"
-    assert fig.axes[0].yaxis.labelpad == LABEL_PAD
+    assert fig.axes[0].yaxis.labelpad == Y_LABEL_PAD
     plt.close(fig)
 
 
@@ -194,6 +266,7 @@ def test_plotting_defaults_are_exported():
     assert BASE_COL_WIDTH > 0
     assert BASE_ROW_HEIGHT > 0
     assert LABEL_PAD > 0
+    assert Y_LABEL_PAD > LABEL_PAD
 
 
 def test_diagnostics_perfect_posterior_has_expected_invariants():

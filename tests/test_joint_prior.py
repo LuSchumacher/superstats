@@ -110,6 +110,7 @@ def test_joint_prior_time_varying_plot_forwards_all_arguments(monkeypatch):
         num_cols=1,
         marginal=False,
         dist_type="kde",
+        num_bins=13,
         alpha=0.2,
         color="red",
         title_fontsize=11,
@@ -122,6 +123,7 @@ def test_joint_prior_time_varying_plot_forwards_all_arguments(monkeypatch):
     assert captured["num_cols"] == 1
     assert captured["marginal"] is False
     assert captured["dist_type"] == "kde"
+    assert captured["num_bins"] == 13
     assert captured["alpha"] == 0.2
     assert captured["color"] == "red"
     assert captured["title_fontsize"] == 11
@@ -144,6 +146,7 @@ def test_joint_prior_time_invariant_plot_forwards_all_arguments(monkeypatch):
     result = prior.plot_time_invariant_prior(
         num_draws=10,
         dist_type="kde",
+        num_bins=13,
         color="red",
         num_cols=3,
         title_fontsize=11,
@@ -154,6 +157,7 @@ def test_joint_prior_time_invariant_plot_forwards_all_arguments(monkeypatch):
 
     assert result is sentinel
     assert captured["dist_type"] == "kde"
+    assert captured["num_bins"] == 13
     assert captured["color"] == "red"
     assert captured["num_cols"] == 3
     assert captured["title_fontsize"] == 11
@@ -179,6 +183,7 @@ def test_joint_prior_joint_plot_forwards_all_arguments(monkeypatch):
         num_draws=10,
         marginal=False,
         dist_type="kde",
+        num_bins=13,
         color="red",
         title_fontsize=11,
         tick_fontsize=9,
@@ -189,6 +194,7 @@ def test_joint_prior_joint_plot_forwards_all_arguments(monkeypatch):
     assert result is sentinel
     assert captured["marginal"] is False
     assert captured["dist_type"] == "kde"
+    assert captured["num_bins"] == 13
     assert captured["color"] == "red"
     assert captured["title_fontsize"] == 11
     assert captured["tick_fontsize"] == 9
