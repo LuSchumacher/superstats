@@ -111,11 +111,14 @@ def test_joint_prior_time_varying_plot_forwards_all_arguments(monkeypatch):
         marginal=False,
         dist_type="kde",
         num_bins=13,
+        dist_alpha=0.35,
         alpha=0.2,
         color="red",
         title_fontsize=11,
         label_fontsize=12,
         tick_fontsize=9,
+        hspace=0.6,
+        wspace=0.1,
         figsize=(5.0, 4.0),
     )
 
@@ -124,11 +127,14 @@ def test_joint_prior_time_varying_plot_forwards_all_arguments(monkeypatch):
     assert captured["marginal"] is False
     assert captured["dist_type"] == "kde"
     assert captured["num_bins"] == 13
+    assert captured["dist_alpha"] == 0.35
     assert captured["alpha"] == 0.2
     assert captured["color"] == "red"
     assert captured["title_fontsize"] == 11
     assert captured["label_fontsize"] == 12
     assert captured["tick_fontsize"] == 9
+    assert captured["hspace"] == 0.6
+    assert captured["wspace"] == 0.1
     assert captured["figsize"] == (5.0, 4.0)
 
 
@@ -147,22 +153,28 @@ def test_joint_prior_time_invariant_plot_forwards_all_arguments(monkeypatch):
         num_draws=10,
         dist_type="kde",
         num_bins=13,
+        dist_alpha=0.35,
         color="red",
         num_cols=3,
         title_fontsize=11,
         label_fontsize=12,
         tick_fontsize=9,
+        hspace=0.6,
+        wspace=0.1,
         figsize=(5.0, 4.0),
     )
 
     assert result is sentinel
     assert captured["dist_type"] == "kde"
     assert captured["num_bins"] == 13
+    assert captured["dist_alpha"] == 0.35
     assert captured["color"] == "red"
     assert captured["num_cols"] == 3
     assert captured["title_fontsize"] == 11
     assert captured["label_fontsize"] == 12
     assert captured["tick_fontsize"] == 9
+    assert captured["hspace"] == 0.6
+    assert captured["wspace"] == 0.1
     assert captured["figsize"] == (5.0, 4.0)
 
 
@@ -184,10 +196,14 @@ def test_joint_prior_joint_plot_forwards_all_arguments(monkeypatch):
         marginal=False,
         dist_type="kde",
         num_bins=13,
+        dist_alpha=0.35,
         color="red",
         title_fontsize=11,
+        label_fontsize=12,
         tick_fontsize=9,
         alpha=0.2,
+        hspace=0.6,
+        wspace=0.1,
         figsize=(5.0, 4.0),
     )
 
@@ -195,8 +211,12 @@ def test_joint_prior_joint_plot_forwards_all_arguments(monkeypatch):
     assert captured["marginal"] is False
     assert captured["dist_type"] == "kde"
     assert captured["num_bins"] == 13
+    assert captured["dist_alpha"] == 0.35
     assert captured["color"] == "red"
     assert captured["title_fontsize"] == 11
+    assert captured["label_fontsize"] == 12
     assert captured["tick_fontsize"] == 9
     assert captured["alpha"] == 0.2
+    assert captured["hspace"] == 0.6
+    assert captured["wspace"] == 0.1
     assert captured["figsize"] == (5.0, 4.0)

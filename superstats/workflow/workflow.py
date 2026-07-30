@@ -17,6 +17,7 @@ from bayesflow.adapters import Adapter
 
 from superstats.simulation import GenerativeModel
 from superstats.utils.dispatch import find_inference_network, find_summary_network
+from superstats.utils.indexing import normalize_data_indices
 from superstats.utils.logging import warning as log_warning
 from superstats.diagnostics.plots import (
     plot_time_varying_verification,
@@ -360,18 +361,19 @@ class Workflow:
         )
         return samples
 
-    def resimulate_posterior(
+    def resimulate(
         self,
-        posterior_samples: Mapping[str, np.ndarray],
+        estimates: Mapping[str, np.ndarray],
         num_sims: int = 10,
         rng=None,
+        data_idx: int | Sequence[int] | None = None,
     ) -> dict[str, np.ndarray]:
         """Generate posterior predictive simulations from posterior parameter draws.
 
         Parameters
         ----------
-        posterior_samples : dict of np.ndarray
-            Posterior samples returned by `self.sample`. Each array
+        estimates : dict of np.ndarray
+            Posterior estimates returned by `self.sample`. Each array
             should have shape (batch_size, num_samples, num_steps, dim)
             or (batch_size, num_samples, num_steps).
         num_sims          : int, optional, default: 10
@@ -379,17 +381,21 @@ class Workflow:
             per dataset.
         rng               : int or np.random.Generator or None, optional, default: None
             Random seed or generator for sampling posterior indices.
+        data_idx          : int, sequence of int, or None, optional, default: None
+            Dataset indices to resimulate. None selects all datasets.
+            A single integer still preserves the dataset axis, and a
+            sequence preserves the requested order.
 
         Returns
         -------
         sim_data : dict of np.ndarray
             Named simulated variables. Each value has shape
-            (batch_size, num_sims, num_steps).
+            (num_selected_datasets, num_sims, num_steps).
 
         Raises
         ------
         ValueError
-            If `posterior_samples` is empty, if a posterior array has
+            If `estimates` is empty, if a posterior array has
             fewer than 3 dimensions, if a parameter's batch size
             doesn't match the others, if a parameter has an unsupported
             number of dimensions, or if a parameter's shape can't be
@@ -397,21 +403,32 @@ class Workflow:
         """
         rng = np.random.default_rng(rng)
 
-        if not posterior_samples:
-            raise ValueError("posterior_samples must be a non-empty dict.")
+        if not estimates:
+            raise ValueError("estimates must be a non-empty dict.")
 
         # Infer shape from one posterior parameter
-        example = next(iter(posterior_samples.values()))
+        example = np.asarray(next(iter(estimates.values())))
         if example.ndim < 3:
             raise ValueError(
                 "Posterior sample arrays must have at least 3 dimensions: (batch_size, num_samples, num_steps, ...)."
             )
 
-        batch_size, num_draws = example.shape[:2]
+        original_batch_size, num_draws = example.shape[:2]
+        selected_indices = normalize_data_indices(data_idx, original_batch_size)
+        selected_estimates = {}
+        for name, value in estimates.items():
+            arr = np.asarray(value)
+            if arr.shape[0] != original_batch_size:
+                raise ValueError(
+                    f"Posterior parameter '{name}' has batch size {arr.shape[0]} but expected {original_batch_size}."
+                )
+            selected_estimates[name] = arr[selected_indices]
+
+        estimates = selected_estimates
+        example = next(iter(estimates.values()))
+        batch_size = len(selected_indices)
         time_varying_keys = set(self.simulator.local_keys) | set(self.simulator.deterministic_keys)
-        time_varying_arrays = [
-            np.asarray(value) for name, value in posterior_samples.items() if name in time_varying_keys
-        ]
+        time_varying_arrays = [np.asarray(value) for name, value in estimates.items() if name in time_varying_keys]
         num_steps = time_varying_arrays[0].shape[2] if time_varying_arrays else example.shape[2]
 
         sample_idx = rng.integers(num_draws, size=(batch_size, num_sims))
@@ -419,7 +436,7 @@ class Workflow:
         simulation_params = {}
         fixed_params = self.simulator.get_fixed_params()
 
-        for name, arr in posterior_samples.items():
+        for name, arr in estimates.items():
             arr = np.asarray(arr)
             if arr.shape[0] != batch_size:
                 raise ValueError(
@@ -428,9 +445,6 @@ class Workflow:
 
             if arr.ndim == 3:
                 selected = arr[np.arange(batch_size)[:, None], sample_idx, :]
-                # Posterior samples for shared/hyperparameters have a
-                # singleton trailing time axis, whereas local and
-                # deterministic trajectories have one entry per step.
                 simulation_params[name] = selected[..., 0] if name not in time_varying_keys else selected
             elif arr.ndim == 4:
                 selected = arr[
@@ -440,9 +454,6 @@ class Workflow:
                     :,
                 ]
                 if name not in time_varying_keys:
-                    # Some adapters tile shared parameters over time and/or
-                    # retain a singleton feature axis. Only one value per
-                    # posterior draw is needed for simulation.
                     while selected.ndim > 2:
                         selected = selected[..., 0]
                 simulation_params[name] = selected
@@ -472,10 +483,6 @@ class Workflow:
         for name, value in fixed_params.items():
             expanded_params[name] = np.broadcast_to(np.asarray(value), (batch_size * num_sims,))
 
-        # Deterministic transitions are simulated but are intentionally not
-        # returned as inferred trajectories. Delegate reconstruction to each
-        # transition, keeping transition-specific hyperparameters out of the
-        # workflow implementation.
         for name in self.simulator.deterministic_keys:
             if name in expanded_params:
                 continue
@@ -502,7 +509,14 @@ class Workflow:
 
         return {name: value.reshape(batch_size, num_sims, num_steps) for name, value in raw_sim.items()}
 
-    def plot_history(self, history):
+    def plot_history(
+        self,
+        history,
+        title_fontsize: int = 22,
+        label_fontsize: int = 18,
+        tick_fontsize: int = 16,
+        **kwargs,
+    ):
         """Plot training loss curves.
 
         Parameters
@@ -510,12 +524,29 @@ class Workflow:
         history : keras.callbacks.History
             Training history, e.g. from `fit_offline`, `fit_online`, or
             `self.history`.
+        title_fontsize : int, optional, default: 22
+            Font size for panel titles.
+        label_fontsize : int, optional, default: 18
+            Font size for axis labels and the legend.
+        tick_fontsize : int, optional, default: 16
+            Font size for axis tick labels.
+        **kwargs
+            Additional keyword arguments forwarded to
+            `bf.diagnostics.plots.loss`.
 
         Returns
         -------
         fig : plt.Figure - the loss curve figure
         """
-        return bf.diagnostics.plots.loss(history, train_color="#822621")
+        kwargs.setdefault("train_color", "#822621")
+        kwargs.setdefault("title_fontsize", title_fontsize)
+        kwargs.setdefault("label_fontsize", label_fontsize)
+        kwargs.setdefault("legend_fontsize", label_fontsize)
+
+        fig = bf.diagnostics.plots.loss(history, **kwargs)
+        for ax in fig.axes:
+            ax.tick_params(labelsize=tick_fontsize)
+        return fig
 
     def verify_time_varying(
         self,

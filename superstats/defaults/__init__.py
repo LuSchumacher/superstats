@@ -19,8 +19,12 @@ from .plotting import (
     BASE_COL_WIDTH,
     BASE_ROW_HEIGHT,
     CATEGORICAL_PALETTE,
+    DIST_ALPHA,
+    HSPACE,
+    JOINT_HSPACE,
     LABEL_PAD,
     METRIC_COLORS,
+    WSPACE,
     Y_LABEL_PAD,
 )
 
@@ -38,6 +42,10 @@ __all__ = [
     "BASE_ROW_HEIGHT",
     "METRIC_COLORS",
     "CATEGORICAL_PALETTE",
+    "DIST_ALPHA",
+    "HSPACE",
+    "JOINT_HSPACE",
     "LABEL_PAD",
+    "WSPACE",
     "Y_LABEL_PAD",
 ]

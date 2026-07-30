@@ -8,8 +8,12 @@ from superstats.defaults import (
     BASE_COL_WIDTH,
     BASE_ROW_HEIGHT,
     CATEGORICAL_PALETTE,
+    DIST_ALPHA,
+    HSPACE,
+    JOINT_HSPACE,
     LABEL_PAD,
     METRIC_COLORS,
+    WSPACE,
     Y_LABEL_PAD,
 )
 from superstats.diagnostics.metrics import (
@@ -23,12 +27,18 @@ from superstats.diagnostics.plots.prior_samples import (
     plot_time_invariant_prior,
     plot_time_varying_prior,
 )
+from superstats.diagnostics.plots.time_varying_verification import (
+    plot_time_varying_verification,
+)
 from superstats.networks.utils import expand_singletons_to_common_length
 from superstats.utils.plotting import (
+    compute_uncertainty_band,
     get_default_num_cols,
     get_layout,
     plot_dist,
+    plot_uncertainty_band,
     prepare_plot_data,
+    smooth_trajectories,
 )
 
 
@@ -100,6 +110,49 @@ def test_default_columns(num_panels, expected_cols):
     assert get_default_num_cols(num_panels) == expected_cols
 
 
+def test_shared_trajectory_smoothing_supports_sma_and_ema():
+    values = np.array([[1.0, 2.0, 3.0, 4.0]])
+
+    np.testing.assert_allclose(
+        smooth_trajectories(values, "sma", smoothing_window=2),
+        [[1.0, 1.5, 2.5, 3.5]],
+    )
+    np.testing.assert_allclose(
+        smooth_trajectories(values, "ema", smoothing_window=3),
+        [[1.0, 1.5, 2.25, 3.125]],
+    )
+    assert smooth_trajectories(values, None) is values
+
+
+def test_shared_uncertainty_band_computes_and_draws_visible_intervals():
+    trajectories = np.array(
+        [
+            [0.0, 1.0],
+            [2.0, 3.0],
+        ]
+    )
+    center = trajectories.mean(axis=0)
+    lower, upper = compute_uncertainty_band(
+        trajectories,
+        "std",
+        center,
+    )
+    fig, ax = plt.subplots()
+
+    visible = plot_uncertainty_band(
+        ax,
+        np.arange(2),
+        lower,
+        upper,
+        BASE_COLOR,
+        alpha=0.3,
+    )
+
+    assert visible is True
+    assert ax.collections
+    plt.close(fig)
+
+
 @pytest.mark.parametrize("dist_type", ["hist", "kde", "both"])
 @pytest.mark.parametrize("orientation", ["horizontal", "vertical"])
 def test_plot_dist_supports_all_types_and_orientations(dist_type, orientation):
@@ -117,6 +170,7 @@ def test_plot_dist_supports_all_types_and_orientations(dist_type, orientation):
         assert total_count == pytest.approx(values.size)
     if dist_type == "kde":
         assert ax.collections
+        assert all(np.allclose(collection.get_linewidths(), 0) for collection in ax.collections)
     if dist_type == "both":
         assert ax.lines
     plt.close(fig)
@@ -131,6 +185,8 @@ def test_plot_dist_rejects_invalid_options():
         plot_dist(np.ones(3), ax=ax, dist_type="hist", color=BASE_COLOR, orientation="invalid")
     with pytest.raises(ValueError, match="num_bins"):
         plot_dist(np.ones(3), ax=ax, dist_type="hist", color=BASE_COLOR, num_bins=0)
+    with pytest.raises(ValueError, match="alpha"):
+        plot_dist(np.ones(3), ax=ax, dist_type="hist", color=BASE_COLOR, alpha=1.1)
     plt.close(fig)
 
 
@@ -226,6 +282,39 @@ def test_time_varying_prior_labels_y_axis():
     plt.close(fig)
 
 
+def test_time_varying_verification_labels_only_first_column():
+    rng = np.random.default_rng(0)
+    targets = rng.normal(size=(6, 5, 2))
+    estimates = targets[:, None] + rng.normal(scale=0.2, size=(6, 20, 5, 2))
+
+    fig = plot_time_varying_verification(
+        estimates,
+        targets,
+        variable_names=["A", "B"],
+        hspace=0.6,
+        wspace=0.1,
+    )
+
+    expected_labels = [
+        "Correlation\n(Truth vs. Estimate)",
+        "NRMSE",
+        "Posterior\nContraction",
+        "Calibration\nError",
+    ]
+    for row_i, expected_label in enumerate(expected_labels):
+        first_col = fig.axes[row_i * 2]
+        second_col = fig.axes[row_i * 2 + 1]
+
+        assert first_col.get_ylabel() == expected_label
+        assert first_col.yaxis.labelpad == Y_LABEL_PAD
+        assert second_col.get_ylabel() == ""
+
+    assert fig.texts == []
+    assert fig.subplotpars.hspace == pytest.approx(0.6)
+    assert fig.subplotpars.wspace == pytest.approx(0.1)
+    plt.close(fig)
+
+
 def test_joint_prior_positions_legend_and_row_names_without_overlap():
     rng = np.random.default_rng(0)
     names = ["short", "a_much_longer_parameter_name"]
@@ -251,11 +340,13 @@ def test_joint_prior_positions_legend_and_row_names_without_overlap():
         panel_bbox = panel.get_window_extent(renderer)
 
         assert label.get_text() == name
+        assert label.get_fontsize() == 18
         assert (label_bbox.y0 + label_bbox.y1) / 2 == pytest.approx((panel_bbox.y0 + panel_bbox.y1) / 2)
         assert label_bbox.x1 < panel_bbox.x0
 
     legend_anchor = fig.legends[0].get_bbox_to_anchor().transformed(fig.transFigure.inverted())
     assert fig.subplotpars.hspace == pytest.approx(0.5)
+    assert fig.legends[0].get_texts()[0].get_fontsize() == 18
     assert legend_anchor.y0 * fig.get_size_inches()[1] == pytest.approx(0.25)
     plt.close(fig)
 
@@ -265,8 +356,12 @@ def test_plotting_defaults_are_exported():
     assert BASE_COLOR == METRIC_COLORS[0]
     assert BASE_COL_WIDTH > 0
     assert BASE_ROW_HEIGHT > 0
+    assert 0 <= DIST_ALPHA <= 1
     assert LABEL_PAD > 0
     assert Y_LABEL_PAD > LABEL_PAD
+    assert HSPACE == pytest.approx(0.4)
+    assert JOINT_HSPACE == pytest.approx(0.5)
+    assert WSPACE == pytest.approx(0.2)
 
 
 def test_diagnostics_perfect_posterior_has_expected_invariants():

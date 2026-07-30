@@ -6,6 +6,7 @@ import inspect
 import numpy as np
 import matplotlib.pyplot as plt
 
+from superstats.defaults import DIST_ALPHA, HSPACE, WSPACE
 from superstats.prior.joint_prior import JointPrior
 from superstats.diagnostics.plots.prior_push_forward import plot_push_forward
 from superstats.simulation.augmentation.missing import MissingProcess
@@ -637,8 +638,11 @@ class GenerativeModel:
         marginal: bool = True,
         dist_type: Literal["hist", "kde", "both"] = "hist",
         num_bins: int | None = 40,
+        dist_alpha: float = DIST_ALPHA,
         spaghetti: bool = False,
         num_cols: int | None = None,
+        hspace: float = HSPACE,
+        wspace: float = WSPACE,
         **kwargs,
     ) -> plt.Figure:
         """Render prior push-forward diagnostics for the generative model.
@@ -669,10 +673,16 @@ class GenerativeModel:
             Distribution type used for continuous distributions and marginals.
         num_bins        : int or None, optional, default: 40
             Number of histogram bins. If None, Seaborn selects the bins.
+        dist_alpha      : float, optional, default: DIST_ALPHA
+            Opacity of distributions and marginal distributions.
         spaghetti       : bool, optional, default: False
             If True, include individual time series.
         num_cols        : int or None, optional, default: None
             Number of panel columns. If None, uses the compact dynamic layout.
+        hspace          : float, optional, default: 0.4
+            Height spacing between subplot rows.
+        wspace          : float, optional, default: 0.2
+            Width spacing between subplot columns.
         **kwargs
             Forwarded to `plot_push_forward`.
 
@@ -692,6 +702,9 @@ class GenerativeModel:
             marginal=marginal,
             dist_type=dist_type,
             num_bins=num_bins,
+            dist_alpha=dist_alpha,
             num_cols=num_cols,
+            hspace=hspace,
+            wspace=wspace,
             **kwargs,
         )

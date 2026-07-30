@@ -15,52 +15,16 @@ from superstats.defaults import (
     CATEGORICAL_PALETTE,
     LABEL_PAD,
 )
+from superstats.utils.plotting import (
+    compute_uncertainty_band,
+    get_uncertainty_band_label,
+    plot_uncertainty_band,
+    smooth_trajectories,
+)
 
 plt.rcParams["axes.axisbelow"] = True
 plt.rcParams["font.family"] = "serif"
 plt.rcParams["font.serif"] = ["Palatino", "Palatino Linotype", "DejaVu Serif"]
-
-BAND_LABELS = {
-    "std": "±1 SD",
-    "95ci": "95% CI",
-    "mad": "±1.48 MAD",
-    "95hdi": "95% HDI",
-}
-
-
-def _smooth_trajectories(
-    arr: np.ndarray,
-    smoothing: Literal["sma", "ema"] | None,
-    smoothing_window: int = 5,
-) -> np.ndarray:
-    """Apply SMA/EMA smoothing along the last axis of an array.
-
-    Parameters
-    ----------
-    arr              : np.ndarray of shape (..., T)
-        Trajectories to smooth, smoothed independently along the last
-        axis for each leading index.
-    smoothing        : {"sma", "ema"} or None
-        Smoothing method. If None, `arr` is returned unchanged.
-    smoothing_window : int, optional, default: 5
-        Window size for `sma`, or span parameter for `ema`.
-
-    Returns
-    -------
-    smoothed : np.ndarray of the same shape as `arr`
-    """
-    if smoothing is None:
-        return arr
-    T = arr.shape[-1]
-    smoothed = arr.copy()
-    if smoothing == "sma":
-        for i in range(T):
-            smoothed[..., i] = arr[..., max(0, i - smoothing_window + 1) : i + 1].mean(axis=-1)
-    elif smoothing == "ema":
-        a = 2.0 / (smoothing_window + 1)
-        for i in range(1, T):
-            smoothed[..., i] = a * arr[..., i] + (1 - a) * smoothed[..., i - 1]
-    return smoothed
 
 
 def plot_time_varying_posterior(
@@ -210,6 +174,7 @@ def plot_time_varying_posterior(
 
     # per-panel loop
     panel = 0
+    has_uncertainty_band = False
     for name in names:
         datasets = range(D) if aggregation is None else [None]
         for d in datasets:
@@ -225,7 +190,7 @@ def plot_time_varying_posterior(
                 else:
                     raise ValueError(f"Unknown aggregate_strategy: {aggregate_strategy!r}")
 
-            trajectories = _smooth_trajectories(trajectories, smoothing, smoothing_window)
+            trajectories = smooth_trajectories(trajectories, smoothing, smoothing_window)
 
             # center
             if aggregation is None:
@@ -235,38 +200,28 @@ def plot_time_varying_posterior(
 
             # uncertainty bands
             lo, hi = None, None
-            if callable(uncertainty_fun):
-                lo, hi = uncertainty_fun(trajectories)
-                lo, hi = np.asarray(lo), np.asarray(hi)
-            elif uncertainty_fun == "std":
-                sd = trajectories.std(axis=0)
-                lo, hi = center - sd, center + sd
-            elif uncertainty_fun == "95ci":
-                lo, hi = np.percentile(trajectories, 2.5, axis=0), np.percentile(trajectories, 97.5, axis=0)
-            elif uncertainty_fun == "mad":
-                mad = np.median(np.abs(trajectories - center), axis=0)
-                lo, hi = center - 1.4826 * mad, center + 1.4826 * mad
-            elif uncertainty_fun == "95hdi":
-                lo, hi = np.empty(T), np.empty(T)
-                for i in range(T):
-                    vals = np.sort(trajectories[:, i])
-                    n = len(vals)
-                    window = int(np.floor(0.95 * n))
-                    widths = vals[window:] - vals[: n - window]
-                    idx = np.argmin(widths)
-                    lo[i], hi[i] = vals[idx], vals[idx + window]
-            elif uncertainty_fun is not None:
-                raise ValueError(f"Unknown uncertainty_fun: {uncertainty_fun!r}")
+            if uncertainty_fun is not None:
+                lo, hi = compute_uncertainty_band(
+                    trajectories,
+                    uncertainty_fun,
+                    center,
+                )
 
             # target trajectory (optional)
             target_line = None
             if local_targets is not None:
                 if aggregation is None:
-                    target_line = _smooth_trajectories(local_targets[name][d : d + 1, :], smoothing, smoothing_window)[
-                        0
-                    ]
+                    target_line = smooth_trajectories(
+                        local_targets[name][d : d + 1, :],
+                        smoothing,
+                        smoothing_window,
+                    )[0]
                 else:
-                    smoothed_targets = _smooth_trajectories(local_targets[name], smoothing, smoothing_window)
+                    smoothed_targets = smooth_trajectories(
+                        local_targets[name],
+                        smoothing,
+                        smoothing_window,
+                    )
                     target_line = np.asarray(aggregation(smoothed_targets, axis=0))
 
             # axes setup
@@ -282,7 +237,14 @@ def plot_time_varying_posterior(
 
             # plot
             if lo is not None:
-                ax.fill_between(t, lo, hi, color=color, alpha=alpha, edgecolor="none")
+                has_uncertainty_band |= plot_uncertainty_band(
+                    ax,
+                    t,
+                    lo,
+                    hi,
+                    color,
+                    alpha=alpha,
+                )
             ax.plot(t, center, color=color, linewidth=1.5)
             if target_line is not None:
                 ax.plot(t, target_line, color="black", linewidth=1.5, linestyle="--", zorder=5)
@@ -319,8 +281,8 @@ def plot_time_varying_posterior(
     else:
         aggregate_label = "Median"
     handles = [mlines.Line2D([], [], color=color, linewidth=1.5, label=aggregate_label)]
-    if uncertainty_fun is not None:
-        band_label = "Uncertainty band" if callable(uncertainty_fun) else BAND_LABELS[uncertainty_fun]
+    if has_uncertainty_band:
+        band_label = get_uncertainty_band_label(uncertainty_fun)
         handles.append(mpatches.Patch(color=color, alpha=alpha, label=band_label))
     if local_targets is not None:
         handles.append(mlines.Line2D([], [], color="black", linewidth=1.5, linestyle="--", label="Target"))

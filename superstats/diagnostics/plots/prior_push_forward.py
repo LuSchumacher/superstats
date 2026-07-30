@@ -14,7 +14,10 @@ from superstats.defaults import (
     BASE_COLOR,
     BASE_COL_WIDTH,
     BASE_ROW_HEIGHT,
+    DIST_ALPHA,
+    HSPACE,
     LABEL_PAD,
+    WSPACE,
     Y_LABEL_PAD,
 )
 from superstats.utils.plotting import get_default_num_cols, get_layout, plot_dist
@@ -62,6 +65,7 @@ def plot_push_forward(
     marginal: bool = True,
     dist_type: Literal["hist", "kde", "both"] = "hist",
     num_bins: int | None = 40,
+    dist_alpha: float = DIST_ALPHA,
     spaghetti: bool = False,
     alpha: float = 0.5,
     num_cols: int | None = None,
@@ -69,6 +73,8 @@ def plot_push_forward(
     title_fontsize: int = 22,
     label_fontsize: int = 18,
     tick_fontsize: int = 16,
+    hspace: float = HSPACE,
+    wspace: float = WSPACE,
     figsize: tuple[float, float] | None = None,
     max_discrete_values: int = 30,
 ):
@@ -99,6 +105,8 @@ def plot_push_forward(
         Distribution type used for continuous distributions and marginals.
     num_bins            : int or None, optional, default: 40
         Number of histogram bins. If None, Seaborn selects the bins.
+    dist_alpha          : float, optional, default: DIST_ALPHA
+        Opacity of distributions and marginal distributions.
     spaghetti           : bool, optional, default: False
         Whether to draw individual time series behind the aggregate line.
     num_cols            : int or None, optional, default: None
@@ -114,6 +122,10 @@ def plot_push_forward(
         The font size of the axis label texts.
     tick_fontsize       : int, optional, default: 16
         The font size of the axis tick labels.
+    hspace             : float, optional, default: 0.4
+        Height spacing between subplot rows.
+    wspace             : float, optional, default: 0.2
+        Width spacing between subplot columns.
     figsize            : tuple of two floats or None, optional, default: None
         Explicit figure size in inches. If None, the default layout size
         is used.
@@ -134,6 +146,8 @@ def plot_push_forward(
         raise ValueError("kind must be 'dist' or 'time_series'.")
     if dist_type not in {"hist", "kde", "both"}:
         raise ValueError("dist_type must be one of 'hist', 'kde', or 'both'.")
+    if not 0 <= dist_alpha <= 1:
+        raise ValueError("dist_alpha must be between 0 and 1.")
 
     x = _select_data_variable(data, data_dim)
     show_aggregate = aggregation is not None
@@ -289,7 +303,7 @@ def plot_push_forward(
                         center_categories,
                         heights,
                         color=color,
-                        alpha=1,
+                        alpha=dist_alpha,
                     )
                     ax_marg.set_yticks(center_categories)
                 else:
@@ -300,6 +314,7 @@ def plot_push_forward(
                         color=color,
                         orientation="vertical",
                         num_bins=num_bins,
+                        alpha=dist_alpha,
                         hide_axis=True,
                     )
                 ax_marg.set_ylim(ax.get_ylim())
@@ -347,7 +362,7 @@ def plot_push_forward(
                 counts = np.array([[category_fun(row.reshape(-1) == category) for category in categories] for row in x])
                 heights = aggregation(counts, axis=0)
 
-                ax.bar(categories, heights, color=color, alpha=1)
+                ax.bar(categories, heights, color=color, alpha=dist_alpha)
                 ax.set_xticks(categories)
             else:
                 stats = aggregation(x, axis=-1)
@@ -358,6 +373,7 @@ def plot_push_forward(
                     dist_type=dist_type,
                     color=color,
                     num_bins=num_bins,
+                    alpha=dist_alpha,
                 )
 
             ax.set_xlabel("")
@@ -418,7 +434,7 @@ def plot_push_forward(
                 if discrete:
                     counts = np.array([np.sum(x[i] == category) for category in categories])
                     heights = counts if dist_type == "hist" else counts / counts.sum()
-                    ax_marg.barh(categories, heights, color=color, alpha=1)
+                    ax_marg.barh(categories, heights, color=color, alpha=dist_alpha)
                     ax_marg.set_yticks(categories)
                 else:
                     plot_dist(
@@ -428,6 +444,7 @@ def plot_push_forward(
                         color=color,
                         orientation="vertical",
                         num_bins=num_bins,
+                        alpha=dist_alpha,
                         hide_axis=True,
                     )
                 ax_marg.set_ylim(ax.get_ylim())
@@ -447,7 +464,7 @@ def plot_push_forward(
             if discrete:
                 counts = np.array([np.sum(x[i] == category) for category in categories])
                 heights = counts if dist_type == "hist" else counts / counts.sum()
-                ax.bar(categories, heights, color=color, alpha=1)
+                ax.bar(categories, heights, color=color, alpha=dist_alpha)
                 ax.set_xticks(categories)
             else:
                 plot_dist(
@@ -456,6 +473,7 @@ def plot_push_forward(
                     dist_type=dist_type,
                     color=color,
                     num_bins=num_bins,
+                    alpha=dist_alpha,
                 )
 
             show_xlabel = i // num_cols == num_rows - 1
@@ -481,6 +499,15 @@ def plot_push_forward(
     sns.despine()
     plt.tight_layout()
     if legend_bottom is not None:
-        fig.subplots_adjust(bottom=legend_bottom)
+        fig.subplots_adjust(
+            bottom=legend_bottom,
+            hspace=hspace,
+            wspace=wspace,
+        )
+    else:
+        fig.subplots_adjust(
+            hspace=hspace,
+            wspace=wspace,
+        )
 
     return fig

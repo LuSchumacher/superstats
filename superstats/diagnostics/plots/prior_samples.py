@@ -16,7 +16,11 @@ from superstats.defaults import (
     BASE_COL_WIDTH,
     BASE_ROW_HEIGHT,
     CATEGORICAL_PALETTE,
+    DIST_ALPHA,
+    HSPACE,
+    JOINT_HSPACE,
     LABEL_PAD,
+    WSPACE,
     Y_LABEL_PAD,
 )
 from superstats.utils.plotting import get_default_num_cols, get_layout, plot_dist
@@ -38,11 +42,14 @@ def plot_time_varying_prior(
     marginal: bool = True,
     dist_type: Literal["hist", "kde", "both"] = "hist",
     num_bins: int | None = 40,
+    dist_alpha: float = DIST_ALPHA,
     alpha: float = 0.5,
     color: str = BASE_COLOR,
     title_fontsize: int = 22,
     label_fontsize: int = 18,
     tick_fontsize: int = 16,
+    hspace: float = HSPACE,
+    wspace: float = WSPACE,
     figsize: tuple[float, float] | None = None,
 ) -> plt.Figure:
     """Plot time-varying parameter trajectories.
@@ -68,6 +75,8 @@ def plot_time_varying_prior(
         Marginal plot type: ``"hist"``, ``"kde"``, or ``"both"``.
     num_bins : int or None, optional, default: 40
         Number of histogram bins. If None, Seaborn selects the bins.
+    dist_alpha : float, optional, default: DIST_ALPHA
+        Opacity of marginal distributions.
     alpha : float, optional, default: 0.5
         Opacity of individual trajectories.
     color : str, optional, default: BASE_COLOR
@@ -78,6 +87,10 @@ def plot_time_varying_prior(
         Font size for axis labels and the legend.
     tick_fontsize : int, optional, default: 16
         Font size for tick labels.
+    hspace : float, optional, default: 0.4
+        Height spacing between subplot rows.
+    wspace : float, optional, default: 0.2
+        Width spacing between subplot columns.
     figsize : tuple of two floats or None, optional, default: None
         Optional figure size in inches.
 
@@ -91,6 +104,9 @@ def plot_time_varying_prior(
     ValueError
         If ``dist_type`` is invalid.
     """
+
+    if not 0 <= dist_alpha <= 1:
+        raise ValueError("dist_alpha must be between 0 and 1.")
 
     n = len(local_params)
     if num_cols is None:
@@ -181,6 +197,7 @@ def plot_time_varying_prior(
                 color=color,
                 orientation="vertical",
                 num_bins=num_bins,
+                alpha=dist_alpha,
                 hide_axis=True,
             )
             ax_marginal.set_ylim(ax_traj.get_ylim())
@@ -214,7 +231,11 @@ def plot_time_varying_prior(
 
     sns.despine()
     plt.tight_layout()
-    fig.subplots_adjust(bottom=legend_bottom)
+    fig.subplots_adjust(
+        bottom=legend_bottom,
+        hspace=hspace,
+        wspace=wspace,
+    )
 
     return fig
 
@@ -225,11 +246,14 @@ def plot_time_invariant_prior(
     mixture_names: Mapping[str, Sequence[str]] | None = None,
     dist_type: Literal["hist", "kde", "both"] = "hist",
     num_bins: int | None = 40,
+    dist_alpha: float = DIST_ALPHA,
     color: str = BASE_COLOR,
     num_cols: int | None = None,
     title_fontsize: int = 22,
     label_fontsize: int = 18,
     tick_fontsize: int = 16,
+    hspace: float = HSPACE,
+    wspace: float = WSPACE,
     figsize: tuple[float, float] | None = None,
 ) -> plt.Figure:
     """Plot time-invariant hyperparameter and shared-parameter distributions.
@@ -249,6 +273,8 @@ def plot_time_invariant_prior(
         Distribution plot type.
     num_bins : int or None, optional, default: 40
         Number of histogram bins. If None, Seaborn selects the bins.
+    dist_alpha : float, optional, default: DIST_ALPHA
+        Opacity of parameter distributions.
     color : str, optional, default: BASE_COLOR
         Color for non-mixture distributions.
     num_cols : int or None, optional, default: None
@@ -261,6 +287,10 @@ def plot_time_invariant_prior(
         Font size for axis labels.
     tick_fontsize : int, optional, default: 16
         Font size for tick labels and legends.
+    hspace : float, optional, default: 0.4
+        Height spacing between subplot rows.
+    wspace : float, optional, default: 0.2
+        Width spacing between subplot columns.
     figsize : tuple of two floats or None, optional, default: None
         Optional figure size in inches.
 
@@ -274,6 +304,9 @@ def plot_time_invariant_prior(
     ValueError
         If both parameter mappings are empty.
     """
+
+    if not 0 <= dist_alpha <= 1:
+        raise ValueError("dist_alpha must be between 0 and 1.")
 
     labeled_params = {
         **{f"{name}  [hyper]": values for name, values in hyper_params.items()},
@@ -319,6 +352,7 @@ def plot_time_invariant_prior(
                     dist_type=dist_type,
                     color=CATEGORICAL_PALETTE[k % len(CATEGORICAL_PALETTE)],
                     num_bins=num_bins,
+                    alpha=dist_alpha,
                     label=component_names[k],
                 )
 
@@ -333,6 +367,7 @@ def plot_time_invariant_prior(
                 dist_type=dist_type,
                 color=color,
                 num_bins=num_bins,
+                alpha=dist_alpha,
             )
 
         ax.set_title(
@@ -365,7 +400,11 @@ def plot_time_invariant_prior(
 
     sns.despine()
     plt.tight_layout()
-    fig.subplots_adjust(bottom=legend_bottom)
+    fig.subplots_adjust(
+        bottom=legend_bottom,
+        hspace=hspace,
+        wspace=wspace,
+    )
 
     return fig
 
@@ -380,10 +419,14 @@ def plot_joint_prior(
     marginal: bool = True,
     dist_type: Literal["hist", "kde", "both"] = "hist",
     num_bins: int | None = 40,
+    dist_alpha: float = DIST_ALPHA,
     color: str = BASE_COLOR,
     title_fontsize: int = 22,
+    label_fontsize: int = 18,
     tick_fontsize: int = 16,
     alpha: float = 0.5,
+    hspace: float = JOINT_HSPACE,
+    wspace: float = WSPACE,
     figsize: tuple[float, float] | None = None,
 ) -> plt.Figure:
     """Plot joint prior diagnostics.
@@ -413,14 +456,22 @@ def plot_joint_prior(
         Marginal plot type: ``"hist"``, ``"kde"``, or ``"both"``.
     num_bins : int or None, optional, default: 40
         Number of histogram bins. If None, Seaborn selects the bins.
+    dist_alpha : float, optional, default: DIST_ALPHA
+        Opacity of all marginal and time-invariant distributions.
     color : str, optional, default: BASE_COLOR
         Color used for trajectories and distributions.
     title_fontsize : int, optional, default: 22
         Font size for subplot titles.
+    label_fontsize : int, optional, default: 18
+        Font size for row labels and the figure legend.
     tick_fontsize : int, optional, default: 16
         Font size for tick labels.
     alpha : float, optional, default: 0.5
         Opacity of individual trajectories.
+    hspace : float, optional, default: 0.5
+        Height spacing between subplot rows.
+    wspace : float, optional, default: 0.2
+        Width spacing between subplot columns.
     figsize : tuple of two floats or None, optional, default: None
         Optional figure size in inches.
 
@@ -434,6 +485,9 @@ def plot_joint_prior(
     ValueError
         If no plottable parameters are found or ``dist_type`` is invalid.
     """
+
+    if not 0 <= dist_alpha <= 1:
+        raise ValueError("dist_alpha must be between 0 and 1.")
 
     all_param_names = list(dict.fromkeys(list(local_params.keys()) + list(shared_params.keys())))
 
@@ -473,7 +527,7 @@ def plot_joint_prior(
     if figsize is None:
         label_font = FontProperties(
             family=plt.rcParams["font.family"],
-            size=title_fontsize,
+            size=label_fontsize,
         )
         max_label_width = (
             max(
@@ -527,6 +581,7 @@ def plot_joint_prior(
                         dist_type=dist_type,
                         color=CATEGORICAL_PALETTE[k % len(CATEGORICAL_PALETTE)],
                         num_bins=num_bins,
+                        alpha=dist_alpha,
                         label=component_names[k],
                     )
 
@@ -541,6 +596,7 @@ def plot_joint_prior(
                     dist_type=dist_type,
                     color=color,
                     num_bins=num_bins,
+                    alpha=dist_alpha,
                 )
 
             short_label = label[len(prefix) :] if label.startswith(prefix) else label
@@ -564,6 +620,7 @@ def plot_joint_prior(
                 dist_type=dist_type,
                 color=color,
                 num_bins=num_bins,
+                alpha=dist_alpha,
             )
 
             ax.set_xlabel("")
@@ -623,6 +680,7 @@ def plot_joint_prior(
                     color=color,
                     orientation="vertical",
                     num_bins=num_bins,
+                    alpha=dist_alpha,
                     hide_axis=True,
                 )
                 ax_marginal.set_ylim(ax_traj.get_ylim())
@@ -645,7 +703,7 @@ def plot_joint_prior(
             rotation=0,
             ha="right",
             va="center",
-            fontsize=title_fontsize,
+            fontsize=label_fontsize,
             labelpad=Y_LABEL_PAD,
         )
 
@@ -668,7 +726,7 @@ def plot_joint_prior(
         ],
         loc="lower center",
         ncol=2,
-        fontsize=title_fontsize - 2,
+        fontsize=label_fontsize,
         framealpha=0.0,
         bbox_to_anchor=(0.5, legend_y),
     )
@@ -676,7 +734,8 @@ def plot_joint_prior(
     fig.tight_layout()
     fig.subplots_adjust(
         bottom=legend_bottom,
-        hspace=0.5,
+        hspace=hspace,
+        wspace=wspace,
     )
 
     sns.despine()

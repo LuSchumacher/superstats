@@ -1,6 +1,6 @@
 """Posterior predictive resimulation plots."""
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from typing import Literal
 
 import numpy as np
@@ -13,25 +13,36 @@ from superstats.defaults import (
     BASE_COLOR,
     BASE_COL_WIDTH,
     BASE_ROW_HEIGHT,
+    HSPACE,
+    LABEL_PAD,
+    WSPACE,
+    Y_LABEL_PAD,
+)
+from superstats.utils.indexing import normalize_data_indices
+from superstats.utils.plotting import (
+    compute_uncertainty_band,
+    get_uncertainty_band_label,
+    get_layout,
+    plot_dist,
+    plot_uncertainty_band,
+    smooth_trajectories,
 )
 
 plt.rcParams["axes.axisbelow"] = True
 plt.rcParams["font.family"] = "serif"
 plt.rcParams["font.serif"] = ["Palatino", "Palatino Linotype", "DejaVu Serif"]
 
-BAND_LABELS = {"std": "±1 SD", "95ci": "95% CI", "mad": "±1.48 MAD", "95hdi": "95% HDI"}
-
 
 def _select_resimulation_variable(
-    pred_data: Mapping[str, np.ndarray],
-    real_data: Mapping[str, np.ndarray],
+    prediction: Mapping[str, np.ndarray],
+    empiric: Mapping[str, np.ndarray],
     data_dim: int | str,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Resolve named posterior predictive data to one variable."""
-    if not isinstance(pred_data, Mapping) or not isinstance(real_data, Mapping):
-        raise TypeError("pred_data and real_data must be mappings of named arrays.")
+    if not isinstance(prediction, Mapping) or not isinstance(empiric, Mapping):
+        raise TypeError("prediction and empiric must be mappings of named arrays.")
 
-    keys = list(pred_data)
+    keys = list(prediction)
     if isinstance(data_dim, int):
         try:
             key = keys[data_dim]
@@ -39,58 +50,21 @@ def _select_resimulation_variable(
             raise ValueError(f"data_dim index {data_dim} is out of range for data keys {keys!r}.") from exc
     else:
         key = data_dim
-        if key not in pred_data:
-            raise KeyError(f"pred_data key {key!r} not found. Available keys: {keys!r}.")
-    if key not in real_data:
-        raise KeyError(f"real_data key {key!r} not found. Available keys: {list(real_data)!r}.")
+        if key not in prediction:
+            raise KeyError(f"prediction key {key!r} not found. Available keys: {keys!r}.")
+    if key not in empiric:
+        raise KeyError(f"empiric key {key!r} not found. Available keys: {list(empiric)!r}.")
 
-    pred_x = np.asarray(pred_data[key])
-    real_x = np.asarray(real_data[key])
-    if pred_x.ndim != 3:
+    prediction_x = np.asarray(prediction[key])
+    empiric_x = np.asarray(empiric[key])
+    if prediction_x.ndim != 3:
         raise ValueError(
-            f"Predictive variable {key!r} must have shape (num_datasets, num_resims, num_steps), got {pred_x.shape}."
+            f"Predictive variable {key!r} must have shape "
+            f"(num_datasets, num_resims, num_steps), got {prediction_x.shape}."
         )
-    if real_x.ndim != 2:
-        raise ValueError(f"Observed variable {key!r} must have shape (num_datasets, num_steps), got {real_x.shape}.")
-    return pred_x, real_x
-
-
-def _smooth_trajectory(arr: np.ndarray, smoothing: str, window: int) -> np.ndarray:
-    """Causal (past-only) smoothing along the last axis.
-
-    Parameters
-    ----------
-    arr       : np.ndarray
-        Array to smooth; smoothing is applied along the last axis only.
-    smoothing : {"sma", "ema"}
-        "sma": simple moving average over `window` past steps (including
-        the current one). "ema": exponential moving average with
-        alpha = 2 / (window + 1).
-    window    : int
-        Window size for `sma`, or span parameter for `ema`.
-
-    Returns
-    -------
-    smoothed : np.ndarray - same shape as `arr`, smoothed along the last axis
-
-    Raises
-    ------
-    ValueError
-        If `smoothing` is not "sma" or "ema".
-    """
-    out = arr.copy()
-    if smoothing == "sma":
-        for i in range(arr.shape[-1]):
-            start = max(0, i - window + 1)
-            out[..., i] = arr[..., start : i + 1].mean(axis=-1)
-    elif smoothing == "ema":
-        a = 2.0 / (window + 1)
-        out[..., 0] = arr[..., 0]
-        for i in range(1, arr.shape[-1]):
-            out[..., i] = a * arr[..., i] + (1 - a) * out[..., i - 1]
-    else:
-        raise ValueError(f"smoothing must be None, 'sma', or 'ema', got {smoothing!r}.")
-    return out
+    if empiric_x.ndim != 2:
+        raise ValueError(f"Empiric variable {key!r} must have shape (num_datasets, num_steps), got {empiric_x.shape}.")
+    return prediction_x, empiric_x
 
 
 def _aggregate_center(x: np.ndarray, aggregation: Callable, axis: int = 0) -> np.ndarray:
@@ -131,61 +105,6 @@ def _aggregate_label(aggregation: Callable | None) -> str:
     return getattr(aggregation, "__name__", "aggregate").replace("_", " ").capitalize()
 
 
-def _compute_uncertainty(
-    x: np.ndarray, uncertainty_fun: str | Callable, center: np.ndarray
-) -> tuple[np.ndarray, np.ndarray]:
-    """Compute an uncertainty band around `center`, reducing across axis 0.
-
-    Parameters
-    ----------
-    x               : np.ndarray of shape (N, T)
-        Samples to compute the band from.
-    uncertainty_fun : {"std", "95ci", "mad", "95hdi"} or callable
-        Band type. A callable receives `x` and must return
-        `(lower, upper)`.
-    center          : np.ndarray of shape (T,)
-        Center line used to anchor `std`/`mad` bands.
-
-    Returns
-    -------
-    band : tuple - `(lower, upper)`, each an np.ndarray of shape (T,)
-
-    Raises
-    ------
-    ValueError
-        If `uncertainty_fun` is an unrecognized string, or if a
-        callable `uncertainty_fun` does not return a 2-tuple.
-    """
-    if callable(uncertainty_fun):
-        result = uncertainty_fun(x)
-        if len(result) != 2:
-            raise ValueError("Custom uncertainty_fun must return (lower, upper).")
-        return np.asarray(result[0]), np.asarray(result[1])
-    if uncertainty_fun == "std":
-        sd = x.std(axis=0)
-        return center - sd, center + sd
-    if uncertainty_fun == "95ci":
-        return np.percentile(x, 2.5, axis=0), np.percentile(x, 97.5, axis=0)
-    if uncertainty_fun == "mad":
-        mad = np.median(np.abs(x - center), axis=0)
-        scaled = 1.4826 * mad
-        return center - scaled, center + scaled
-    if uncertainty_fun == "95hdi":
-        steps = x.shape[-1]
-        lo, hi = np.empty(steps), np.empty(steps)
-        for i in range(steps):
-            vals = np.sort(x[:, i])
-            n = len(vals)
-            window = int(np.floor(0.95 * n))
-            widths = vals[window:] - vals[: n - window]
-            idx = np.argmin(widths)
-            lo[i], hi[i] = vals[idx], vals[idx + window]
-        return lo, hi
-    raise ValueError(
-        f"uncertainty_fun must be None, 'std', '95ci', 'mad', '95hdi', or callable. Got {uncertainty_fun!r}."
-    )
-
-
 def _is_discrete(values: np.ndarray, max_discrete_values: int) -> tuple[np.ndarray, bool]:
     """Decide whether pooled values should be treated as a discrete variable.
 
@@ -216,41 +135,47 @@ def _is_discrete(values: np.ndarray, max_discrete_values: int) -> tuple[np.ndarr
 
 
 def plot_posterior_resimulation(
-    pred_data: Mapping[str, np.ndarray],
-    real_data: Mapping[str, np.ndarray],
+    prediction: Mapping[str, np.ndarray],
+    empiric: Mapping[str, np.ndarray],
     data_dim: int | str = 0,
-    kind: Literal["trajectory", "dist"] = "trajectory",
+    kind: Literal["time_series", "dist"] = "time_series",
     aggregation: Callable | None = None,
     aggregate_strategy: Literal["full_uncertainty", "no_epistemic"] = "full_uncertainty",
     uncertainty_fun: Literal["std", "95ci", "mad", "95hdi"] | Callable | None = "95hdi",
     smoothing: Literal["sma", "ema"] | None = None,
     smoothing_window: int = 5,
     marginal: bool = True,
+    dist_alpha: float = 0.5,
+    dist_type: Literal["hist", "kde", "both"] = "hist",
+    num_bins: int | None = 40,
     spaghetti: bool = False,
     num_cols: int = 3,
     color: str = BASE_COLOR,
     real_color: str = "black",
     alpha: float = 0.4,
-    label_fontsize: int = 14,
-    tick_fontsize: int = 12,
+    label_fontsize: int = 18,
+    tick_fontsize: int = 16,
+    hspace: float = HSPACE,
+    wspace: float = WSPACE,
     figsize: tuple[float, float] | None = None,
     max_discrete_values: int = 30,
+    data_idx: int | Sequence[int] | None = None,
 ) -> plt.Figure:
     """Plot posterior predictive resimulations against the observed data.
 
     Parameters
     ----------
-    pred_data           : mapping of np.ndarray
+    prediction          : mapping of np.ndarray
         Posterior resimulated data, mapping observation names to arrays
         of shape (num_datasets, num_resims, num_steps).
-    real_data           : mapping of np.ndarray
-        Observed data, mapping observation names to arrays of shape
+    empiric             : mapping of np.ndarray
+        Empirical data, mapping observation names to arrays of shape
         (num_datasets, num_steps).
     data_dim            : int or str, optional, default: 0
         Which observation variable to plot. Strings select by key and
         integers index the predictive mapping's key order.
-    kind                : {"trajectory", "dist"}, optional, default: "trajectory"
-        "trajectory": band/center over steps.
+    kind                : {"time_series", "dist"}, optional, default: "time_series"
+        "time_series": band/center over steps.
         "dist": distribution across steps.
     aggregation         : callable or None, optional, default: None
         None: one panel per dataset.
@@ -267,10 +192,10 @@ def plot_posterior_resimulation(
         trajectory per dataset first (via `aggregation`), then
         aggregate across datasets. Removes epistemic uncertainty.
     uncertainty_fun     : {"std", "95ci", "mad", "95hdi"} or callable or None, optional, default: "95hdi"
-        "trajectory" mode only. Function to draw a band around the
+        "time_series" mode only. Function to draw a band around the
         resimulated center line.
     smoothing           : {"sma", "ema"} or None, optional, default: None
-        "trajectory" mode only. Causal (past-only) smoothing applied to
+        "time_series" mode only. Causal (past-only) smoothing applied to
         the real trajectories and, for resimulated data, to the
         trajectories that result *after* `aggregate_strategy` has
         pooled resims - i.e. pooling happens on raw data, smoothing is
@@ -279,31 +204,47 @@ def plot_posterior_resimulation(
     smoothing_window    : int, optional, default: 5
         Window size for `sma`, or span parameter for `ema`.
     marginal            : bool, optional, default: True
-        "trajectory" mode only. Attach a marginal KDE panel of the
-        resimulated draws to the right of each trajectory axis.
+        "time_series" mode only. Attach a marginal distribution panel to
+        the right of each trajectory axis.
+    dist_alpha          : float, optional, default: DIST_ALPHA
+        Opacity of predictive and observed distributions, including
+        trajectory marginals.
+    dist_type           : {"hist", "kde", "both"}, optional, default: "hist"
+        Distribution type used for marginals and distribution plots.
+    num_bins            : int or None, optional, default: 40
+        Number of histogram bins. If None, Seaborn selects the bins.
     spaghetti           : bool, optional, default: False
-        "trajectory" mode only. Per-dataset panels: overlay individual
+        "time_series" mode only. Per-dataset panels: overlay individual
         resim draws behind the band. Aggregated panel: overlay each
         dataset's own representative trajectory (via `aggregation`)
         behind the aggregate band.
     num_cols            : int, optional, default: 3
-        Number of columns when `aggregation` is None (per-dataset grid).
+        Maximum number of columns when `aggregation` is None. The grid
+        uses fewer columns when fewer datasets are selected.
     color               : str, optional, default: BASE_COLOR
         Color for bands / centers / histograms.
     real_color          : str, optional, default: "black"
         Color for the observed data.
     alpha               : float in [0, 1], optional, default: 0.4
         Alpha for spaghetti lines.
-    label_fontsize      : int, optional, default: 14
+    label_fontsize      : int, optional, default: 18
         The font size of the axis label texts.
-    tick_fontsize       : int, optional, default: 12
+    tick_fontsize       : int, optional, default: 16
         The font size of the axis tick labels.
+    hspace              : float, optional, default: HSPACE
+        Height spacing between subplot rows.
+    wspace              : float, optional, default: WSPACE
+        Width spacing between subplot columns.
     figsize             : tuple of two floats or None, optional, default: None
         Explicit figure size in inches. If None, the default layout size
         is used.
     max_discrete_values : int, optional, default: 30
         "dist" mode, per-dataset panels only. Maximum number of
         discrete categories to treat the data as discrete.
+    data_idx            : int, sequence of int, or None, optional, default: None
+        Dataset indices to plot. None selects all datasets. A single
+        integer still produces a one-dataset panel, and a sequence
+        preserves the requested order.
 
     Returns
     -------
@@ -312,32 +253,65 @@ def plot_posterior_resimulation(
     Raises
     ------
     ValueError
-        If `kind` is not "trajectory" or "dist", if `pred_data` or
-        `real_data` don't have the expected shape, if their
+        If `kind` is not "time_series" or "dist", if `prediction` or
+        `empiric` don't have the expected shape, if their
         (num_datasets, num_steps) don't match, or if `aggregate_strategy`
         is not "full_uncertainty" or "no_epistemic".
+
+    Notes
+    -----
+    ``aggregate_strategy="no_epistemic"`` is a hierarchical collapse of
+    the resimulation axis before aggregating datasets. It removes all
+    variation along that axis. This isolates epistemic uncertainty only
+    when the resimulation axis contains epistemic variation exclusively;
+    ordinary posterior-predictive draws may also contain observation noise.
     """
-    if kind not in {"trajectory", "dist"}:
-        raise ValueError("kind must be 'trajectory' or 'dist'.")
+    if kind not in {"time_series", "dist"}:
+        raise ValueError("kind must be 'time_series' or 'dist'.")
+    if dist_type not in {"hist", "kde", "both"}:
+        raise ValueError("dist_type must be one of 'hist', 'kde', or 'both'.")
+    if aggregation is not None and aggregate_strategy not in {"full_uncertainty", "no_epistemic"}:
+        raise ValueError(
+            f"aggregate_strategy must be 'full_uncertainty' or 'no_epistemic', got {aggregate_strategy!r}."
+        )
+    if num_cols < 1:
+        raise ValueError("num_cols must be at least 1.")
+    if not 0 <= dist_alpha <= 1:
+        raise ValueError("dist_alpha must be between 0 and 1.")
 
-    pred_x, real_x = _select_resimulation_variable(pred_data, real_data, data_dim)
+    prediction_x, empiric_x = _select_resimulation_variable(
+        prediction,
+        empiric,
+        data_dim,
+    )
 
-    D, S, T = pred_x.shape
-    if real_x.shape[0] != D or real_x.shape[1] != T:
-        raise ValueError("real_data's (num_datasets, num_steps) must match pred_data's.")
+    D, S, T = prediction_x.shape
+    if empiric_x.shape[0] != D or empiric_x.shape[1] != T:
+        raise ValueError("empiric's (num_datasets, num_steps) must match prediction's.")
+    selected_indices = normalize_data_indices(data_idx, D)
+    prediction_x = prediction_x[selected_indices]
+    empiric_x = empiric_x[selected_indices]
+    D = len(selected_indices)
+    num_cols = min(num_cols, D)
 
-    if kind == "trajectory" and smoothing is not None:
-        real_x = _smooth_trajectory(real_x, smoothing, smoothing_window)
+    if kind == "time_series" and smoothing is not None:
+        empiric_x = smooth_trajectories(empiric_x, smoothing, smoothing_window)
 
     t = np.arange(T)
     show_aggregate = aggregation is not None
     agg_label = _aggregate_label(aggregation)
 
-    if kind == "trajectory":
+    if kind == "time_series":
+        has_uncertainty_band = False
         if show_aggregate:
-            col_width = BASE_COL_WIDTH * (3.0 if marginal else 2.0)
-            default_figsize = (col_width, BASE_ROW_HEIGHT + 0.5)
-            fig, base_ax = plt.subplots(figsize=figsize if figsize is not None else default_figsize)
+            plot_figsize, legend_bottom, legend_y = get_layout(
+                1,
+                1,
+                figsize,
+                col_width=BASE_COL_WIDTH * 1.75,
+                row_height=BASE_ROW_HEIGHT * 1.5,
+            )
+            fig, base_ax = plt.subplots(figsize=plot_figsize)
             if marginal:
                 sub = base_ax.get_subplotspec().subgridspec(1, 2, width_ratios=[4.2, 0.8], wspace=0.0)
                 ax = fig.add_subplot(sub[0])
@@ -349,9 +323,9 @@ def plot_posterior_resimulation(
 
             # pool resims per aggregate_strategy
             if aggregate_strategy == "full_uncertainty":
-                pooled_pred = pred_x.reshape(D * S, T)
+                pooled_pred = prediction_x.reshape(D * S, T)
             elif aggregate_strategy == "no_epistemic":
-                pooled_pred = _aggregate_center(pred_x, aggregation, axis=1)
+                pooled_pred = _aggregate_center(prediction_x, aggregation, axis=1)
             else:
                 raise ValueError(
                     f"aggregate_strategy must be 'full_uncertainty' or 'no_epistemic', got {aggregate_strategy!r}."
@@ -359,41 +333,90 @@ def plot_posterior_resimulation(
 
             # smooth the pooled trajectories
             if smoothing is not None:
-                pooled_pred = _smooth_trajectory(pooled_pred, smoothing, smoothing_window)
+                pooled_pred = smooth_trajectories(pooled_pred, smoothing, smoothing_window)
 
             # aggregate (center) and uncertainty, on the smoothed pool
             center = _aggregate_center(pooled_pred, aggregation, axis=0)
-            real_center = _aggregate_center(real_x, aggregation, axis=0)
+            real_center = _aggregate_center(empiric_x, aggregation, axis=0)
 
             if uncertainty_fun is not None:
-                lower, upper = _compute_uncertainty(pooled_pred, uncertainty_fun, center)
-                ax.fill_between(t, lower, upper, color=color, alpha=0.3, edgecolor="none", zorder=1)
+                lower, upper = compute_uncertainty_band(pooled_pred, uncertainty_fun, center)
+                has_uncertainty_band = plot_uncertainty_band(
+                    ax,
+                    t,
+                    lower,
+                    upper,
+                    color,
+                    alpha=0.3,
+                )
 
             if spaghetti:
-                per_dataset_center = _aggregate_center(pred_x, aggregation, axis=1)
+                per_dataset_center = _aggregate_center(prediction_x, aggregation, axis=1)
                 if smoothing is not None:
-                    per_dataset_center = _smooth_trajectory(per_dataset_center, smoothing, smoothing_window)
+                    per_dataset_center = smooth_trajectories(per_dataset_center, smoothing, smoothing_window)
                 for line in per_dataset_center:
                     ax.plot(t, line, color=color, alpha=alpha, linewidth=1.0, zorder=2)
 
             ax.plot(t, center, color=color, linewidth=2.0, zorder=3)
             ax.plot(t, real_center, color=real_color, linewidth=2.0, linestyle="--", zorder=4)
 
-            ax.set_xlabel("Step", fontsize=label_fontsize)
+            ax.set_xlabel(
+                "Step",
+                fontsize=label_fontsize,
+                labelpad=LABEL_PAD,
+            )
+            ax.set_ylabel(
+                "Value",
+                fontsize=label_fontsize,
+                labelpad=Y_LABEL_PAD,
+            )
             ax.grid(alpha=0.3)
             ax.tick_params(labelsize=tick_fontsize)
 
             if ax_marg is not None:
-                sns.kdeplot(y=pooled_pred.reshape(-1), ax=ax_marg, color=color, fill=True, alpha=1)
+                plot_dist(
+                    pooled_pred.reshape(-1),
+                    ax=ax_marg,
+                    dist_type=dist_type,
+                    color=color,
+                    orientation="vertical",
+                    num_bins=num_bins,
+                    alpha=dist_alpha,
+                    hide_axis=True,
+                )
+                plot_dist(
+                    real_center.reshape(-1),
+                    ax=ax_marg,
+                    dist_type=dist_type,
+                    color=real_color,
+                    orientation="vertical",
+                    num_bins=num_bins,
+                    alpha=dist_alpha,
+                    hide_axis=True,
+                )
                 ax_marg.set_ylim(ax.get_ylim())
                 ax_marg.set_axis_off()
 
         else:
-            pred_x_panels = _smooth_trajectory(pred_x, smoothing, smoothing_window) if smoothing is not None else pred_x
+            prediction_panels = (
+                smooth_trajectories(prediction_x, smoothing, smoothing_window)
+                if smoothing is not None
+                else prediction_x
+            )
 
             n_rows = int(np.ceil(D / num_cols))
-            default_figsize = (BASE_COL_WIDTH * num_cols, BASE_ROW_HEIGHT * n_rows + 0.5)
-            fig, axes = plt.subplots(n_rows, num_cols, figsize=figsize if figsize is not None else default_figsize)
+            plot_figsize, legend_bottom, legend_y = get_layout(
+                n_rows,
+                num_cols,
+                figsize,
+                col_width=BASE_COL_WIDTH,
+                row_height=BASE_ROW_HEIGHT,
+            )
+            fig, axes = plt.subplots(
+                n_rows,
+                num_cols,
+                figsize=plot_figsize,
+            )
             axes = np.atleast_1d(axes).ravel()
 
             for i in range(D):
@@ -407,13 +430,20 @@ def plot_posterior_resimulation(
                     ax = base_ax
                     ax_marg = None
 
-                pred_traj = pred_x_panels[i]
-                real_traj = real_x[i]
+                pred_traj = prediction_panels[i]
+                real_traj = empiric_x[i]
                 center = np.median(pred_traj, axis=0)
 
                 if uncertainty_fun is not None:
-                    lower, upper = _compute_uncertainty(pred_traj, uncertainty_fun, center)
-                    ax.fill_between(t, lower, upper, color=color, alpha=0.3, edgecolor="none", zorder=1)
+                    lower, upper = compute_uncertainty_band(pred_traj, uncertainty_fun, center)
+                    has_uncertainty_band |= plot_uncertainty_band(
+                        ax,
+                        t,
+                        lower,
+                        upper,
+                        color,
+                        alpha=0.3,
+                    )
 
                 if spaghetti:
                     for line in pred_traj:
@@ -423,12 +453,41 @@ def plot_posterior_resimulation(
                 ax.plot(t, real_traj, color=real_color, linewidth=2.0, linestyle="--", zorder=4)
 
                 show_xlabel = i // num_cols == n_rows - 1
-                ax.set_xlabel("Step" if show_xlabel else "", fontsize=label_fontsize)
+                show_ylabel = i % num_cols == 0
+                ax.set_xlabel(
+                    "Step" if show_xlabel else "",
+                    fontsize=label_fontsize,
+                    labelpad=LABEL_PAD,
+                )
+                ax.set_ylabel(
+                    "Value" if show_ylabel else "",
+                    fontsize=label_fontsize,
+                    labelpad=Y_LABEL_PAD,
+                )
                 ax.grid(alpha=0.3)
                 ax.tick_params(labelsize=tick_fontsize)
 
                 if ax_marg is not None:
-                    sns.kdeplot(y=pred_traj.reshape(-1), ax=ax_marg, color=color, fill=True, alpha=1)
+                    plot_dist(
+                        pred_traj.reshape(-1),
+                        ax=ax_marg,
+                        dist_type=dist_type,
+                        color=color,
+                        orientation="vertical",
+                        num_bins=num_bins,
+                        alpha=dist_alpha,
+                        hide_axis=True,
+                    )
+                    plot_dist(
+                        real_traj.reshape(-1),
+                        ax=ax_marg,
+                        dist_type=dist_type,
+                        color=real_color,
+                        orientation="vertical",
+                        num_bins=num_bins,
+                        alpha=dist_alpha,
+                        hide_axis=True,
+                    )
                     ax_marg.set_ylim(ax.get_ylim())
                     ax_marg.set_axis_off()
 
@@ -439,19 +498,25 @@ def plot_posterior_resimulation(
             mlines.Line2D([], [], color=real_color, linewidth=2.0, linestyle="--", label="Real data"),
             mlines.Line2D([], [], color=color, linewidth=2.0, label=agg_label),
         ]
-        if uncertainty_fun is not None:
-            band_label = BAND_LABELS[uncertainty_fun] if isinstance(uncertainty_fun, str) else "Uncertainty"
+        if has_uncertainty_band:
+            band_label = get_uncertainty_band_label(uncertainty_fun)
             handles.append(mpatches.Patch(facecolor=color, alpha=0.3, edgecolor="none", label=band_label))
         if spaghetti:
             handles.append(mlines.Line2D([], [], color=color, linewidth=1.0, alpha=1, label="Individual"))
 
     else:
         if show_aggregate:
-            default_figsize = (BASE_COL_WIDTH * 2.0, BASE_ROW_HEIGHT + 0.5)
-            fig, ax = plt.subplots(figsize=figsize if figsize is not None else default_figsize)
+            plot_figsize, legend_bottom, legend_y = get_layout(
+                1,
+                1,
+                figsize,
+                col_width=BASE_COL_WIDTH * 2.0,
+                row_height=BASE_ROW_HEIGHT,
+            )
+            fig, ax = plt.subplots(figsize=plot_figsize)
 
-            stat_pred = _aggregate_center(pred_x, aggregation, axis=-1)
-            stat_real = _aggregate_center(real_x, aggregation, axis=-1)
+            stat_pred = _aggregate_center(prediction_x, aggregation, axis=-1)
+            stat_real = _aggregate_center(empiric_x, aggregation, axis=-1)
 
             if aggregate_strategy == "full_uncertainty":
                 pooled_stat = stat_pred.reshape(D * S)
@@ -464,26 +529,48 @@ def plot_posterior_resimulation(
 
             reference = float(_aggregate_center(stat_real, aggregation, axis=0))
 
-            sns.histplot(
+            categories, discrete = _is_discrete(
                 pooled_stat,
-                bins=30,
-                stat="density",
-                kde=True,
-                line_kws={"linewidth": 2.0},
-                ax=ax,
-                color=color,
-                alpha=1,
+                max_discrete_values,
             )
+            if discrete:
+                counts = np.array([np.sum(pooled_stat == category) for category in categories])
+                heights = counts if dist_type == "hist" else counts / counts.sum()
+                ax.bar(
+                    categories,
+                    heights,
+                    color=color,
+                    alpha=dist_alpha,
+                )
+                ax.set_xticks(categories)
+            else:
+                plot_dist(
+                    pooled_stat,
+                    ax=ax,
+                    dist_type=dist_type,
+                    color=color,
+                    num_bins=num_bins,
+                    alpha=dist_alpha,
+                )
             ax.axvline(reference, color=real_color, linewidth=2.5, linestyle="--", zorder=3)
 
-            ax.set_xlabel(f"{agg_label} statistic", fontsize=label_fontsize)
+            ax.set_xlabel(
+                f"{agg_label} statistic",
+                fontsize=label_fontsize,
+                labelpad=LABEL_PAD,
+            )
+            ax.set_ylabel(
+                "Count" if dist_type == "hist" else "Density",
+                fontsize=label_fontsize,
+                labelpad=Y_LABEL_PAD,
+            )
             ax.grid(alpha=0.3)
             ax.tick_params(labelsize=tick_fontsize)
 
             handles = [
                 mpatches.Patch(
                     facecolor=color,
-                    alpha=1,
+                    alpha=dist_alpha,
                     edgecolor="none",
                     label=f"Predictive {agg_label.lower()}",
                 ),
@@ -498,42 +585,79 @@ def plot_posterior_resimulation(
             ]
 
         else:
-            flat = np.concatenate([pred_x.reshape(-1), real_x.reshape(-1)])
+            flat = np.concatenate([prediction_x.reshape(-1), empiric_x.reshape(-1)])
             categories, discrete = _is_discrete(flat, max_discrete_values)
 
             n_rows = int(np.ceil(D / num_cols))
-            default_figsize = (BASE_COL_WIDTH * num_cols, BASE_ROW_HEIGHT * n_rows + 0.5)
-            fig, axes = plt.subplots(n_rows, num_cols, figsize=figsize if figsize is not None else default_figsize)
+            plot_figsize, legend_bottom, legend_y = get_layout(
+                n_rows,
+                num_cols,
+                figsize,
+                col_width=BASE_COL_WIDTH,
+                row_height=BASE_ROW_HEIGHT,
+            )
+            fig, axes = plt.subplots(
+                n_rows,
+                num_cols,
+                figsize=plot_figsize,
+            )
             axes = np.atleast_1d(axes).ravel()
 
             for i in range(D):
                 ax = axes[i]
-                pred_vals = pred_x[i].reshape(-1)
-                real_vals = real_x[i]
+                pred_vals = prediction_x[i].reshape(-1)
+                real_vals = empiric_x[i]
 
                 if discrete:
                     width = 0.4
-                    pred_freq = np.array([np.mean(pred_vals == c) for c in categories])
-                    real_freq = np.array([np.mean(real_vals == c) for c in categories])
-                    ax.bar(categories - width / 2, pred_freq, width=width, color=color, alpha=1)
-                    ax.bar(categories + width / 2, real_freq, width=width, color=real_color, alpha=1)
+                    category_fun = np.sum if dist_type == "hist" else np.mean
+                    pred_heights = np.array([category_fun(pred_vals == category) for category in categories])
+                    real_heights = np.array([category_fun(real_vals == category) for category in categories])
+                    ax.bar(
+                        categories - width / 2,
+                        pred_heights,
+                        width=width,
+                        color=color,
+                        alpha=dist_alpha,
+                    )
+                    ax.bar(
+                        categories + width / 2,
+                        real_heights,
+                        width=width,
+                        color=real_color,
+                        alpha=dist_alpha,
+                    )
                     ax.set_xticks(categories)
                 else:
-                    sns.histplot(
+                    plot_dist(
                         pred_vals,
-                        bins=30,
-                        stat="density",
-                        kde=True,
-                        line_kws={"linewidth": 2.0},
                         ax=ax,
+                        dist_type=dist_type,
                         color=color,
-                        alpha=0.5,
+                        num_bins=num_bins,
+                        alpha=dist_alpha,
                     )
-                    sns.kdeplot(real_vals, ax=ax, color=real_color, linewidth=2.0)
+                    plot_dist(
+                        real_vals,
+                        ax=ax,
+                        dist_type=dist_type,
+                        color=real_color,
+                        num_bins=num_bins,
+                        alpha=dist_alpha,
+                    )
 
                 show_xlabel = i // num_cols == n_rows - 1
-                ax.set_xlabel("Value" if show_xlabel else "", fontsize=label_fontsize)
-                ax.set_ylabel("")
+                show_ylabel = i % num_cols == 0
+                ax.set_xlabel(
+                    "Value" if show_xlabel else "",
+                    fontsize=label_fontsize,
+                    labelpad=LABEL_PAD,
+                )
+                ax.set_ylabel(
+                    ("Count" if dist_type == "hist" else "Density") if show_ylabel else "",
+                    fontsize=label_fontsize,
+                    labelpad=Y_LABEL_PAD,
+                )
                 ax.grid(alpha=0.3)
                 ax.tick_params(labelsize=tick_fontsize)
 
@@ -541,7 +665,7 @@ def plot_posterior_resimulation(
                 axes[j].axis("off")
 
             handles = [
-                mpatches.Patch(facecolor=color, alpha=0.7, edgecolor="none", label="Predictive"),
+                mpatches.Patch(facecolor=color, alpha=dist_alpha, edgecolor="none", label="Predictive"),
                 mlines.Line2D([], [], color=real_color, linewidth=2.0, label="Real data"),
             ]
 
@@ -551,9 +675,14 @@ def plot_posterior_resimulation(
         ncol=len(handles),
         fontsize=label_fontsize,
         framealpha=0.0,
-        bbox_to_anchor=(0.5, -0.02),
+        bbox_to_anchor=(0.5, legend_y),
     )
 
     sns.despine()
-    plt.tight_layout(rect=[0, 0.08, 1, 1])
+    plt.tight_layout()
+    fig.subplots_adjust(
+        bottom=legend_bottom,
+        hspace=hspace,
+        wspace=wspace,
+    )
     return fig

@@ -5,7 +5,6 @@ from typing import Callable
 
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
 import seaborn as sns
 
 from superstats.diagnostics.metrics import (
@@ -17,7 +16,15 @@ from superstats.diagnostics.metrics import (
 
 from superstats.utils import prepare_plot_data
 
-from superstats.defaults import BASE_COL_WIDTH, BASE_ROW_HEIGHT, LABEL_PAD, METRIC_COLORS
+from superstats.defaults import (
+    BASE_COL_WIDTH,
+    BASE_ROW_HEIGHT,
+    HSPACE,
+    LABEL_PAD,
+    METRIC_COLORS,
+    WSPACE,
+    Y_LABEL_PAD,
+)
 
 METRIC_LABELS = {
     "correlation": "Correlation\n(Truth vs. Estimate)",
@@ -41,6 +48,8 @@ def plot_time_varying_verification(
     title_fontsize: int = 22,
     label_fontsize: int = 18,
     tick_fontsize: int = 16,
+    hspace: float = HSPACE,
+    wspace: float = WSPACE,
     figsize: tuple[float, float] | None = None,
 ):
     """Plot recovery diagnostics over steps for time-varying parameters.
@@ -80,6 +89,10 @@ def plot_time_varying_verification(
         The font size of the axis label texts and row labels.
     tick_fontsize  : int, optional, default: 16
         The font size of the axis tick labels.
+    hspace        : float, optional, default: 0.4
+        Height spacing between subplot rows.
+    wspace        : float, optional, default: 0.2
+        Width spacing between subplot columns.
     figsize      : tuple of two floats or None, optional, default: None
         Explicit figure size in inches. If None, the default layout size
         is used.
@@ -117,9 +130,12 @@ def plot_time_varying_verification(
     steps = np.arange(1, num_steps + 1)
 
     default_figsize = (BASE_COL_WIDTH * num_cols, BASE_ROW_HEIGHT * num_rows)
-    fig = plt.figure(figsize=figsize if figsize is not None else default_figsize)
-    gs = gridspec.GridSpec(num_rows, num_cols, hspace=0.4, wspace=0.3, figure=fig)
-    axes = np.array([[fig.add_subplot(gs[r, c]) for c in range(num_cols)] for r in range(num_rows)])
+    fig, axes = plt.subplots(
+        num_rows,
+        num_cols,
+        figsize=figsize if figsize is not None else default_figsize,
+        squeeze=False,
+    )
 
     for row_i, key in enumerate(metric_keys):
         color = colors[row_i]
@@ -144,23 +160,18 @@ def plot_time_varying_verification(
                 ax.set_title(param_names[col_i], fontsize=title_fontsize, pad=15)
             if row_i == num_rows - 1:
                 ax.set_xlabel("Step", fontsize=label_fontsize, labelpad=LABEL_PAD)
+            if col_i == 0:
+                ax.set_ylabel(
+                    METRIC_LABELS[key],
+                    fontsize=label_fontsize,
+                    labelpad=Y_LABEL_PAD,
+                )
 
-    plt.draw()
-
-    for row_i, key in enumerate(metric_keys):
-        ax0 = axes[row_i, 0]
-        bbox = ax0.get_position()
-        fig.text(
-            0.01,
-            bbox.y0 + bbox.height / 2,
-            METRIC_LABELS[key],
-            ha="center",
-            va="center",
-            fontsize=label_fontsize,
-            rotation=90,
-        )
-
-    fig.subplots_adjust(left=0.1)
+    fig.tight_layout()
+    fig.subplots_adjust(
+        hspace=hspace,
+        wspace=wspace,
+    )
     sns.despine()
 
     return fig

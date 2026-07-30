@@ -1,11 +1,114 @@
-"""Shared data preparation helpers for plotting functions."""
+"""Shared data preparation and rendering helpers for plotting functions."""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Literal
 
 import numpy as np
 import seaborn as sns
 from matplotlib.axes import Axes
+
+from superstats.defaults import DIST_ALPHA
+
+UNCERTAINTY_BAND_LABELS = {
+    "std": "±1 SD",
+    "95ci": "95% CI",
+    "mad": "±1.48 MAD",
+    "95hdi": "95% HDI",
+}
+
+
+def get_uncertainty_band_label(
+    uncertainty_fun: str | Callable,
+) -> str:
+    """Return the shared legend label for an uncertainty-band method."""
+    return UNCERTAINTY_BAND_LABELS[uncertainty_fun] if isinstance(uncertainty_fun, str) else "Uncertainty"
+
+
+def smooth_trajectories(
+    arr: np.ndarray,
+    smoothing: Literal["sma", "ema"] | None,
+    smoothing_window: int = 5,
+) -> np.ndarray:
+    """Apply causal SMA or EMA smoothing along the last array axis."""
+    if smoothing is None:
+        return arr
+    if smoothing not in {"sma", "ema"}:
+        raise ValueError(f"smoothing must be None, 'sma', or 'ema', got {smoothing!r}.")
+    if smoothing_window < 1:
+        raise ValueError("smoothing_window must be at least 1.")
+
+    smoothed = arr.copy()
+    if smoothing == "sma":
+        for i in range(arr.shape[-1]):
+            start = max(0, i - smoothing_window + 1)
+            smoothed[..., i] = arr[..., start : i + 1].mean(axis=-1)
+    else:
+        alpha = 2.0 / (smoothing_window + 1)
+        for i in range(1, arr.shape[-1]):
+            smoothed[..., i] = alpha * arr[..., i] + (1 - alpha) * smoothed[..., i - 1]
+    return smoothed
+
+
+def compute_uncertainty_band(
+    trajectories: np.ndarray,
+    uncertainty_fun: Literal["std", "95ci", "mad", "95hdi"] | Callable,
+    center: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute an uncertainty interval across trajectory axis 0."""
+    if callable(uncertainty_fun):
+        result = uncertainty_fun(trajectories)
+        if len(result) != 2:
+            raise ValueError("Custom uncertainty_fun must return (lower, upper).")
+        return np.asarray(result[0]), np.asarray(result[1])
+    if uncertainty_fun == "std":
+        sd = trajectories.std(axis=0)
+        return center - sd, center + sd
+    if uncertainty_fun == "95ci":
+        return (
+            np.percentile(trajectories, 2.5, axis=0),
+            np.percentile(trajectories, 97.5, axis=0),
+        )
+    if uncertainty_fun == "mad":
+        mad = np.median(np.abs(trajectories - center), axis=0)
+        scaled_mad = 1.4826 * mad
+        return center - scaled_mad, center + scaled_mad
+    if uncertainty_fun == "95hdi":
+        num_steps = trajectories.shape[-1]
+        lower, upper = np.empty(num_steps), np.empty(num_steps)
+        for i in range(num_steps):
+            values = np.sort(trajectories[:, i])
+            num_values = len(values)
+            window = int(np.floor(0.95 * num_values))
+            widths = values[window:] - values[: num_values - window]
+            index = np.argmin(widths)
+            lower[i], upper[i] = values[index], values[index + window]
+        return lower, upper
+    raise ValueError(f"uncertainty_fun must be 'std', '95ci', 'mad', '95hdi', or callable. Got {uncertainty_fun!r}.")
+
+
+def plot_uncertainty_band(
+    ax: Axes,
+    steps: np.ndarray,
+    lower: np.ndarray,
+    upper: np.ndarray,
+    color: str,
+    alpha: float,
+    zorder: float = 1,
+) -> bool:
+    """Draw a non-zero-width uncertainty band and report its visibility."""
+    finite = np.isfinite(lower) & np.isfinite(upper)
+    visible = np.any(finite & ~np.isclose(lower, upper))
+    if visible:
+        ax.fill_between(
+            steps,
+            lower,
+            upper,
+            color=color,
+            alpha=alpha,
+            edgecolor="none",
+            zorder=zorder,
+        )
+    return bool(visible)
 
 
 def get_default_num_cols(
@@ -60,6 +163,7 @@ def plot_dist(
     color: str,
     orientation: Literal["horizontal", "vertical"] = "horizontal",
     num_bins: int | None = 40,
+    alpha: float = DIST_ALPHA,
     label: str | None = None,
     hide_axis: bool = False,
 ) -> None:
@@ -79,6 +183,8 @@ def plot_dist(
         Put values on the x-axis (horizontal) or y-axis (vertical).
     num_bins : int or None, optional, default: 40
         Number of histogram bins. If None, Seaborn selects the bins.
+    alpha : float, optional, default: DIST_ALPHA
+        Opacity of the histogram or KDE.
     label : str or None, optional, default: None
         Legend label for the distribution.
     hide_axis : bool, optional, default: False
@@ -95,6 +201,8 @@ def plot_dist(
         raise ValueError("orientation must be 'horizontal' or 'vertical'.")
     if num_bins is not None and num_bins < 1:
         raise ValueError("num_bins must be at least 1.")
+    if not 0 <= alpha <= 1:
+        raise ValueError("alpha must be between 0 and 1.")
 
     values = np.asarray(values).reshape(-1)
     data = {"x": values} if orientation == "horizontal" else {"y": values}
@@ -106,7 +214,7 @@ def plot_dist(
             **hist_kwargs,
             stat="count",
             color=color,
-            alpha=1.0,
+            alpha=alpha,
             label=label,
             ax=ax,
         )
@@ -115,8 +223,8 @@ def plot_dist(
             **data,
             color=color,
             fill=True,
-            alpha=1.0,
-            linewidth=2.0,
+            alpha=alpha,
+            linewidth=0,
             label=label,
             ax=ax,
         )
@@ -126,14 +234,14 @@ def plot_dist(
             **hist_kwargs,
             stat="density",
             color=color,
-            alpha=1.0,
+            alpha=alpha,
             ax=ax,
         )
         sns.kdeplot(
             **data,
             color=color,
             fill=False,
-            alpha=1.0,
+            alpha=alpha,
             linewidth=2.0,
             label=label,
             ax=ax,

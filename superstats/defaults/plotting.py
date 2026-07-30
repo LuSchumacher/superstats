@@ -1,6 +1,7 @@
 """Shared defaults for diagnostic plots."""
 
 BASE_COLOR = "#356673"  # teal-slate
+DIST_ALPHA = 1.0
 
 METRIC_COLORS = [
     "#356673",  # teal-slate
@@ -21,5 +22,8 @@ CATEGORICAL_PALETTE = [
 
 LABEL_PAD = 10
 Y_LABEL_PAD = 15
+HSPACE = 0.4
+JOINT_HSPACE = 0.5
+WSPACE = 0.2
 BASE_COL_WIDTH = 6.0
 BASE_ROW_HEIGHT = 3.0
