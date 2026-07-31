@@ -76,7 +76,7 @@ class RandomChoiceContamination(ContaminationProcess):
 
         Note: `Prior.sample` draws from the global `np.random` state, not
         from the `rng` passed into `apply`, so draws from a `Prior` are not
-        controlled by the seed threaded through `GenerativeModel.sample`.
+        controlled by the seed threaded through `Model.sample`.
         """
         p = self.p_contaminated
         if isinstance(p, Prior):

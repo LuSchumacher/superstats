@@ -22,8 +22,8 @@ from superstats.defaults import (
     TICK_FONTSIZE,
     TITLE_FONTSIZE,
 )
-from superstats.simulation import GenerativeModel
-from superstats.utils.dispatch import find_inference_network, find_summary_network
+from superstats.simulation import Model
+from superstats.utils.dispatch import find_inference_network, find_embedding_network
 from superstats.utils.indexing import normalize_data_indices
 from superstats.utils.logging import warning as log_warning
 from superstats.diagnostics.plots import (
@@ -44,21 +44,21 @@ class _SuppressCheckpointExistsWarning(logging.Filter):
 class Workflow:
     """Lightweight amortized Bayesian inference workflow wrapper.
 
-    Wraps `bf.BasicWorkflow` with sensible defaults for the summary and
+    Wraps `bf.BasicWorkflow` with sensible defaults for the embedding and
     inference networks, an auto-built adapter when one isn't supplied,
     and optional checkpoint/history restoration.
 
     Parameters
     ----------
-    simulator            : GenerativeModel or None, optional, default: None
-        The simulator used for training and, when `adapter` is not
+    model            : Model or None, optional, default: None
+        The model used for training and, when `adapter` is not
         provided, for building a default adapter. Required in that case.
     adapter              : Adapter or None, optional, default: None
         Data adapter for the workflow. If None, a default adapter is
-        built from the stochastic `simulator.local_keys`, `simulator.hyper_keys`,
-        and `simulator.shared_keys` (which requires `simulator` to be set).
-    summary_network      : {"recurrent", "transformer"} or keras.Layer, optional, default: "recurrent".
-        String names build a default summary network; otherwise, an already-created Keras layer is used directly.
+        built from the stochastic `model.local_keys`, `model.hyper_keys`,
+        and `model.shared_keys` (which requires `model` to be set).
+    embedding_network      : {"recurrent", "transformer"} or keras.Layer, optional, default: "recurrent".
+        String names build a default embedding network; otherwise, an already-created Keras layer is used directly.
     inference_network    : {"coupling", "coupling_flow"} or keras.Layer, optional, default: "coupling".
         String names build a default inference network; otherwise, an already-created Keras
         layer is used directly.
@@ -79,33 +79,33 @@ class Workflow:
 
     def __init__(
         self,
-        simulator: GenerativeModel | None = None,
+        model: Model | None = None,
         adapter: Adapter | None = None,
-        summary_network: Literal["recurrent", "transformer"] | keras.Layer = "recurrent",
+        embedding_network: Literal["recurrent", "transformer"] | keras.Layer = "recurrent",
         inference_network: Literal["coupling", "coupling_flow"] | keras.Layer = "coupling",
         checkpoint_filepath: str | None = None,
         restore_approximator: bool = True,
         restore_history: bool = True,
         **kwargs,
     ):
-        self.simulator = simulator
+        self.model = model
 
-        self.summary_network = find_summary_network(summary_network)
+        self.embedding_network = find_embedding_network(embedding_network)
         self.inference_network = find_inference_network(inference_network)
 
         if adapter is not None:
             self.adapter = adapter
         else:
-            self.adapter = self.default_adapter(simulator)
+            self.adapter = self.default_adapter(model)
 
         self.checkpoint_filepath = checkpoint_filepath
 
         logging.getLogger("bayesflow").addFilter(_SuppressCheckpointExistsWarning())
 
         self.workflow = bf.BasicWorkflow(
-            simulator=self.simulator,
+            simulator=self.model,
             adapter=self.adapter,
-            summary_network=self.summary_network,
+            summary_network=self.embedding_network,
             inference_network=self.inference_network,
             standardize="all",
             checkpoint_filepath=self.checkpoint_filepath,
@@ -120,11 +120,11 @@ class Workflow:
             self._load_history()
 
     @staticmethod
-    def default_adapter(simulator):
-        local_keys = simulator.local_keys
-        hyper_keys = simulator.hyper_keys
-        shared_keys = simulator.shared_keys
-        data_keys = simulator.data_keys
+    def default_adapter(model):
+        local_keys = model.local_keys
+        hyper_keys = model.hyper_keys
+        shared_keys = model.shared_keys
+        data_keys = model.data_keys
 
         adapter = (
             bf.Adapter()
@@ -134,7 +134,7 @@ class Workflow:
         )
 
         summary_keys = ["time_steps", *data_keys]
-        if hasattr(simulator, "has_mask") and simulator.has_mask:
+        if hasattr(model, "has_mask") and model.has_mask:
             adapter = adapter.as_time_series("missing_mask")
             adapter = adapter.concatenate([*summary_keys, "missing_mask"], into="summary_variables")
         else:
@@ -185,10 +185,10 @@ class Workflow:
             raise TypeError(f"data must be a mapping of named arrays, got {type(data)}.")
 
         conditions = dict(data)
-        if self.simulator is None:
+        if self.model is None:
             return conditions
 
-        data_keys = self.simulator.data_keys
+        data_keys = self.model.data_keys
         missing_keys = [key for key in data_keys if key not in conditions]
         if missing_keys:
             raise KeyError(f"Missing observed data keys {missing_keys!r}. Expected keys: {data_keys!r}.")
@@ -206,9 +206,9 @@ class Workflow:
                 f"'time_steps' must have shape {(num_datasets, num_steps)}, got {conditions['time_steps'].shape}."
             )
 
-        if getattr(self.simulator, "has_mask", False):
+        if getattr(self.model, "has_mask", False):
             if "missing_mask" not in conditions:
-                log_warning("No missing_mask provided although simulator has missingness; assuming no missings.")
+                log_warning("No missing_mask provided although model has missingness; assuming no missings.")
                 conditions["missing_mask"] = np.zeros((num_datasets, num_steps), dtype=bool)
 
             elif conditions["missing_mask"].shape != (num_datasets, num_steps):
@@ -269,7 +269,7 @@ class Workflow:
     ) -> keras.callbacks.History:
         """Train the approximator by simulating data on the fly.
 
-        Temporarily binds `self.simulator.sample` to always draw
+        Temporarily binds `self.model.sample` to always draw
         trajectories of length `num_steps` with `tile_to_steps=True`,
         then restores the original method afterward (even if training
         raises).
@@ -296,14 +296,14 @@ class Workflow:
         history : keras.callbacks.History - the training history for
             this run
         """
-        original_sample = self.simulator.sample
-        self.simulator.sample = functools.partial(original_sample, num_steps=num_steps, tile_to_steps=True)
+        original_sample = self.model.sample
+        self.model.sample = functools.partial(original_sample, num_steps=num_steps, tile_to_steps=True)
         try:
             history = self.workflow.fit_online(
                 epochs=epochs, num_batches_per_epoch=num_batches_per_epoch, batch_size=batch_size, **kwargs
             )
         finally:
-            self.simulator.sample = original_sample
+            self.model.sample = original_sample
 
         if save_history:
             self._save_history(history)
@@ -342,10 +342,10 @@ class Workflow:
         Parameters
         ----------
         data                 : dict of np.ndarray
-            Observed data to condition on, keyed by the simulator's
+            Observed data to condition on, keyed by the model's
             named observation variables. Each value should have shape
             (num_datasets, num_steps). If `time_steps` is omitted, it is
-            generated automatically. If the simulator was configured with
+            generated automatically. If the model was configured with
             missingness and `missing_mask` is omitted, an all-observed
             mask is generated automatically.
         num_samples          : int, optional, default: 500
@@ -435,14 +435,14 @@ class Workflow:
         estimates = selected_estimates
         example = next(iter(estimates.values()))
         batch_size = len(selected_indices)
-        time_varying_keys = set(self.simulator.local_keys) | set(self.simulator.deterministic_keys)
+        time_varying_keys = set(self.model.local_keys) | set(self.model.deterministic_keys)
         time_varying_arrays = [np.asarray(value) for name, value in estimates.items() if name in time_varying_keys]
         num_steps = time_varying_arrays[0].shape[2] if time_varying_arrays else example.shape[2]
 
         sample_idx = rng.integers(num_draws, size=(batch_size, num_sims))
 
         simulation_params = {}
-        fixed_params = self.simulator.get_fixed_params()
+        fixed_params = self.model.get_fixed_params()
 
         for name, arr in estimates.items():
             arr = np.asarray(arr)
@@ -491,10 +491,10 @@ class Workflow:
         for name, value in fixed_params.items():
             expanded_params[name] = np.broadcast_to(np.asarray(value), (batch_size * num_sims,))
 
-        for name in self.simulator.deterministic_keys:
+        for name in self.model.deterministic_keys:
             if name in expanded_params:
                 continue
-            transition = self.simulator.prior.params[name]
+            transition = self.model.prior.params[name]
             prefix = f"{name}_"
             transition_params = {
                 key[len(prefix) :]: value for key, value in expanded_params.items() if key.startswith(prefix)
@@ -509,7 +509,7 @@ class Workflow:
                 num_steps=num_steps,
             )
 
-        raw_sim = self.simulator.simulate_from_parameters(
+        raw_sim = self.model.simulate_from_parameters(
             expanded_params,
             batch_size=batch_size * num_sims,
             num_steps=num_steps,
@@ -546,7 +546,7 @@ class Workflow:
         -------
         fig : plt.Figure - the loss curve figure
         """
-        kwargs.setdefault("train_color", "#822621")
+        kwargs.setdefault("train_color", BASE_COLOR)
         kwargs.setdefault("title_fontsize", title_fontsize)
         kwargs.setdefault("label_fontsize", label_fontsize)
         kwargs.setdefault("legend_fontsize", label_fontsize)
@@ -579,7 +579,7 @@ class Workflow:
             (batch_size, num_post_samples, num_steps, 1).
         variable_keys  : list of str or None, optional, default: None
             Which parameters to select and plot, and in what order.
-            Defaults to `self.simulator.local_keys` when not supplied.
+            Defaults to `self.model.local_keys` when not supplied.
         variable_names : list of str or None, optional, default: None
             Display names for the plotted columns, in the same order as
             `variable_keys`. Defaults to `variable_keys` when not
@@ -597,7 +597,7 @@ class Workflow:
         -------
         fig : plt.Figure - the figure instance for optional saving
         """
-        local_keys = self.simulator.local_keys
+        local_keys = self.model.local_keys
 
         if variable_keys is None:
             variable_keys = local_keys
@@ -623,7 +623,7 @@ class Workflow:
         variable_names: Sequence[str] | None = None,
     ) -> tuple[np.ndarray, np.ndarray, list[str]]:
         """Select local parameters at specific zero-based time-step indices."""
-        keys = list(variable_keys) if variable_keys is not None else list(self.simulator.local_keys)
+        keys = list(variable_keys) if variable_keys is not None else list(self.model.local_keys)
         if not keys:
             raise ValueError("No time-varying parameters found.")
 
@@ -811,7 +811,7 @@ class Workflow:
         variable_keys  : sequence of str or None, optional, default: None
             Which time-invariant parameters to include, and in what
             order, when `targets`/`estimates` are dicts. Defaults to
-            `self.simulator.hyper_keys + self.simulator.shared_keys` when
+            `self.model.hyper_keys + self.model.shared_keys` when
             not supplied. Mixture parameters (dim > 1) are expanded into
             one column per component regardless of this selection.
             Ignored for array input.
@@ -861,7 +861,7 @@ class Workflow:
             return fig_recovery, fig_calibration, fig_z_score_contraction
 
         if variable_keys is None:
-            variable_keys = self.simulator.hyper_keys + self.simulator.shared_keys
+            variable_keys = self.model.hyper_keys + self.model.shared_keys
         if not variable_keys:
             raise ValueError("No time-invariant parameters found.")
         missing = [k for k in variable_keys if k not in estimates or k not in targets]
@@ -886,7 +886,7 @@ class Workflow:
 
             if dim > 1:
                 param_key = k.split("_mixture_weights")[0]
-                mixture_obj = self.simulator.prior.params.get(param_key)
+                mixture_obj = self.model.prior.params.get(param_key)
                 if hasattr(mixture_obj, "names") and len(mixture_obj.names) == dim:
                     comp_names = [f"{k}_{n}" for n in mixture_obj.names]
                 else:
@@ -982,7 +982,7 @@ class Workflow:
         variable_keys      : sequence of str or None, optional, default: None
             Which variables to select and plot, and in what order, when
             `estimates`/`targets` are dicts. Defaults to
-            `self.simulator.local_keys` when not supplied. Ignored for
+            `self.model.local_keys` when not supplied. Ignored for
             array input.
         variable_names     : sequence of str or None, optional, default: None
             Display names (used for panel labels/titles), in the same
@@ -1048,7 +1048,7 @@ class Workflow:
         fig : plt.Figure - the figure instance for optional saving
         """
         if variable_keys is None:
-            variable_keys = self.simulator.local_keys
+            variable_keys = self.model.local_keys
 
         return plot_time_varying_posterior(
             estimates=estimates,
@@ -1113,7 +1113,7 @@ class Workflow:
         variable_keys  : sequence of str or None, optional, default: None
             Which variables to select and plot, and in what order, when
             `estimates` is a dict. Defaults to
-            `self.simulator.hyper_keys + self.simulator.shared_keys` when
+            `self.model.hyper_keys + self.model.shared_keys` when
             not supplied. Ignored for array input.
         variable_names : sequence of str or None, optional, default: None
             Display names for the plotted panels. Defaults to
@@ -1127,7 +1127,7 @@ class Workflow:
             panel per parameter.
         mixture_names  : dict or None, optional, default: None
             Mapping from parameter name to a list of component names.
-            Defaults to `self.simulator.prior._mixture_names()` when not
+            Defaults to `self.model.prior._mixture_names()` when not
             supplied.
         dist_type      : {"hist", "kde", "both"}, optional, default: "hist"
             Distribution type used for posterior distributions.
@@ -1163,9 +1163,9 @@ class Workflow:
         fig : plt.Figure - the figure instance for optional saving
         """
         if variable_keys is None:
-            variable_keys = self.simulator.hyper_keys + self.simulator.shared_keys
+            variable_keys = self.model.hyper_keys + self.model.shared_keys
         if mixture_names is None:
-            mixture_names = self.simulator.prior._mixture_names()
+            mixture_names = self.model.prior._mixture_names()
 
         return plot_time_invariant_posterior(
             estimates=estimates,
@@ -1223,7 +1223,7 @@ class Workflow:
             )
         return tiled[:, 0, :]
 
-    def df_to_dict(
+    def prepare_data(
         self,
         df: pd.DataFrame,
         id_col: str,
@@ -1241,7 +1241,7 @@ class Workflow:
         are normalized to positions `1..num_steps` in sorted time order.
         Otherwise, rows are placed by order of appearance within each
         `id_col` group. Missing or padded positions are flagged in
-        `"missing_mask"` and filled with the simulator's missing-value
+        `"missing_mask"` and filled with the model's missing-value
         convention when one exists.
 
         Parameters
@@ -1256,9 +1256,9 @@ class Workflow:
             of first appearance, to form the batch dimension.
         data_mapping : Mapping[str, str]
             Maps a column name in `df` to the corresponding key expected by
-            the generative model, e.g. `{"rt": "response_time", "correct":
+            the model, e.g. `{"rt": "response_time", "correct":
             "choice"}`. The set of values (not keys) must exactly match
-            `self.simulator.data_keys`.
+            `self.model.data_keys`.
         missing_value : int or float
             Sentinel value marking a missing observation, and used to
             initialize/pad positions with no corresponding row.
@@ -1270,14 +1270,14 @@ class Workflow:
         Returns
         -------
         data : dict of np.ndarray
-            One entry per generative-model data key, each of shape
+            One entry per model data key, each of shape
             (batch_size, num_steps), plus `"missing_mask"` (1 where any
             mapped column equals `missing_value` at that step, 0 otherwise)
             and `"time_steps"` (each row equal to `1..num_steps`).
         """
-        simulator = getattr(self, "simulator", None)
-        if simulator is None:
-            raise AttributeError("df_to_dict needs a Workflow with a simulator.")
+        model = getattr(self, "model", None)
+        if model is None:
+            raise AttributeError("prepare_data needs a Workflow with a model.")
 
         required_cols = [id_col, *data_mapping]
         if time_col is not None:
@@ -1287,14 +1287,13 @@ class Workflow:
         if missing_cols:
             raise KeyError(f"df is missing required column(s): {missing_cols}")
         if df.empty:
-            raise ValueError("df_to_dict requires at least one row.")
+            raise ValueError("prepare_data requires at least one row.")
 
         mapped_keys = list(data_mapping.values())
-        expected_keys = list(simulator.data_keys)
+        expected_keys = list(model.data_keys)
         if sorted(mapped_keys) != sorted(expected_keys):
             raise ValueError(
-                f"data_mapping values {sorted(mapped_keys)!r} do not match "
-                f"simulator.data_keys {sorted(expected_keys)!r}."
+                f"data_mapping values {sorted(mapped_keys)!r} do not match model.data_keys {sorted(expected_keys)!r}."
             )
 
         if missing_value is None:
@@ -1346,7 +1345,7 @@ class Workflow:
             if not pd.isna(missing_value):
                 missing_mask |= data[data_key] == missing_value
 
-        model_missing_value = getattr(getattr(simulator, "missing", None), "missing_value", missing_value)
+        model_missing_value = getattr(getattr(model, "missing", None), "missing_value", missing_value)
 
         def _missing_fill(data_key: str, index: int):
             if isinstance(model_missing_value, Mapping):
@@ -1356,7 +1355,7 @@ class Workflow:
                 return model_missing_value
             if value.shape == (len(expected_keys),):
                 return value[index]
-            raise ValueError(f"simulator missing_value must be scalar, mapping, or shape ({len(expected_keys)},).")
+            raise ValueError(f"model missing_value must be scalar, mapping, or shape ({len(expected_keys)},).")
 
         # A missing value in any observed variable drops the whole time step.
         for i, data_key in enumerate(expected_keys):
