@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from superstats.prior import JointPrior, Prior
-from superstats.transition import DeterministicTransition, Linear, Polynomial
+from superstats.transition import DeterministicTransition, Exponential, Linear, Logarithmic, Polynomial
 
 
 def test_linear_returns_standard_parameter_groups():
@@ -79,6 +79,13 @@ def test_polynomial_trajectory_matches_reported_hyperparameters(degree):
     np.testing.assert_allclose(reconstructed, result["deterministic_params"])
 
 
+def test_polynomial_uses_deterministic_defaults_for_all_unspecified_betas():
+    result = Polynomial(degree=3).sample(batch_size=8, num_steps=10)
+
+    assert {"beta_1", "beta_2", "beta_3"}.issubset(result["hyper_params"])
+    assert not {"beta_1", "beta_2", "beta_3"}.intersection(result["fixed_params"])
+
+
 def test_polynomial_reported_beta_matches_change_across_trajectory():
     transition = Polynomial(
         intercept=Prior("normal", loc=1.0, scale=0.5),
@@ -95,3 +102,24 @@ def test_polynomial_reported_beta_matches_change_across_trajectory():
 def test_polynomial_rejects_wrong_number_of_coefficients():
     with pytest.raises(ValueError, match="degree"):
         Polynomial(betas=[1.0], degree=2)
+
+
+def test_exponential_uses_intercept_and_rate():
+    result = Exponential(intercept=2.0, beta=1.0, bounds=(-100.0, 100.0)).sample(batch_size=1, num_steps=3)
+
+    np.testing.assert_allclose(result["deterministic_params"][0], 2.0 * np.exp([0.0, 0.5, 1.0]), rtol=1e-6)
+
+
+def test_logarithmic_uses_intercept_and_scale():
+    result = Logarithmic(intercept=1.0, beta=2.0, bounds=(-100.0, 100.0)).sample(batch_size=1, num_steps=3)
+
+    np.testing.assert_allclose(result["deterministic_params"][0], 1.0 + 2.0 * np.log1p([0.0, 0.5, 1.0]), rtol=1e-6)
+
+
+def test_new_transitions_reconstruct_sampled_trajectories():
+    for transition in [Exponential(), Logarithmic()]:
+        result = transition.sample(batch_size=4, num_steps=6)
+        reconstructed = transition.sample_from_parameters(
+            {**result["hyper_params"], **result["fixed_params"]}, batch_size=4, num_steps=6
+        )
+        np.testing.assert_allclose(reconstructed, result["deterministic_params"])

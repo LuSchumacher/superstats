@@ -8,7 +8,7 @@ from .deterministic_transition import DeterministicTransition, Prior
 
 
 class Linear(DeterministicTransition):
-    """Deterministic linear transition with an intercept and slope.
+    """Deterministic linear transition with an intercept and beta.
 
     Parameters
     ----------
@@ -20,11 +20,11 @@ class Linear(DeterministicTransition):
         per trajectory; `None` uses the deterministic default prior.
     beta            : float, Prior, or None, optional, default: None
         Change across the trajectory when `normalize_steps=True`. A `Prior`
-        samples one slope per trajectory; `None` uses the deterministic
+        samples one beta per trajectory; `None` uses the deterministic
         default prior.
     normalize_steps : bool, optional, default: True
         If `True`, use a time axis from 0 to 1. If `False`, use integer
-        step indices, so the slope is applied at every step.
+        step indices, so the beta is applied at every step.
 
     Notes
     -----
