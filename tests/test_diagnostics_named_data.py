@@ -611,7 +611,7 @@ def test_plot_push_forward_supports_dist_type(dist_type):
     if dist_type == "both":
         assert ax.lines
     assert ax.get_ylabel() == "Density"
-    assert ax.get_xlabel() == "Parameter value"
+    assert ax.get_xlabel() == "Data value"
     plt.close(fig)
 
 
@@ -646,7 +646,7 @@ def test_plot_push_forward_dist_labels_ticks_on_every_row_without_shared_x_axis(
         "Dataset 2",
         "Dataset 3",
     ]
-    assert [ax.get_xlabel() for ax in fig.axes] == ["", "", "Parameter value", "Parameter value"]
+    assert [ax.get_xlabel() for ax in fig.axes] == ["", "", "Data value", "Data value"]
     plt.close(fig)
 
 

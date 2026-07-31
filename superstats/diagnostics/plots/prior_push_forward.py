@@ -374,7 +374,7 @@ def plot_push_forward(
                 )
 
             ax.set_xlabel(
-                "Parameter value",
+                "Data value",
                 fontsize=label_fontsize,
                 labelpad=LABEL_PAD,
             )
@@ -482,7 +482,7 @@ def plot_push_forward(
 
             ax.set_title(format_dataset_label(i), fontsize=title_fontsize)
             ax.set_xlabel(
-                "Parameter value" if show_xlabel else "",
+                "Data value" if show_xlabel else "",
                 fontsize=label_fontsize,
                 labelpad=LABEL_PAD,
             )
