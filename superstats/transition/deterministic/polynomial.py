@@ -79,14 +79,8 @@ class Polynomial(DeterministicTransition):
         raise TypeError("betas must be a scalar, Prior, None, or a sequence of scalars/Priors")
 
     def _resolve_beta(self, spec: float | Prior | None) -> tuple[Prior | float, bool]:
-        """Resolve a beta spec, defaulting to a fixed zero if unspecified."""
-        if spec is None:
-            return 0.0, False
-        if isinstance(spec, Prior):
-            return spec, True
-        if isinstance(spec, (float, int)):
-            return spec, False
-        raise TypeError(f"Invalid beta specification: {type(spec)}")
+        """Resolve a beta spec using the shared default hyperprior."""
+        return self._resolve("beta", spec)
 
     def _resolve_hyperparams(self, batch_size: int) -> tuple[Dict[str, np.ndarray], Dict[str, float]]:
         """Resolve intercept and beta specs into sampled and fixed groups."""
