@@ -2,6 +2,7 @@
 
 from .model import Model
 from .augmentation.random_missing import RandomMissingProcess
+from .augmentation.random_choice_contamination import RandomChoiceContamination
 from .cognitive.ddm import sample_ddm
 from .cognitive.rdm import sample_rdm
 from .cognitive.cdm import sample_cdm
@@ -9,6 +10,7 @@ from .cognitive.cdm import sample_cdm
 __all__ = [
     "Model",
     "RandomMissingProcess",
+    "RandomChoiceContamination",
     "sample_ddm",
     "sample_rdm",
     "sample_cdm",

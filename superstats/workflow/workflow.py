@@ -791,6 +791,7 @@ class Workflow:
         estimates: Mapping[str, np.ndarray] | np.ndarray,
         variable_keys: Sequence[str] | None = None,
         variable_names: Sequence[str] | None = None,
+        uncertainty_agg: Callable | None = None,
         **kwargs,
     ):
         """Plot time-invariant recovery, calibration, and contraction.
@@ -821,9 +822,12 @@ class Workflow:
             `len(variable_keys)`) and defaults to the auto-derived
             per-component names. For array input, defaults to `param_0`,
             `param_1`, ...
+        uncertainty_agg : callable or None, optional, default: None
+            Uncertainty aggregation passed only to `plot_recovery`. Pass
+            `None` to suppress recovery uncertainty intervals.
         **kwargs
-            Forwarded to `plot_recovery`, `plot_calibration`, and
-            `plot_z_score_contraction` (e.g. `label_fontsize`,
+            Shared options forwarded to `plot_recovery`, `plot_calibration`,
+            and `plot_z_score_contraction` (e.g. `label_fontsize`,
             `title_fontsize`, `tick_fontsize`, or `color`).
 
         Returns
@@ -836,13 +840,16 @@ class Workflow:
         ValueError
             If no time-invariant parameters are found for dict input.
         """
+        recovery_kwargs = dict(kwargs)
+        recovery_kwargs["uncertainty_agg"] = uncertainty_agg
+
         if not isinstance(estimates, Mapping):
             fig_recovery = plot_recovery(
                 estimates=estimates,
                 targets=targets,
                 variable_keys=variable_keys,
                 variable_names=variable_names,
-                **kwargs,
+                **recovery_kwargs,
             )
             fig_calibration = plot_calibration(
                 estimates=estimates,
@@ -916,7 +923,7 @@ class Workflow:
             estimates=estimate_arr,
             targets=target_arr,
             variable_names=expanded_names,
-            **kwargs,
+            **recovery_kwargs,
         )
 
         fig_calibration = plot_calibration(

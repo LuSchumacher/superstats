@@ -1,6 +1,6 @@
 # Introduction
 
-In Superstats, a dynamic model is built from two pieces: a **low-level observation model** (e.g., a cognitive model such as the Diffusion Decision Model) that generates data at each time step, and a **high-level transition model** that describes how the model's parameters evolve over time.
+In Superstats, a dynamic model is built from two pieces: a **low-level observation model** (e.g., a cognitive model such as the Diffusion Decision Model) that generates data at each time step, and a **high-level transition model** that describes how the model's parameters evolve over time. To estimate such models, superstats utiilzes amortized Bayesian inference (based on [BayesFlow](https://github.com/bayesflow-org/bayesflow)).
 
 A typical amortized Bayesian workflow ([Li et al., 2026](https://openreview.net/forum?id=osV7adJlKD)) consists of the following steps:
 
