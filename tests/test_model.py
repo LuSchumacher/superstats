@@ -156,7 +156,7 @@ def test_deterministic_trajectories_are_simulated_but_not_inferred():
     assert adapted["inference_variables"].shape[-1] == 1
 
 
-def test_resimulate_posterior_reconstructs_linear_deterministic_parameter():
+def test_resimulate_reconstructs_linear_deterministic_parameter():
     prior = JointPrior(
         v=RandomWalk(bounds=(-3.0, 3.0), initial_prior=Prior("normal", loc=0.0, scale=0.5), sigma=0.0, delta=0.0),
         a=Linear(intercept=0.5, beta=0.5),
@@ -172,10 +172,56 @@ def test_resimulate_posterior_reconstructs_linear_deterministic_parameter():
         # Shared posterior outputs can be tiled over time by the adapter.
         "a_intercept": np.full((2, 3, NUM_STEPS, 1), 0.5, dtype=np.float32),
     }
-    result = workflow.resimulate_posterior(posterior, num_sims=4, rng=0)
+    result = workflow.resimulate(estimates=posterior, num_sims=4, rng=0)
 
     assert result["response_time"].shape == (2, 4, NUM_STEPS)
     assert result["choice"].shape == (2, 4, NUM_STEPS)
+
+
+def test_resimulate_selects_datasets_and_preserves_requested_order():
+    class DummySimulator:
+        local_keys = []
+        deterministic_keys = []
+
+        @staticmethod
+        def get_fixed_params():
+            return {}
+
+        @staticmethod
+        def simulate_from_parameters(params, batch_size, num_steps):
+            values = np.broadcast_to(
+                params["theta"][:, None],
+                (batch_size, num_steps),
+            )
+            return {"value": values}
+
+    workflow = object.__new__(Workflow)
+    workflow.model = DummySimulator()
+    posterior = {
+        "theta": np.broadcast_to(
+            np.arange(3, dtype=float)[:, None, None],
+            (3, 2, 1),
+        )
+    }
+
+    single = workflow.resimulate(
+        estimates=posterior,
+        num_sims=2,
+        rng=0,
+        data_idx=1,
+    )
+    reordered = workflow.resimulate(
+        estimates=posterior,
+        num_sims=2,
+        rng=0,
+        data_idx=[2, 0],
+    )
+
+    assert single["value"].shape == (1, 2, 1)
+    np.testing.assert_allclose(single["value"], 1.0)
+    assert reordered["value"].shape == (2, 2, 1)
+    np.testing.assert_allclose(reordered["value"][0], 2.0)
+    np.testing.assert_allclose(reordered["value"][1], 0.0)
 
 
 def test_workflow_prepare_conditions_adds_time_steps_for_named_data(caplog):

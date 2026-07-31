@@ -627,28 +627,32 @@ class Model:
 
     def plot_push_forward(
         self,
-        num_sim: int = 20,
+        batch_size: int = 20,
         num_steps: int = 200,
         data_dim: int | str = 0,
-        kind: str = "dist",
+        kind: Literal["time_series", "dist"] = "dist",
         aggregation: Callable | None = None,
         uncertainty_fun: str | Callable | None = None,
         marginal: bool = True,
+        dist_type: Literal["hist", "kde", "both"] = "hist",
+        num_bins: int | None = None,
+        dist_alpha: float | None = None,
         spaghetti: bool = False,
+        num_cols: int | None = None,
         **kwargs,
     ) -> plt.Figure:
         """Render prior push-forward diagnostics for the generative simulator.
 
         Parameters
         ----------
-        num_sim         : int, optional, default: 20
+        batch_size      : int, optional, default: 20
             Number of simulated datasets to generate.
         num_steps       : int, optional, default: 200
             Number of time steps per simulation.
         data_dim        : int or str, optional, default: 0
             Observation variable to plot. Integers index
             `self.data_keys`; strings select a variable by name.
-        kind            : {"dist", "trajectory"}, optional, default: "dist"
+        kind            : {"dist", "time_series"}, optional, default: "dist"
             Plot type.
         aggregation     : callable or None, optional, default: None
             Aggregation function over the dataset dimension, called as
@@ -656,13 +660,22 @@ class Model:
             If None, individual datasets are shown in separate panels.
             If specified, all datasets are aggregated into a single panel.
         uncertainty_fun : {"std", "95ci", "mad", "95hdi"} or callable or None, optional, default: None
-            Uncertainty function for aggregate trajectory plots. Forwarded
+            Uncertainty function for aggregate time-series plots. Forwarded
             directly to `plot_push_forward`, so the accepted values must
             match that function's own supported set.
         marginal        : bool, optional, default: True
-            If True, include marginal distributions beside trajectories.
+            If True, include marginal distributions beside time-series plots.
+        dist_type       : {"hist", "kde", "both"}, optional, default: "hist"
+            Distribution type used for continuous distributions and marginals.
+        num_bins        : int or None, optional, default: None
+            Number of histogram bins. If None, Seaborn selects the bins.
+        dist_alpha      : float or None, optional, default: None
+            Opacity of distributions and marginal distributions. If None,
+            uses 1.0 for one distribution and 0.5 for overlays.
         spaghetti       : bool, optional, default: False
-            If True, include individual trajectories.
+            If True, include individual time series.
+        num_cols        : int or None, optional, default: None
+            Number of panel columns. If None, uses the compact dynamic layout.
         **kwargs
             Forwarded to `plot_push_forward`.
 
@@ -670,7 +683,7 @@ class Model:
         -------
         fig : plt.Figure - the figure containing the requested plot
         """
-        sample = self.sample(batch_size=num_sim, num_steps=num_steps)
+        sample = self.sample(batch_size=batch_size, num_steps=num_steps)
         data = {key: sample[key] for key in self.data_keys}
         return plot_push_forward(
             data=data,
@@ -680,5 +693,9 @@ class Model:
             uncertainty_fun=uncertainty_fun,
             spaghetti=spaghetti,
             marginal=marginal,
+            dist_type=dist_type,
+            num_bins=num_bins,
+            dist_alpha=dist_alpha,
+            num_cols=num_cols,
             **kwargs,
         )

@@ -21,7 +21,8 @@ class Mixture(StochasticTransition):
         define the jump probability.
     mixture_weights : Prior or tuple of float or None, optional, default: None
         Fixed simplex weights, a `dirichlet` `Prior` to infer them per
-        batch, or None for uniform weights over the components.
+        batch, or None to use a uniform Dirichlet prior with concentration
+        parameters `[1.0] * num_components`.
     bounds          : tuple or None, optional, default: None
         Lower and upper bounds for the latent state, shared across all
         component transitions.
@@ -125,7 +126,10 @@ class Mixture(StochasticTransition):
                 raise ValueError("mixture_weights Prior must be 'dirichlet' to define simplex-distributed weights")
             self.mixture_weights = mixture_weights
         elif mixture_weights is None:
-            self.mixture_weights = None
+            self.mixture_weights = Prior(
+                "dirichlet",
+                alpha=[1.0] * self.K,
+            )
         else:
             raise TypeError("Invalid type for mixture_weights")
 
@@ -142,8 +146,8 @@ class Mixture(StochasticTransition):
         Returns
         -------
         weights : np.ndarray of shape (batch_size, K) - simplex weights
-            per batch element, either drawn from a Dirichlet `Prior`,
-            tiled from fixed weights, or uniform over the `K` components
+            per batch element, either drawn from a Dirichlet `Prior` or
+            tiled from fixed weights
         """
         # Dirichlet prior
         if isinstance(self.mixture_weights, Prior):
@@ -157,10 +161,7 @@ class Mixture(StochasticTransition):
 
             return np.tile(w, (batch_size, 1))
 
-        # default uniform weights
-        w = np.ones(self.K, dtype=self.dtype) / self.K
-
-        return np.tile(w, (batch_size, 1))
+        raise TypeError("mixture_weights must be a Dirichlet Prior or fixed tuple.")
 
     def _sample_regimes(self, weights: np.ndarray, num_steps: int) -> np.ndarray:
         """Sample the active component index at each step, per batch element.
@@ -275,9 +276,7 @@ class Mixture(StochasticTransition):
         if isinstance(self.mixture_weights, Prior):
             hyper_params["mixture_weights"] = weights
         else:
-            fixed_params["mixture_weights"] = (
-                self.mixture_weights if self.mixture_weights is not None else tuple(np.ones(self.K) / self.K)
-            )
+            fixed_params["mixture_weights"] = self.mixture_weights
 
         return {
             "local_params": local_params,

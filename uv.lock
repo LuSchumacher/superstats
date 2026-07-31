@@ -2825,7 +2825,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "bayesflow", specifier = "==2.0.12" },
+    { name = "bayesflow", specifier = ">=2.0.12,<2.0.13" },
     { name = "ipykernel", marker = "extra == 'all'" },
     { name = "ipykernel", marker = "extra == 'test'" },
     { name = "ipython", marker = "extra == 'all'" },

@@ -112,11 +112,39 @@ def test_mixture_sample_shape_and_keys():
     assert set(np.unique(regimes)).issubset({0, 1})
 
     assert "rw_sigma" in result["hyper_params"]
+    assert "mixture_weights" in result["hyper_params"]
     assert "rw_delta" in result["fixed_params"]
     assert "jump_p_jump" in result["fixed_params"]
-    assert "mixture_weights" in result["fixed_params"]
+    assert "mixture_weights" not in result["fixed_params"]
     assert result["hyper_params"]["rw_sigma"].shape == (BATCH_SIZE,)
+    assert result["hyper_params"]["mixture_weights"].shape == (BATCH_SIZE, 2)
+    np.testing.assert_allclose(result["hyper_params"]["mixture_weights"].sum(axis=1), 1.0)
     assert np.all(np.isfinite(result["hyper_params"]["rw_sigma"]))
+
+
+def test_mixture_defaults_to_uniform_dirichlet_weight_prior():
+    mixture = Mixture(
+        transitions=[RandomWalk(), Jump()],
+    )
+
+    assert isinstance(mixture.mixture_weights, Prior)
+    assert mixture.mixture_weights.dist == "dirichlet"
+    assert mixture.mixture_weights.alpha == [1.0, 1.0]
+
+
+def test_mixture_preserves_explicit_fixed_weights():
+    mixture = Mixture(
+        transitions=[RandomWalk(), Jump()],
+        mixture_weights=(0.25, 0.75),
+        bounds=(-3.0, 3.0),
+        initial_prior=Prior("normal", loc=0.0, scale=1.0),
+    )
+
+    result = mixture.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS)
+
+    assert mixture.mixture_weights == pytest.approx((0.25, 0.75))
+    assert result["fixed_params"]["mixture_weights"] == pytest.approx((0.25, 0.75))
+    assert "mixture_weights" not in result["hyper_params"]
 
 
 def test_mixture_requires_at_least_two_transitions():
