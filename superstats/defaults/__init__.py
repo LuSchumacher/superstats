@@ -22,10 +22,15 @@ from .plotting import (
     DIST_ALPHA,
     HSPACE,
     JOINT_HSPACE,
+    LABEL_FONTSIZE,
     LABEL_PAD,
     METRIC_COLORS,
+    OVERLAY_DIST_ALPHA,
+    TICK_FONTSIZE,
+    TITLE_FONTSIZE,
     WSPACE,
     Y_LABEL_PAD,
+    METRIC_LABELS,
 )
 
 __all__ = [
@@ -41,11 +46,16 @@ __all__ = [
     "BASE_COL_WIDTH",
     "BASE_ROW_HEIGHT",
     "METRIC_COLORS",
+    "OVERLAY_DIST_ALPHA",
     "CATEGORICAL_PALETTE",
     "DIST_ALPHA",
     "HSPACE",
     "JOINT_HSPACE",
+    "LABEL_FONTSIZE",
     "LABEL_PAD",
+    "TICK_FONTSIZE",
+    "TITLE_FONTSIZE",
     "WSPACE",
     "Y_LABEL_PAD",
+    "METRIC_LABELS",
 ]

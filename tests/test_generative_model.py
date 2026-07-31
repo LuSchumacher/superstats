@@ -81,11 +81,13 @@ def test_generative_model_plot_push_forward_forwards_new_arguments(monkeypatch):
     sentinel = object()
     captured = {}
 
-    monkeypatch.setattr(
-        gm,
-        "sample",
-        lambda batch_size, num_steps: {key: np.ones((batch_size, num_steps)) for key in gm.data_keys},
-    )
+    sample_args = {}
+
+    def fake_sample(batch_size, num_steps):
+        sample_args.update(batch_size=batch_size, num_steps=num_steps)
+        return {key: np.ones((batch_size, num_steps)) for key in gm.data_keys}
+
+    monkeypatch.setattr(gm, "sample", fake_sample)
 
     def fake_plot_push_forward(**kwargs):
         captured.update(kwargs)
@@ -98,25 +100,24 @@ def test_generative_model_plot_push_forward_forwards_new_arguments(monkeypatch):
     )
 
     result = gm.plot_push_forward(
-        num_sim=3,
+        batch_size=3,
         num_steps=5,
         kind="time_series",
         dist_type="both",
         num_bins=13,
         dist_alpha=0.35,
         num_cols=1,
-        hspace=0.6,
-        wspace=0.1,
     )
 
     assert result is sentinel
+    assert sample_args == {"batch_size": 3, "num_steps": 5}
     assert captured["kind"] == "time_series"
     assert captured["dist_type"] == "both"
     assert captured["num_bins"] == 13
     assert captured["dist_alpha"] == 0.35
     assert captured["num_cols"] == 1
-    assert captured["hspace"] == 0.6
-    assert captured["wspace"] == 0.1
+    assert "hspace" not in captured
+    assert "wspace" not in captured
 
 
 def test_workflow_plot_history_uses_shared_font_sizes(monkeypatch):
@@ -146,6 +147,104 @@ def test_workflow_plot_history_uses_shared_font_sizes(monkeypatch):
     assert captured["label_fontsize"] == 18
     assert captured["legend_fontsize"] == 18
     assert captured["tick_params"]["labelsize"] == 16
+
+
+def test_workflow_time_varying_posterior_forwards_plot_arguments(monkeypatch):
+    captured = {}
+    sentinel = object()
+
+    def fake_plot(**kwargs):
+        captured.update(kwargs)
+        return sentinel
+
+    monkeypatch.setattr(
+        workflow_module,
+        "plot_time_varying_posterior",
+        fake_plot,
+    )
+    workflow = object.__new__(Workflow)
+    estimates = {"v": np.ones((2, 3, 4, 1))}
+
+    result = workflow.plot_time_varying_posterior(
+        estimates=estimates,
+        variable_keys=["v"],
+        aggregation=np.mean,
+        marginal=False,
+        dist_type="kde",
+        num_bins=13,
+        dist_alpha=0.35,
+        num_cols=1,
+        alpha=0.2,
+        color="red",
+        title_fontsize=11,
+        label_fontsize=12,
+        tick_fontsize=9,
+        figsize=(5.0, 4.0),
+        data_idx=[1, 0],
+    )
+
+    assert result is sentinel
+    assert captured["dist_type"] == "kde"
+    assert captured["num_bins"] == 13
+    assert captured["dist_alpha"] == 0.35
+    assert captured["num_cols"] == 1
+    assert captured["alpha"] == 0.2
+    assert captured["color"] == "red"
+    assert captured["title_fontsize"] == 11
+    assert captured["label_fontsize"] == 12
+    assert captured["tick_fontsize"] == 9
+    assert "hspace" not in captured
+    assert "wspace" not in captured
+    assert captured["figsize"] == (5.0, 4.0)
+    assert captured["data_idx"] == [1, 0]
+
+
+def test_workflow_time_invariant_posterior_forwards_plot_arguments(monkeypatch):
+    captured = {}
+    sentinel = object()
+
+    def fake_plot(**kwargs):
+        captured.update(kwargs)
+        return sentinel
+
+    monkeypatch.setattr(
+        workflow_module,
+        "plot_time_invariant_posterior",
+        fake_plot,
+    )
+    workflow = object.__new__(Workflow)
+    estimates = {"a": np.ones((2, 3, 4, 1))}
+
+    result = workflow.plot_time_invariant_posterior(
+        estimates=estimates,
+        variable_keys=["a"],
+        mixture_names={},
+        aggregation=np.mean,
+        dist_type="both",
+        num_bins=13,
+        dist_alpha=0.35,
+        num_cols=1,
+        color="red",
+        title_fontsize=11,
+        label_fontsize=12,
+        tick_fontsize=9,
+        figsize=(5.0, 4.0),
+        data_idx=[1, 0],
+    )
+
+    assert result is sentinel
+    assert captured["dist_type"] == "both"
+    assert captured["num_bins"] == 13
+    assert captured["dist_alpha"] == 0.35
+    assert captured["num_cols"] == 1
+    assert captured["color"] == "red"
+    assert captured["title_fontsize"] == 11
+    assert captured["label_fontsize"] == 12
+    assert captured["tick_fontsize"] == 9
+    assert "hspace" not in captured
+    assert "wspace" not in captured
+    assert captured["figsize"] == (5.0, 4.0)
+    assert captured["data_idx"] == [1, 0]
 
 
 def test_generative_model_sample_include_fixed():

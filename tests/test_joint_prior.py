@@ -93,6 +93,21 @@ def test_joint_prior_time_invariant_plot_uses_three_columns_for_six_params():
     plt.close(fig)
 
 
+def test_joint_prior_time_varying_plot_accepts_default_distribution_alpha():
+    prior = _build_joint_prior()
+
+    assert inspect.signature(JointPrior.plot_time_varying_prior).parameters["dist_alpha"].default == 1.0
+
+    fig = prior.plot_time_varying_prior(
+        num_steps=8,
+        num_trajectories=4,
+    )
+
+    assert fig is not None
+    assert any(ax.patches for ax in fig.axes)
+    plt.close(fig)
+
+
 def test_joint_prior_time_varying_plot_forwards_all_arguments(monkeypatch):
     captured = {}
     sentinel = object()
@@ -117,8 +132,6 @@ def test_joint_prior_time_varying_plot_forwards_all_arguments(monkeypatch):
         title_fontsize=11,
         label_fontsize=12,
         tick_fontsize=9,
-        hspace=0.6,
-        wspace=0.1,
         figsize=(5.0, 4.0),
     )
 
@@ -133,8 +146,8 @@ def test_joint_prior_time_varying_plot_forwards_all_arguments(monkeypatch):
     assert captured["title_fontsize"] == 11
     assert captured["label_fontsize"] == 12
     assert captured["tick_fontsize"] == 9
-    assert captured["hspace"] == 0.6
-    assert captured["wspace"] == 0.1
+    assert "hspace" not in captured
+    assert "wspace" not in captured
     assert captured["figsize"] == (5.0, 4.0)
 
 
@@ -159,8 +172,6 @@ def test_joint_prior_time_invariant_plot_forwards_all_arguments(monkeypatch):
         title_fontsize=11,
         label_fontsize=12,
         tick_fontsize=9,
-        hspace=0.6,
-        wspace=0.1,
         figsize=(5.0, 4.0),
     )
 
@@ -173,8 +184,8 @@ def test_joint_prior_time_invariant_plot_forwards_all_arguments(monkeypatch):
     assert captured["title_fontsize"] == 11
     assert captured["label_fontsize"] == 12
     assert captured["tick_fontsize"] == 9
-    assert captured["hspace"] == 0.6
-    assert captured["wspace"] == 0.1
+    assert "hspace" not in captured
+    assert "wspace" not in captured
     assert captured["figsize"] == (5.0, 4.0)
 
 
@@ -202,8 +213,6 @@ def test_joint_prior_joint_plot_forwards_all_arguments(monkeypatch):
         label_fontsize=12,
         tick_fontsize=9,
         alpha=0.2,
-        hspace=0.6,
-        wspace=0.1,
         figsize=(5.0, 4.0),
     )
 
@@ -217,6 +226,6 @@ def test_joint_prior_joint_plot_forwards_all_arguments(monkeypatch):
     assert captured["label_fontsize"] == 12
     assert captured["tick_fontsize"] == 9
     assert captured["alpha"] == 0.2
-    assert captured["hspace"] == 0.6
-    assert captured["wspace"] == 0.1
+    assert "hspace" not in captured
+    assert "wspace" not in captured
     assert captured["figsize"] == (5.0, 4.0)

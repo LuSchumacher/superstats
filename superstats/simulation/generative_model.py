@@ -6,7 +6,6 @@ import inspect
 import numpy as np
 import matplotlib.pyplot as plt
 
-from superstats.defaults import DIST_ALPHA, HSPACE, WSPACE
 from superstats.prior.joint_prior import JointPrior
 from superstats.diagnostics.plots.prior_push_forward import plot_push_forward
 from superstats.simulation.augmentation.missing import MissingProcess
@@ -629,7 +628,7 @@ class GenerativeModel:
 
     def plot_push_forward(
         self,
-        num_sim: int = 20,
+        batch_size: int = 20,
         num_steps: int = 200,
         data_dim: int | str = 0,
         kind: Literal["time_series", "dist"] = "dist",
@@ -637,19 +636,17 @@ class GenerativeModel:
         uncertainty_fun: str | Callable | None = None,
         marginal: bool = True,
         dist_type: Literal["hist", "kde", "both"] = "hist",
-        num_bins: int | None = 40,
-        dist_alpha: float = DIST_ALPHA,
+        num_bins: int | None = None,
+        dist_alpha: float | None = None,
         spaghetti: bool = False,
         num_cols: int | None = None,
-        hspace: float = HSPACE,
-        wspace: float = WSPACE,
         **kwargs,
     ) -> plt.Figure:
         """Render prior push-forward diagnostics for the generative model.
 
         Parameters
         ----------
-        num_sim         : int, optional, default: 20
+        batch_size      : int, optional, default: 20
             Number of simulated datasets to generate.
         num_steps       : int, optional, default: 200
             Number of time steps per simulation.
@@ -671,18 +668,15 @@ class GenerativeModel:
             If True, include marginal distributions beside time-series plots.
         dist_type       : {"hist", "kde", "both"}, optional, default: "hist"
             Distribution type used for continuous distributions and marginals.
-        num_bins        : int or None, optional, default: 40
+        num_bins        : int or None, optional, default: None
             Number of histogram bins. If None, Seaborn selects the bins.
-        dist_alpha      : float, optional, default: DIST_ALPHA
-            Opacity of distributions and marginal distributions.
+        dist_alpha      : float or None, optional, default: None
+            Opacity of distributions and marginal distributions. If None,
+            uses 1.0 for one distribution and 0.5 for overlays.
         spaghetti       : bool, optional, default: False
             If True, include individual time series.
         num_cols        : int or None, optional, default: None
             Number of panel columns. If None, uses the compact dynamic layout.
-        hspace          : float, optional, default: 0.4
-            Height spacing between subplot rows.
-        wspace          : float, optional, default: 0.2
-            Width spacing between subplot columns.
         **kwargs
             Forwarded to `plot_push_forward`.
 
@@ -690,7 +684,7 @@ class GenerativeModel:
         -------
         fig : plt.Figure - the figure containing the requested plot
         """
-        sample = self.sample(batch_size=num_sim, num_steps=num_steps)
+        sample = self.sample(batch_size=batch_size, num_steps=num_steps)
         data = {key: sample[key] for key in self.data_keys}
         return plot_push_forward(
             data=data,
@@ -704,7 +698,5 @@ class GenerativeModel:
             num_bins=num_bins,
             dist_alpha=dist_alpha,
             num_cols=num_cols,
-            hspace=hspace,
-            wspace=wspace,
             **kwargs,
         )

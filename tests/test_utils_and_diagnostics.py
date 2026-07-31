@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 import matplotlib.pyplot as plt
+from matplotlib import font_manager
 
 import superstats.utils.plotting as plotting_module
 from superstats.defaults import (
@@ -11,8 +12,12 @@ from superstats.defaults import (
     DIST_ALPHA,
     HSPACE,
     JOINT_HSPACE,
+    LABEL_FONTSIZE,
     LABEL_PAD,
     METRIC_COLORS,
+    OVERLAY_DIST_ALPHA,
+    TICK_FONTSIZE,
+    TITLE_FONTSIZE,
     WSPACE,
     Y_LABEL_PAD,
 )
@@ -22,11 +27,9 @@ from superstats.diagnostics.metrics import (
     nrmse_per_step,
     posterior_contraction_per_step,
 )
-from superstats.diagnostics.plots.prior_samples import (
-    plot_joint_prior,
-    plot_time_invariant_prior,
-    plot_time_varying_prior,
-)
+from superstats.diagnostics.plots.joint_prior import plot_joint_prior
+from superstats.diagnostics.plots.time_invariant_prior import plot_time_invariant_prior
+from superstats.diagnostics.plots.time_varying_prior import plot_time_varying_prior
 from superstats.diagnostics.plots.time_varying_verification import (
     plot_time_varying_verification,
 )
@@ -86,6 +89,20 @@ def test_layout_preserves_physical_legend_spacing(num_rows):
 
     assert figsize[0] == pytest.approx(BASE_COL_WIDTH * 2)
     assert (figsize[1] - 1.6) / num_rows == pytest.approx(BASE_ROW_HEIGHT)
+    assert legend_bottom * figsize[1] == pytest.approx(1.6)
+    assert legend_y * figsize[1] == pytest.approx(0.1)
+
+
+def test_layout_preserves_explicit_figure_size():
+    figsize, legend_bottom, legend_y = get_layout(
+        num_rows=2,
+        num_cols=3,
+        figsize=(9.0, 7.0),
+        col_width=BASE_COL_WIDTH,
+        row_height=BASE_ROW_HEIGHT,
+    )
+
+    assert figsize == (9.0, 7.0)
     assert legend_bottom * figsize[1] == pytest.approx(1.6)
     assert legend_y * figsize[1] == pytest.approx(0.1)
 
@@ -164,10 +181,8 @@ def test_plot_dist_supports_all_types_and_orientations(dist_type, orientation):
     if dist_type in {"hist", "both"}:
         assert ax.patches
     if dist_type == "hist":
-        total_count = sum(
-            patch.get_height() if orientation == "horizontal" else patch.get_width() for patch in ax.patches
-        )
-        assert total_count == pytest.approx(values.size)
+        density_integral = sum(patch.get_width() * patch.get_height() for patch in ax.patches)
+        assert density_integral == pytest.approx(1.0)
     if dist_type == "kde":
         assert ax.collections
         assert all(np.allclose(collection.get_linewidths(), 0) for collection in ax.collections)
@@ -190,7 +205,7 @@ def test_plot_dist_rejects_invalid_options():
     plt.close(fig)
 
 
-def test_plot_dist_omits_bins_when_num_bins_is_none(monkeypatch):
+def test_plot_dist_omits_bins_by_default(monkeypatch):
     captured = {}
 
     def fake_histplot(**kwargs):
@@ -204,23 +219,10 @@ def test_plot_dist_omits_bins_when_num_bins_is_none(monkeypatch):
         ax=ax,
         dist_type="hist",
         color=BASE_COLOR,
-        num_bins=None,
     )
 
     assert "bins" not in captured
-    plt.close(fig)
-
-
-def test_plot_dist_uses_40_bins_by_default():
-    fig, ax = plt.subplots()
-    plot_dist(
-        np.linspace(0, 1, 100),
-        ax=ax,
-        dist_type="hist",
-        color=BASE_COLOR,
-    )
-
-    assert len(ax.patches) == 40
+    assert captured["stat"] == "density"
     plt.close(fig)
 
 
@@ -236,8 +238,7 @@ def test_time_invariant_prior_supports_dist_type(dist_type):
 
     ax = fig.axes[0]
     assert ax.get_xlabel() == "Value"
-    expected_ylabel = "Count" if dist_type == "hist" else "Density"
-    assert ax.get_ylabel() == expected_ylabel
+    assert ax.get_ylabel() == "Density"
     if dist_type in {"hist", "both"}:
         assert len(ax.patches) == 7
     plt.close(fig)
@@ -277,7 +278,7 @@ def test_time_varying_prior_labels_y_axis():
         marginal=False,
     )
 
-    assert fig.axes[0].get_ylabel() == "Value"
+    assert fig.axes[0].get_ylabel() == "Parameter value"
     assert fig.axes[0].yaxis.labelpad == Y_LABEL_PAD
     plt.close(fig)
 
@@ -291,8 +292,6 @@ def test_time_varying_verification_labels_only_first_column():
         estimates,
         targets,
         variable_names=["A", "B"],
-        hspace=0.6,
-        wspace=0.1,
     )
 
     expected_labels = [
@@ -310,8 +309,8 @@ def test_time_varying_verification_labels_only_first_column():
         assert second_col.get_ylabel() == ""
 
     assert fig.texts == []
-    assert fig.subplotpars.hspace == pytest.approx(0.6)
-    assert fig.subplotpars.wspace == pytest.approx(0.1)
+    assert fig.subplotpars.hspace == pytest.approx(HSPACE)
+    assert fig.subplotpars.wspace == pytest.approx(WSPACE)
     plt.close(fig)
 
 
@@ -357,11 +356,23 @@ def test_plotting_defaults_are_exported():
     assert BASE_COL_WIDTH > 0
     assert BASE_ROW_HEIGHT > 0
     assert 0 <= DIST_ALPHA <= 1
+    assert DIST_ALPHA == pytest.approx(1.0)
+    assert OVERLAY_DIST_ALPHA == pytest.approx(0.5)
     assert LABEL_PAD > 0
     assert Y_LABEL_PAD > LABEL_PAD
+    assert TITLE_FONTSIZE == 22
+    assert LABEL_FONTSIZE == 18
+    assert TICK_FONTSIZE == 16
     assert HSPACE == pytest.approx(0.4)
     assert JOINT_HSPACE == pytest.approx(0.5)
     assert WSPACE == pytest.approx(0.2)
+
+
+def test_diagnostic_plot_font_defaults():
+    available_fonts = {font.name for font in font_manager.fontManager.ttflist}
+    expected_font = "Inter" if "Inter" in available_fonts else "DejaVu Sans"
+    assert plt.rcParams["font.family"] == [expected_font]
+    assert plt.rcParams["mathtext.fontset"] == "cm"
 
 
 def test_diagnostics_perfect_posterior_has_expected_invariants():

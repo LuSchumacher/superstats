@@ -7,16 +7,13 @@ from matplotlib.figure import Figure
 
 from superstats.defaults import (
     BASE_COLOR,
-    DIST_ALPHA,
-    HSPACE,
-    JOINT_HSPACE,
-    WSPACE,
+    LABEL_FONTSIZE,
+    TICK_FONTSIZE,
+    TITLE_FONTSIZE,
 )
-from superstats.diagnostics.plots.prior_samples import (
-    plot_joint_prior,
-    plot_time_invariant_prior,
-    plot_time_varying_prior,
-)
+from superstats.diagnostics.plots.joint_prior import plot_joint_prior
+from superstats.diagnostics.plots.time_invariant_prior import plot_time_invariant_prior
+from superstats.diagnostics.plots.time_varying_prior import plot_time_varying_prior
 from .prior import Prior
 from superstats.transition import DeterministicTransition, StochasticTransition
 
@@ -148,50 +145,44 @@ class JointPrior:
         num_cols: int | None = None,
         marginal: bool = True,
         dist_type: Literal["hist", "kde", "both"] = "hist",
-        num_bins: int | None = 40,
-        dist_alpha: float = DIST_ALPHA,
+        num_bins: int | None = None,
+        dist_alpha: float = 1.0,
         alpha: float = 0.5,
         color: str = BASE_COLOR,
-        title_fontsize: int = 22,
-        label_fontsize: int = 18,
-        tick_fontsize: int = 16,
-        hspace: float = HSPACE,
-        wspace: float = WSPACE,
+        title_fontsize: int = TITLE_FONTSIZE,
+        label_fontsize: int = LABEL_FONTSIZE,
+        tick_fontsize: int = TICK_FONTSIZE,
         figsize: tuple[float, float] | None = None,
     ) -> Figure:
         """Plot sampled time-varying prior trajectories.
 
         Parameters
         ----------
-        num_steps : int, optional, default: 200
+        num_steps        : int, optional, default: 200
             Number of time steps to sample per trajectory.
         num_trajectories : int, optional, default: 20
             Number of trajectories to draw.
-        num_cols : int or None, optional, default: None
+        num_cols         : int or None, optional, default: None
             Number of panel columns. If None, uses the compact dynamic layout.
-        marginal : bool, optional, default: True
+        marginal         : bool, optional, default: True
             Whether to display a marginal distribution beside each trajectory.
-        dist_type : {"hist", "kde", "both"}, optional, default: "hist"
+        dist_type        : {"hist", "kde", "both"}, optional, default: "hist"
             Distribution type used for marginal panels.
-        num_bins : int or None, optional, default: 40
+        num_bins         : int or None, optional, default: None
             Number of histogram bins. If None, Seaborn selects the bins.
-        dist_alpha : float, optional, default: DIST_ALPHA
+        dist_alpha       : float, optional, default: 1.0
             Opacity of marginal distributions.
-        alpha : float, optional, default: 0.5
+        alpha            : float, optional, default: 0.5
             Opacity of individual trajectories.
-        color : str, optional, default: BASE_COLOR
+        color            : str, optional, default: BASE_COLOR
             Color used for trajectories and marginal distributions.
-        title_fontsize : int, optional, default: 22
+        title_fontsize   : int, optional, default: 22
             Font size for panel titles.
-        label_fontsize : int, optional, default: 18
+        label_fontsize   : int, optional, default: 18
             Font size for axis labels and the figure legend.
-        tick_fontsize : int, optional, default: 16
+        tick_fontsize    : int, optional, default: 16
             Font size for tick labels.
-        hspace : float, optional, default: 0.4
-            Height spacing between subplot rows.
-        wspace : float, optional, default: 0.2
-            Width spacing between subplot columns.
-        figsize : tuple of two floats or None, optional, default: None
+        figsize          : tuple of two floats or None, optional, default: None
             Explicit figure size in inches.
 
         Returns
@@ -214,8 +205,6 @@ class JointPrior:
             title_fontsize=title_fontsize,
             label_fontsize=label_fontsize,
             tick_fontsize=tick_fontsize,
-            hspace=hspace,
-            wspace=wspace,
             figsize=figsize,
         )
 
@@ -223,44 +212,39 @@ class JointPrior:
         self,
         num_draws: int = 1000,
         dist_type: Literal["hist", "kde", "both"] = "hist",
-        num_bins: int | None = 40,
-        dist_alpha: float = DIST_ALPHA,
+        num_bins: int | None = None,
+        dist_alpha: float | None = None,
         color: str = BASE_COLOR,
         num_cols: int | None = None,
-        title_fontsize: int = 22,
-        label_fontsize: int = 18,
-        tick_fontsize: int = 16,
-        hspace: float = HSPACE,
-        wspace: float = WSPACE,
+        title_fontsize: int = TITLE_FONTSIZE,
+        label_fontsize: int = LABEL_FONTSIZE,
+        tick_fontsize: int = TICK_FONTSIZE,
         figsize: tuple[float, float] | None = None,
     ) -> Figure:
         """Plot marginal distributions for time-invariant prior parameters.
 
         Parameters
         ----------
-        num_draws : int, optional, default: 1000
+        num_draws      : int, optional, default: 1000
             Number of draws used to sample `hyper_params` and `shared_params`.
-        dist_type : {"hist", "kde", "both"}, optional, default: "both"
+        dist_type      : {"hist", "kde", "both"}, optional, default: "both"
             Distribution plot type.
-        num_bins : int or None, optional, default: 40
+        num_bins       : int or None, optional, default: None
             Number of histogram bins. If None, Seaborn selects the bins.
-        dist_alpha : float, optional, default: DIST_ALPHA
-            Opacity of parameter distributions.
-        color : str, optional, default: BASE_COLOR
+        dist_alpha     : float or None, optional, default: None
+            Opacity of parameter distributions. If None, uses 1.0 for one
+            distribution and 0.5 for overlays.
+        color          : str, optional, default: BASE_COLOR
             Color used for non-mixture distributions.
-        num_cols : int or None, optional, default: None
+        num_cols       : int or None, optional, default: None
             Number of panel columns. If None, uses up to four columns.
         title_fontsize : int, optional, default: 22
             Font size for panel titles.
         label_fontsize : int, optional, default: 18
             Font size for axis labels.
-        tick_fontsize : int, optional, default: 16
+        tick_fontsize  : int, optional, default: 16
             Font size for tick labels and legends.
-        hspace : float, optional, default: 0.4
-            Height spacing between subplot rows.
-        wspace : float, optional, default: 0.2
-            Width spacing between subplot columns.
-        figsize : tuple of two floats or None, optional, default: None
+        figsize        : tuple of two floats or None, optional, default: None
             Explicit figure size in inches.
 
         Returns
@@ -281,8 +265,6 @@ class JointPrior:
             title_fontsize=title_fontsize,
             label_fontsize=label_fontsize,
             tick_fontsize=tick_fontsize,
-            hspace=hspace,
-            wspace=wspace,
             figsize=figsize,
         )
 
@@ -293,50 +275,45 @@ class JointPrior:
         num_draws: int = 1000,
         marginal: bool = True,
         dist_type: Literal["hist", "kde", "both"] = "hist",
-        num_bins: int | None = 40,
-        dist_alpha: float = DIST_ALPHA,
+        num_bins: int | None = None,
+        dist_alpha: float | None = None,
         color: str = BASE_COLOR,
-        title_fontsize: int = 22,
-        label_fontsize: int = 18,
-        tick_fontsize: int = 16,
+        title_fontsize: int = TITLE_FONTSIZE,
+        label_fontsize: int = LABEL_FONTSIZE,
+        tick_fontsize: int = TICK_FONTSIZE,
         alpha: float = 0.5,
-        hspace: float = JOINT_HSPACE,
-        wspace: float = WSPACE,
         figsize: tuple[float, float] | None = None,
     ) -> Figure:
         """Plot joint prior diagnostics across local and shared parameters.
 
         Parameters
         ----------
-        num_steps : int, optional, default: 200
+        num_steps        : int, optional, default: 200
             Number of time steps for local trajectory sampling.
         num_trajectories : int, optional, default: 20
             Number of local trajectories to plot.
-        num_draws : int, optional, default: 1000
+        num_draws        : int, optional, default: 1000
             Number of draws used for time-invariant parameter sampling.
-        marginal : bool, optional, default: True
+        marginal         : bool, optional, default: True
             Whether to display a marginal distribution beside trajectories.
-        dist_type : {"hist", "kde", "both"}, optional, default: "hist"
+        dist_type        : {"hist", "kde", "both"}, optional, default: "hist"
             Distribution type used for marginal panels.
-        num_bins : int or None, optional, default: 40
+        num_bins         : int or None, optional, default: None
             Number of histogram bins. If None, Seaborn selects the bins.
-        dist_alpha : float, optional, default: DIST_ALPHA
-            Opacity of all marginal and time-invariant distributions.
-        color : str, optional, default: BASE_COLOR
+        dist_alpha       : float or None, optional, default: None
+            Opacity of all marginal and time-invariant distributions. If None,
+            uses 1.0 for one distribution and 0.5 for overlays.
+        color            : str, optional, default: BASE_COLOR
             Color used for trajectories and distributions.
-        title_fontsize : int, optional, default: 22
+        title_fontsize   : int, optional, default: 22
             Font size for panel titles.
-        label_fontsize : int, optional, default: 18
+        label_fontsize   : int, optional, default: 18
             Font size for row labels and the figure legend.
-        tick_fontsize : int, optional, default: 16
+        tick_fontsize    : int, optional, default: 16
             Font size for tick labels.
-        alpha : float, optional, default: 0.5
+        alpha            : float, optional, default: 0.5
             Opacity of individual trajectories.
-        hspace : float, optional, default: 0.5
-            Height spacing between subplot rows.
-        wspace : float, optional, default: 0.2
-            Width spacing between subplot columns.
-        figsize : tuple of two floats or None, optional, default: None
+        figsize          : tuple of two floats or None, optional, default: None
             Explicit figure size in inches.
 
         Returns
@@ -363,7 +340,5 @@ class JointPrior:
             label_fontsize=label_fontsize,
             tick_fontsize=tick_fontsize,
             alpha=alpha,
-            hspace=hspace,
-            wspace=wspace,
             figsize=figsize,
         )

@@ -20,22 +20,15 @@ from superstats.defaults import (
     BASE_COL_WIDTH,
     BASE_ROW_HEIGHT,
     HSPACE,
+    LABEL_FONTSIZE,
     LABEL_PAD,
     METRIC_COLORS,
+    TICK_FONTSIZE,
+    TITLE_FONTSIZE,
     WSPACE,
     Y_LABEL_PAD,
+    METRIC_LABELS,
 )
-
-METRIC_LABELS = {
-    "correlation": "Correlation\n(Truth vs. Estimate)",
-    "nrmse": "NRMSE",
-    "contraction": "Posterior\nContraction",
-    "calibration": "Calibration\nError",
-}
-
-plt.rcParams["axes.axisbelow"] = True
-plt.rcParams["font.family"] = "serif"
-plt.rcParams["font.serif"] = ["Palatino", "Palatino Linotype", "DejaVu Serif"]
 
 
 def plot_time_varying_verification(
@@ -45,11 +38,9 @@ def plot_time_varying_verification(
     variable_names: Sequence[str] | None = None,
     aggregation: Callable = np.median,
     colors: str | Sequence[str] = METRIC_COLORS,
-    title_fontsize: int = 22,
-    label_fontsize: int = 18,
-    tick_fontsize: int = 16,
-    hspace: float = HSPACE,
-    wspace: float = WSPACE,
+    title_fontsize: int = TITLE_FONTSIZE,
+    label_fontsize: int = LABEL_FONTSIZE,
+    tick_fontsize: int = TICK_FONTSIZE,
     figsize: tuple[float, float] | None = None,
 ):
     """Plot recovery diagnostics over steps for time-varying parameters.
@@ -89,10 +80,6 @@ def plot_time_varying_verification(
         The font size of the axis label texts and row labels.
     tick_fontsize  : int, optional, default: 16
         The font size of the axis tick labels.
-    hspace        : float, optional, default: 0.4
-        Height spacing between subplot rows.
-    wspace        : float, optional, default: 0.2
-        Width spacing between subplot columns.
     figsize      : tuple of two floats or None, optional, default: None
         Explicit figure size in inches. If None, the default layout size
         is used.
@@ -169,8 +156,8 @@ def plot_time_varying_verification(
 
     fig.tight_layout()
     fig.subplots_adjust(
-        hspace=hspace,
-        wspace=wspace,
+        hspace=HSPACE,
+        wspace=WSPACE,
     )
     sns.despine()
 

@@ -9,6 +9,7 @@ from .plotting import (
     plot_dist,
     plot_uncertainty_band,
     prepare_plot_data,
+    resolve_dist_alpha,
     smooth_trajectories,
 )
 from .dispatch import (
@@ -28,6 +29,7 @@ __all__ = [
     "get_layout",
     "plot_dist",
     "plot_uncertainty_band",
+    "resolve_dist_alpha",
     "smooth_trajectories",
     "find_inference_network",
     "find_missing",

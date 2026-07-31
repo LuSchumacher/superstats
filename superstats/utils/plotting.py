@@ -7,7 +7,7 @@ import numpy as np
 import seaborn as sns
 from matplotlib.axes import Axes
 
-from superstats.defaults import DIST_ALPHA
+from superstats.defaults import DIST_ALPHA, OVERLAY_DIST_ALPHA
 
 UNCERTAINTY_BAND_LABELS = {
     "std": "±1 SD",
@@ -15,6 +15,20 @@ UNCERTAINTY_BAND_LABELS = {
     "mad": "±1.48 MAD",
     "95hdi": "95% HDI",
 }
+
+
+def resolve_dist_alpha(
+    dist_alpha: float | None,
+    num_distributions: int,
+) -> float:
+    """Resolve automatic distribution opacity from the number of overlays."""
+    if num_distributions < 1:
+        raise ValueError("num_distributions must be at least 1.")
+    if dist_alpha is None:
+        return DIST_ALPHA if num_distributions == 1 else OVERLAY_DIST_ALPHA
+    if not 0 <= dist_alpha <= 1:
+        raise ValueError("dist_alpha must be between 0 and 1.")
+    return dist_alpha
 
 
 def get_uncertainty_band_label(
@@ -145,10 +159,11 @@ def get_layout(
     The layout is calculated in inches before being converted to figure
     coordinates. This keeps the legend spacing constant as rows are added.
     """
-    figsize = (
-        col_width * num_cols,
-        row_height * num_rows + legend_space,
-    )
+    if figsize is None:
+        figsize = (
+            col_width * num_cols,
+            row_height * num_rows + legend_space,
+        )
 
     legend_bottom = legend_space / figsize[1]
     legend_y = legend_offset / figsize[1]
@@ -162,7 +177,7 @@ def plot_dist(
     dist_type: Literal["hist", "kde", "both"],
     color: str,
     orientation: Literal["horizontal", "vertical"] = "horizontal",
-    num_bins: int | None = 40,
+    num_bins: int | None = None,
     alpha: float = DIST_ALPHA,
     label: str | None = None,
     hide_axis: bool = False,
@@ -181,7 +196,7 @@ def plot_dist(
         Plot color.
     orientation : {"horizontal", "vertical"}, optional, default: "horizontal"
         Put values on the x-axis (horizontal) or y-axis (vertical).
-    num_bins : int or None, optional, default: 40
+    num_bins : int or None, optional, default: None
         Number of histogram bins. If None, Seaborn selects the bins.
     alpha : float, optional, default: DIST_ALPHA
         Opacity of the histogram or KDE.
@@ -212,7 +227,7 @@ def plot_dist(
         sns.histplot(
             **data,
             **hist_kwargs,
-            stat="count",
+            stat="density",
             color=color,
             alpha=alpha,
             label=label,

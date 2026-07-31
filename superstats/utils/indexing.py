@@ -6,6 +6,11 @@ from numbers import Integral
 import numpy as np
 
 
+def format_dataset_label(index: int) -> str:
+    """Return a one-based display label for a zero-based dataset index."""
+    return f"Dataset {index + 1}"
+
+
 def normalize_data_indices(
     data_idx: int | Sequence[int] | None,
     num_datasets: int,
