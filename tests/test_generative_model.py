@@ -149,6 +149,267 @@ def test_workflow_plot_history_uses_shared_font_sizes(monkeypatch):
     assert captured["tick_params"]["labelsize"] == 16
 
 
+def test_workflow_verify_time_invariant_returns_z_score_contraction(monkeypatch):
+    sentinels = [object(), object(), object()]
+    captured = []
+
+    def fake_plot(index):
+        def plot(**kwargs):
+            captured.append((index, kwargs))
+            return sentinels[index]
+
+        return plot
+
+    monkeypatch.setattr(workflow_module, "plot_recovery", fake_plot(0))
+    monkeypatch.setattr(workflow_module, "plot_calibration", fake_plot(1))
+    monkeypatch.setattr(
+        workflow_module,
+        "plot_z_score_contraction",
+        fake_plot(2),
+    )
+    workflow = object.__new__(Workflow)
+    estimates = np.ones((2, 3, 1))
+    targets = np.ones((2, 1))
+
+    result = workflow.verify_time_invariant(
+        estimates=estimates,
+        targets=targets,
+        variable_names=["a"],
+        color="red",
+    )
+
+    assert result == tuple(sentinels)
+    assert [index for index, _ in captured] == [0, 1, 2]
+    assert all(kwargs["estimates"] is estimates for _, kwargs in captured)
+    assert all(kwargs["targets"] is targets for _, kwargs in captured)
+    assert all(kwargs["variable_names"] == ["a"] for _, kwargs in captured)
+    assert all(kwargs["color"] == "red" for _, kwargs in captured)
+
+
+def test_workflow_verify_time_invariant_collapses_tiled_targets(monkeypatch):
+    captured = []
+
+    def fake_plot(**kwargs):
+        captured.append(kwargs)
+        return object()
+
+    monkeypatch.setattr(workflow_module, "plot_recovery", fake_plot)
+    monkeypatch.setattr(workflow_module, "plot_calibration", fake_plot)
+    monkeypatch.setattr(workflow_module, "plot_z_score_contraction", fake_plot)
+
+    class DummyPrior:
+        params = {}
+
+    class DummySimulator:
+        hyper_keys = ["a", "w_mixture_weights"]
+        shared_keys = []
+        prior = DummyPrior()
+
+    workflow = object.__new__(Workflow)
+    workflow.simulator = DummySimulator()
+    batch_size, num_samples, num_steps = 2, 3, 4
+    estimates = {
+        "a": np.ones((batch_size, num_samples, num_steps, 1)),
+        "w_mixture_weights": np.ones((batch_size, num_samples, num_steps, 2)),
+    }
+    targets = {
+        "a": np.broadcast_to(
+            np.array([1.0, 2.0])[:, None, None],
+            (batch_size, num_steps, 1),
+        ),
+        "w_mixture_weights": np.broadcast_to(
+            np.array([[0.25, 0.75], [0.4, 0.6]])[:, None, :],
+            (batch_size, num_steps, 2),
+        ),
+    }
+
+    result = workflow.verify_time_invariant(
+        estimates=estimates,
+        targets=targets,
+    )
+
+    assert len(result) == 3
+    assert len(captured) == 3
+    for kwargs in captured:
+        assert kwargs["estimates"].shape == (
+            batch_size,
+            num_samples * num_steps,
+            3,
+        )
+        assert kwargs["targets"].shape == (batch_size, 3)
+        assert kwargs["variable_names"] == [
+            "a",
+            "w_mixture_weights_0",
+            "w_mixture_weights_1",
+        ]
+        np.testing.assert_allclose(
+            kwargs["targets"],
+            [[1.0, 0.25, 0.75], [2.0, 0.4, 0.6]],
+        )
+
+
+def test_workflow_verify_time_invariant_rejects_varying_targets():
+    class DummyPrior:
+        params = {}
+
+    class DummySimulator:
+        hyper_keys = ["a"]
+        shared_keys = []
+        prior = DummyPrior()
+
+    workflow = object.__new__(Workflow)
+    workflow.simulator = DummySimulator()
+    estimates = {"a": np.ones((2, 3, 4, 1))}
+    targets = {
+        "a": np.broadcast_to(
+            np.arange(4, dtype=float)[None, :, None],
+            (2, 4, 1),
+        )
+    }
+
+    with pytest.raises(ValueError, match="varies across steps"):
+        workflow.verify_time_invariant(
+            estimates=estimates,
+            targets=targets,
+        )
+
+
+@pytest.mark.parametrize(
+    ("method_name", "plot_name"),
+    [
+        ("recovery_at_steps", "plot_recovery"),
+        ("calibration_at_steps", "plot_calibration"),
+        (
+            "z_score_contraction_at_steps",
+            "plot_z_score_contraction",
+        ),
+    ],
+)
+def test_workflow_diagnostics_at_single_step(
+    monkeypatch,
+    method_name,
+    plot_name,
+):
+    captured = {}
+    sentinel = object()
+
+    def fake_plot(**kwargs):
+        captured.update(kwargs)
+        return sentinel
+
+    monkeypatch.setattr(workflow_module, plot_name, fake_plot)
+
+    class DummySimulator:
+        local_keys = ["a", "b"]
+
+    workflow = object.__new__(Workflow)
+    workflow.simulator = DummySimulator()
+    base = np.arange(8, dtype=float).reshape(2, 4)
+    targets = {
+        "a": base[..., None],
+        "b": (base + 100)[..., None],
+    }
+    estimates = {
+        key: np.stack(
+            [values + sample * 10 for sample in range(3)],
+            axis=1,
+        )
+        for key, values in targets.items()
+    }
+
+    result = getattr(workflow, method_name)(
+        targets=targets,
+        estimates=estimates,
+        time_steps=2,
+        variable_keys=["b", "a"],
+        variable_names=["B", "A"],
+        color="red",
+    )
+
+    assert result is sentinel
+    assert captured["variable_names"] == ["B", "A"]
+    assert captured["color"] == "red"
+    np.testing.assert_allclose(
+        captured["targets"],
+        np.stack([targets["b"][:, 2, 0], targets["a"][:, 2, 0]], axis=-1),
+    )
+    np.testing.assert_allclose(
+        captured["estimates"],
+        np.stack(
+            [
+                estimates["b"][:, :, 2, 0],
+                estimates["a"][:, :, 2, 0],
+            ],
+            axis=-1,
+        ),
+    )
+
+
+def test_workflow_diagnostics_at_multiple_reordered_steps(monkeypatch):
+    captured = {}
+
+    def fake_plot(**kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(workflow_module, "plot_calibration", fake_plot)
+
+    class DummySimulator:
+        local_keys = ["a", "b"]
+
+    workflow = object.__new__(Workflow)
+    workflow.simulator = DummySimulator()
+    base = np.arange(8, dtype=float).reshape(2, 4)
+    targets = {
+        "a": base[..., None],
+        "b": (base + 100)[..., None],
+    }
+    estimates = {key: np.stack([values, values + 10], axis=1) for key, values in targets.items()}
+
+    workflow.calibration_at_steps(
+        targets=targets,
+        estimates=estimates,
+        time_steps=[-1, 1],
+    )
+
+    assert captured["variable_names"] == [
+        "a (step 3)",
+        "b (step 3)",
+        "a (step 1)",
+        "b (step 1)",
+    ]
+    np.testing.assert_allclose(
+        captured["targets"],
+        np.stack(
+            [
+                targets["a"][:, 3, 0],
+                targets["b"][:, 3, 0],
+                targets["a"][:, 1, 0],
+                targets["b"][:, 1, 0],
+            ],
+            axis=-1,
+        ),
+    )
+
+
+@pytest.mark.parametrize("time_steps", [4, -5])
+def test_workflow_diagnostics_at_steps_reject_out_of_range_indices(time_steps):
+    class DummySimulator:
+        local_keys = ["a"]
+
+    workflow = object.__new__(Workflow)
+    workflow.simulator = DummySimulator()
+    targets = {"a": np.ones((2, 4, 1))}
+    estimates = {"a": np.ones((2, 3, 4, 1))}
+
+    with pytest.raises(ValueError, match="out-of-range"):
+        workflow.recovery_at_steps(
+            targets=targets,
+            estimates=estimates,
+            time_steps=time_steps,
+        )
+
+
 def test_workflow_time_varying_posterior_forwards_plot_arguments(monkeypatch):
     captured = {}
     sentinel = object()

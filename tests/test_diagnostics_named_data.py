@@ -10,6 +10,7 @@ import superstats.diagnostics.plots.posterior_resimulation as posterior_resimula
 import superstats.diagnostics.plots.prior_push_forward as prior_push_forward_module
 import superstats.diagnostics.plots.time_invariant_posterior as time_invariant_posterior_module
 import superstats.diagnostics.plots.time_varying_posterior as time_varying_posterior_module
+import superstats.diagnostics.plots.z_score_contraction as z_score_contraction_module
 from superstats.defaults import (
     BASE_COL_WIDTH,
     BASE_ROW_HEIGHT,
@@ -25,6 +26,7 @@ from superstats.diagnostics.plots import (
     plot_time_invariant_posterior,
     plot_time_varying_prior,
     plot_time_varying_posterior,
+    plot_z_score_contraction,
 )
 
 
@@ -45,6 +47,47 @@ def test_plot_push_forward_accepts_named_data():
 
     assert fig is not None
     plt.close(fig)
+
+
+def test_z_score_contraction_uses_shared_data_preparation_and_defaults(monkeypatch):
+    captured = {}
+    sentinel = object()
+
+    def fake_z_score_contraction(**kwargs):
+        captured.update(kwargs)
+        return sentinel
+
+    monkeypatch.setattr(
+        z_score_contraction_module.bf.diagnostics.plots,
+        "z_score_contraction",
+        fake_z_score_contraction,
+    )
+    estimates = {
+        "a": np.zeros((2, 4)),
+        "b": np.ones((2, 4)),
+    }
+    targets = {
+        "a": np.zeros(2),
+        "b": np.ones(2),
+    }
+
+    result = plot_z_score_contraction(
+        estimates=estimates,
+        targets=targets,
+        variable_keys=["b", "a"],
+        variable_names=["B", "A"],
+        markersize=7,
+    )
+
+    assert result is sentinel
+    assert captured["estimates"].shape == (2, 4, 2)
+    assert captured["targets"].shape == (2, 2)
+    assert captured["variable_names"] == ["B", "A"]
+    assert captured["color"] == "#356673"
+    assert captured["title_fontsize"] == TITLE_FONTSIZE
+    assert captured["label_fontsize"] == LABEL_FONTSIZE
+    assert captured["tick_fontsize"] == TICK_FONTSIZE
+    assert captured["markersize"] == 7
 
 
 def test_time_varying_posterior_uses_shared_distribution_and_layout(monkeypatch):
@@ -171,7 +214,7 @@ def test_time_varying_posterior_selects_datasets_in_requested_order():
     )
 
     assert len(fig.axes) == 2
-    assert [ax.get_title() for ax in fig.axes] == ["Dataset 3", "Dataset 1"]
+    assert [ax.get_title() for ax in fig.axes] == ["Dataset 2", "Dataset 0"]
     np.testing.assert_allclose(fig.axes[0].lines[0].get_ydata(), 2.0)
     np.testing.assert_allclose(fig.axes[0].lines[1].get_ydata(), 12.0)
     np.testing.assert_allclose(fig.axes[1].lines[0].get_ydata(), 0.0)
@@ -306,7 +349,7 @@ def test_time_invariant_posterior_selects_datasets_in_requested_order(monkeypatc
         data_idx=[2, 0],
     )
 
-    assert [ax.get_title() for ax in fig.axes] == ["Dataset 3", "Dataset 1"]
+    assert [ax.get_title() for ax in fig.axes] == ["Dataset 2", "Dataset 0"]
     np.testing.assert_allclose(captured_values[0], 2.0)
     np.testing.assert_allclose(captured_values[1], 0.0)
     np.testing.assert_allclose(fig.axes[0].lines[0].get_xdata(), 12.0)
@@ -391,7 +434,7 @@ def test_plot_posterior_resimulation_selects_datasets_in_requested_order():
         num_cols=2,
     )
 
-    assert [ax.get_title() for ax in fig.axes] == ["Dataset 3", "Dataset 1"]
+    assert [ax.get_title() for ax in fig.axes] == ["Dataset 2", "Dataset 0"]
     np.testing.assert_allclose(fig.axes[0].lines[0].get_ydata(), 2.0)
     np.testing.assert_allclose(fig.axes[0].lines[1].get_ydata(), 12.0)
     np.testing.assert_allclose(fig.axes[1].lines[0].get_ydata(), 0.0)
@@ -432,7 +475,7 @@ def test_plot_posterior_resimulation_respects_explicit_num_cols():
 
     assert len(fig.axes) == 3
     assert fig.get_size_inches()[0] == pytest.approx(BASE_COL_WIDTH * 3)
-    assert [ax.get_title() for ax in fig.axes] == ["Dataset 2", "", ""]
+    assert [ax.get_title() for ax in fig.axes] == ["Dataset 1", "", ""]
     plt.close(fig)
 
 
@@ -598,10 +641,10 @@ def test_plot_push_forward_dist_labels_ticks_on_every_row_without_shared_x_axis(
     assert fig.axes[0].get_xlim() != pytest.approx(fig.axes[2].get_xlim())
     assert all(any(tick.get_visible() for tick in ax.get_xticklabels()) for ax in fig.axes)
     assert [ax.get_title() for ax in fig.axes] == [
+        "Dataset 0",
         "Dataset 1",
         "Dataset 2",
         "Dataset 3",
-        "Dataset 4",
     ]
     assert [ax.get_xlabel() for ax in fig.axes] == ["", "", "Parameter value", "Parameter value"]
     plt.close(fig)
@@ -899,10 +942,10 @@ def test_posterior_resimulation_dist_uses_independent_x_axes_and_dataset_titles(
     fig.canvas.draw()
 
     assert [ax.get_title() for ax in fig.axes] == [
-        "Dataset 4",
-        "Dataset 2",
-        "Dataset 1",
         "Dataset 3",
+        "Dataset 1",
+        "Dataset 0",
+        "Dataset 2",
     ]
     assert all(ax.title.get_fontsize() == 19 for ax in fig.axes)
     assert not fig.axes[0].get_shared_x_axes().joined(fig.axes[0], fig.axes[2])

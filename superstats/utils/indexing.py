@@ -7,8 +7,8 @@ import numpy as np
 
 
 def format_dataset_label(index: int) -> str:
-    """Return a one-based display label for a zero-based dataset index."""
-    return f"Dataset {index + 1}"
+    """Return a display label for a zero-based dataset index."""
+    return f"Dataset {index}"
 
 
 def normalize_data_indices(

@@ -13,6 +13,7 @@ from .time_varying_prior import plot_time_varying_prior
 from .prior_push_forward import plot_push_forward
 from .time_varying_verification import plot_time_varying_verification
 from .posterior_resimulation import plot_posterior_resimulation
+from .z_score_contraction import plot_z_score_contraction
 
 plt.rcParams["axes.axisbelow"] = True
 _font_family = "Inter" if any(font.name == "Inter" for font in font_manager.fontManager.ttflist) else "DejaVu Sans"
@@ -30,4 +31,5 @@ __all__ = [
     "plot_posterior_resimulation",
     "plot_recovery",
     "plot_calibration",
+    "plot_z_score_contraction",
 ]

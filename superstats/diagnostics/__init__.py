@@ -11,6 +11,7 @@ from .plots import (
     plot_posterior_resimulation,
     plot_recovery,
     plot_calibration,
+    plot_z_score_contraction,
 )
 from .metrics import (
     correlation_per_step,
@@ -30,6 +31,7 @@ __all__ = [
     "plot_posterior_resimulation",
     "plot_recovery",
     "plot_calibration",
+    "plot_z_score_contraction",
     "correlation_per_step",
     "nrmse_per_step",
     "posterior_contraction_per_step",

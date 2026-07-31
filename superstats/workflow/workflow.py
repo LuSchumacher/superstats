@@ -2,6 +2,7 @@
 
 from typing import Literal, Callable
 from collections.abc import Mapping, Sequence
+from numbers import Integral
 
 import functools
 import os
@@ -29,6 +30,7 @@ from superstats.diagnostics.plots import (
     plot_time_varying_verification,
     plot_recovery,
     plot_calibration,
+    plot_z_score_contraction,
     plot_time_varying_posterior,
     plot_time_invariant_posterior,
 )
@@ -612,6 +614,177 @@ class Workflow:
             **kwargs,
         )
 
+    def _prepare_time_varying_at_steps(
+        self,
+        targets: Mapping[str, np.ndarray],
+        estimates: Mapping[str, np.ndarray],
+        time_steps: int | Sequence[int],
+        variable_keys: Sequence[str] | None = None,
+        variable_names: Sequence[str] | None = None,
+    ) -> tuple[np.ndarray, np.ndarray, list[str]]:
+        """Select local parameters at specific zero-based time-step indices."""
+        keys = list(variable_keys) if variable_keys is not None else list(self.simulator.local_keys)
+        if not keys:
+            raise ValueError("No time-varying parameters found.")
+
+        missing = [key for key in keys if key not in estimates or key not in targets]
+        if missing:
+            raise ValueError(f"variable_keys not found in both estimates and targets: {missing}")
+
+        names = list(variable_names) if variable_names is not None else keys
+        if len(names) != len(keys):
+            raise ValueError(f"variable_names has {len(names)} entries but there are {len(keys)} variables.")
+
+        target_arrays = {}
+        estimate_arrays = {}
+        expected_shape = None
+        for key in keys:
+            target = np.asarray(targets[key])
+            estimate = np.asarray(estimates[key])
+            if target.ndim != 3 or target.shape[-1] != 1:
+                raise ValueError(f"Target '{key}' must have shape (num_datasets, num_steps, 1), got {target.shape}.")
+            if estimate.ndim != 4 or estimate.shape[-1] != 1:
+                raise ValueError(
+                    f"Estimate '{key}' must have shape (num_datasets, num_samples, num_steps, 1), got {estimate.shape}."
+                )
+
+            shape = (
+                target.shape[0],
+                estimate.shape[1],
+                target.shape[1],
+            )
+            if estimate.shape[0] != shape[0] or estimate.shape[2] != shape[2]:
+                raise ValueError(
+                    f"Estimate and target shapes for '{key}' are inconsistent: {estimate.shape} and {target.shape}."
+                )
+            if expected_shape is not None and shape != expected_shape:
+                raise ValueError("All selected variables must have matching dataset, sample, and time-step dimensions.")
+            expected_shape = shape
+            target_arrays[key] = target
+            estimate_arrays[key] = estimate
+
+        num_steps = expected_shape[2]
+        if isinstance(time_steps, Integral) and not isinstance(time_steps, bool):
+            selected_steps = [int(time_steps)]
+        elif isinstance(time_steps, Sequence) and not isinstance(
+            time_steps,
+            (str, bytes),
+        ):
+            selected_steps = list(time_steps)
+            if not selected_steps:
+                raise ValueError("time_steps must contain at least one index.")
+            if any(not isinstance(step, Integral) or isinstance(step, bool) for step in selected_steps):
+                raise TypeError("time_steps must be an int or a sequence of ints.")
+            selected_steps = [int(step) for step in selected_steps]
+        else:
+            raise TypeError("time_steps must be an int or a sequence of ints.")
+
+        normalized_steps = [step + num_steps if step < 0 else step for step in selected_steps]
+        invalid = [step for step in normalized_steps if step < 0 or step >= num_steps]
+        if invalid:
+            raise ValueError(f"time_steps contains out-of-range index {invalid[0]} for {num_steps} steps.")
+
+        target_columns = []
+        estimate_columns = []
+        resolved_names = []
+        show_steps = len(normalized_steps) > 1
+        for step in normalized_steps:
+            for key, name in zip(keys, names):
+                target_columns.append(target_arrays[key][:, step, 0])
+                estimate_columns.append(estimate_arrays[key][:, :, step, 0])
+                resolved_names.append(f"{name} (step {step})" if show_steps else name)
+
+        targets_arr = np.stack(target_columns, axis=-1)
+        estimates_arr = np.stack(estimate_columns, axis=-1)
+        return estimates_arr, targets_arr, resolved_names
+
+    def recovery_at_steps(
+        self,
+        targets: Mapping[str, np.ndarray],
+        estimates: Mapping[str, np.ndarray],
+        time_steps: int | Sequence[int],
+        variable_keys: Sequence[str] | None = None,
+        variable_names: Sequence[str] | None = None,
+        **kwargs,
+    ):
+        """Plot local-parameter recovery at selected time steps.
+
+        `time_steps` contains zero-based indices and may be a single
+        integer or a sequence. Plot arguments are forwarded to
+        `plot_recovery`.
+        """
+        estimates_arr, targets_arr, names = self._prepare_time_varying_at_steps(
+            targets,
+            estimates,
+            time_steps,
+            variable_keys,
+            variable_names,
+        )
+        return plot_recovery(
+            estimates=estimates_arr,
+            targets=targets_arr,
+            variable_names=names,
+            **kwargs,
+        )
+
+    def calibration_at_steps(
+        self,
+        targets: Mapping[str, np.ndarray],
+        estimates: Mapping[str, np.ndarray],
+        time_steps: int | Sequence[int],
+        variable_keys: Sequence[str] | None = None,
+        variable_names: Sequence[str] | None = None,
+        **kwargs,
+    ):
+        """Plot local-parameter calibration at selected time steps.
+
+        `time_steps` contains zero-based indices and may be a single
+        integer or a sequence. Plot arguments are forwarded to
+        `plot_calibration`.
+        """
+        estimates_arr, targets_arr, names = self._prepare_time_varying_at_steps(
+            targets,
+            estimates,
+            time_steps,
+            variable_keys,
+            variable_names,
+        )
+        return plot_calibration(
+            estimates=estimates_arr,
+            targets=targets_arr,
+            variable_names=names,
+            **kwargs,
+        )
+
+    def z_score_contraction_at_steps(
+        self,
+        targets: Mapping[str, np.ndarray],
+        estimates: Mapping[str, np.ndarray],
+        time_steps: int | Sequence[int],
+        variable_keys: Sequence[str] | None = None,
+        variable_names: Sequence[str] | None = None,
+        **kwargs,
+    ):
+        """Plot local-parameter z-scores and contraction at selected steps.
+
+        `time_steps` contains zero-based indices and may be a single
+        integer or a sequence. Plot arguments are forwarded to
+        `plot_z_score_contraction`.
+        """
+        estimates_arr, targets_arr, names = self._prepare_time_varying_at_steps(
+            targets,
+            estimates,
+            time_steps,
+            variable_keys,
+            variable_names,
+        )
+        return plot_z_score_contraction(
+            estimates=estimates_arr,
+            targets=targets_arr,
+            variable_names=names,
+            **kwargs,
+        )
+
     def verify_time_invariant(
         self,
         targets: Mapping[str, np.ndarray] | np.ndarray,
@@ -620,7 +793,7 @@ class Workflow:
         variable_names: Sequence[str] | None = None,
         **kwargs,
     ):
-        """Plot time-invariant parameter recovery and calibration.
+        """Plot time-invariant recovery, calibration, and contraction.
 
         Parameters
         ----------
@@ -649,16 +822,14 @@ class Workflow:
             per-component names. For array input, defaults to `param_0`,
             `param_1`, ...
         **kwargs
-            Forwarded to both `plot_recovery` and `plot_calibration` (e.g.
-            `label_fontsize`, `title_fontsize`, `tick_fontsize`). Note
-            `plot_recovery` takes `color` while `plot_calibration` takes
-            `rank_ecdf_color` - pass whichever applies, or both, via
-            `**kwargs`.
+            Forwarded to `plot_recovery`, `plot_calibration`, and
+            `plot_z_score_contraction` (e.g. `label_fontsize`,
+            `title_fontsize`, `tick_fontsize`, or `color`).
 
         Returns
         -------
-        figs : tuple - `(fig_recovery, fig_calibration)`, the recovery
-            and calibration diagnostic figures
+        figs : tuple
+            `(fig_recovery, fig_calibration, fig_z_score_contraction)`.
 
         Raises
         ------
@@ -680,7 +851,14 @@ class Workflow:
                 variable_names=variable_names,
                 **kwargs,
             )
-            return fig_recovery, fig_calibration
+            fig_z_score_contraction = plot_z_score_contraction(
+                estimates=estimates,
+                targets=targets,
+                variable_keys=variable_keys,
+                variable_names=variable_names,
+                **kwargs,
+            )
+            return fig_recovery, fig_calibration, fig_z_score_contraction
 
         if variable_keys is None:
             variable_keys = self.simulator.hyper_keys + self.simulator.shared_keys
@@ -695,9 +873,14 @@ class Workflow:
         expanded_names = []
 
         for k in variable_keys:
-            t_arr = targets[k]
             e_arr = estimates[k]
             B, S, T, dim = e_arr.shape
+            t_arr = self._normalize_time_invariant_target(
+                k,
+                targets[k],
+                batch_size=B,
+                num_components=dim,
+            )
 
             e_agg = e_arr.reshape(B, S * T, dim)
 
@@ -743,7 +926,14 @@ class Workflow:
             **kwargs,
         )
 
-        return fig_recovery, fig_calibration
+        fig_z_score_contraction = plot_z_score_contraction(
+            estimates=estimate_arr,
+            targets=target_arr,
+            variable_names=expanded_names,
+            **kwargs,
+        )
+
+        return fig_recovery, fig_calibration, fig_z_score_contraction
 
     def plot_time_varying_posterior(
         self,
@@ -996,6 +1186,42 @@ class Workflow:
             data_idx=data_idx,
             **kwargs,
         )
+
+    @staticmethod
+    def _normalize_time_invariant_target(
+        name: str,
+        values: np.ndarray,
+        batch_size: int,
+        num_components: int,
+    ) -> np.ndarray:
+        """Return a time-invariant target as `(batch_size, num_components)`."""
+        arr = np.asarray(values)
+        if arr.shape[0] != batch_size:
+            raise ValueError(f"Target '{name}' has batch size {arr.shape[0]}, expected {batch_size}.")
+
+        if arr.ndim == 1:
+            if num_components != 1:
+                raise ValueError(f"Target '{name}' must have {num_components} components, got shape {arr.shape}.")
+            return arr[:, None]
+
+        if arr.ndim == 2 and arr.shape[1] == num_components:
+            return arr
+
+        if arr.ndim == 2 and num_components == 1:
+            tiled = arr[..., None]
+        elif arr.ndim == 3 and arr.shape[2] == num_components:
+            tiled = arr
+        else:
+            raise ValueError(
+                f"Target '{name}' must have shape (batch_size, {num_components}) or "
+                f"(batch_size, num_steps, {num_components}), got {arr.shape}."
+            )
+
+        if not np.allclose(tiled, tiled[:, :1, :], equal_nan=True):
+            raise ValueError(
+                f"Target '{name}' varies across steps but verify_time_invariant requires a time-invariant target."
+            )
+        return tiled[:, 0, :]
 
     def df_to_dict(
         self,
