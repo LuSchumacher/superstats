@@ -18,6 +18,18 @@ from superstats.workflow import Workflow
 
 BATCH_SIZE = 4
 NUM_STEPS = 6
+PARAMETER_CATEGORY_ATTRIBUTES = (
+    "local_keys",
+    "deterministic_keys",
+    "hyper_keys",
+    "shared_keys",
+    "fixed_keys",
+)
+
+
+def _assert_key_in_only_category(model, key, expected_attribute):
+    memberships = {attribute for attribute in PARAMETER_CATEGORY_ATTRIBUTES if key in getattr(model, attribute)}
+    assert memberships == {expected_attribute}
 
 
 class _DeterministicTestTransition(DeterministicTransition):
@@ -457,7 +469,7 @@ def test_model_registers_inferred_contamination_prior_as_shared():
 
     result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS, tile_to_steps=True)
 
-    assert "p_contaminated" in gm.shared_keys
+    _assert_key_in_only_category(gm, "p_contaminated", "shared_keys")
     assert result["p_contaminated"].shape == (BATCH_SIZE, NUM_STEPS, 1)
     adapted = Workflow.default_adapter(gm)(result)
     assert adapted["inference_variables"].shape[-1] == 3
@@ -476,9 +488,9 @@ def test_model_registers_inferred_contamination_transition_as_local():
 
     result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS, tile_to_steps=True)
 
-    assert "p_contaminated" in gm.local_keys
-    assert "p_contaminated_sigma" in gm.hyper_keys
-    assert "p_contaminated_delta" in gm.fixed_keys
+    _assert_key_in_only_category(gm, "p_contaminated", "local_keys")
+    _assert_key_in_only_category(gm, "p_contaminated_sigma", "hyper_keys")
+    _assert_key_in_only_category(gm, "p_contaminated_delta", "fixed_keys")
     assert result["p_contaminated"].shape == (BATCH_SIZE, NUM_STEPS, 1)
     assert result["p_contaminated_sigma"].shape == (BATCH_SIZE, NUM_STEPS, 1)
 
@@ -492,7 +504,7 @@ def test_model_does_not_register_contamination_when_infer_is_false():
 
     result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS)
 
-    assert "p_contaminated" not in gm.shared_keys
+    assert all("p_contaminated" not in getattr(gm, attribute) for attribute in PARAMETER_CATEGORY_ATTRIBUTES)
     assert result["p_contaminated"].shape == (BATCH_SIZE,)
 
 
@@ -503,7 +515,7 @@ def test_model_registers_inferred_fixed_contamination_as_fixed():
     result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS)
     result_with_fixed = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS, include_fixed=True)
 
-    assert "p_contaminated" in gm.fixed_keys
+    _assert_key_in_only_category(gm, "p_contaminated", "fixed_keys")
     assert "p_contaminated" not in result
     assert result_with_fixed["p_contaminated"] == pytest.approx(0.1)
 
