@@ -33,6 +33,8 @@ from .plotting import (
     METRIC_LABELS,
 )
 
+from .augmentation_defaults import DEFAULT_P_MISSING_PRIOR, DEFAULT_P_CONTAMINATED_PRIOR
+
 __all__ = [
     "DEFAULT_RECURRENT_NETWORK",
     "DEFAULT_TRANSFORMER_NETWORK",
@@ -58,4 +60,6 @@ __all__ = [
     "WSPACE",
     "Y_LABEL_PAD",
     "METRIC_LABELS",
+    "DEFAULT_P_MISSING_PRIOR",
+    "DEFAULT_P_CONTAMINATED_PRIOR",
 ]

@@ -151,8 +151,6 @@ def plot_time_varying_posterior(
         or if `aggregate_strategy`, or `uncertainty_fun` when given as
         a string, is not one of the recognized values.
     """
-    if dist_type not in {"hist", "kde", "both"}:
-        raise ValueError("dist_type must be one of 'hist', 'kde', or 'both'.")
     if isinstance(estimates, Mapping):
         keys = list(variable_keys) if variable_keys is not None else list(estimates.keys())
         missing = [k for k in keys if k not in estimates]
@@ -184,9 +182,6 @@ def plot_time_varying_posterior(
     D, S, T = next(iter(local_estimates.values())).shape
     P = len(names)
     t = np.arange(T)
-
-    if num_cols is not None and num_cols < 1:
-        raise ValueError("num_cols must be at least 1.")
 
     # layout
     if aggregation is None:

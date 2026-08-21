@@ -135,8 +135,6 @@ def plot_time_invariant_posterior(
         `variable_names` doesn't match the number of variables for
         array input, or if a plotting option is invalid.
     """
-    if dist_type not in {"hist", "kde", "both"}:
-        raise ValueError("dist_type must be one of 'hist', 'kde', or 'both'.")
 
     mixture_names = mixture_names or {}
 
@@ -196,9 +194,6 @@ def plot_time_invariant_posterior(
         B, S, T, C = arr.shape
         for c in range(C):
             pooled[(name, c)] = arr[:, :, :, c].reshape(B, S * T)
-
-    if num_cols is not None and num_cols < 1:
-        raise ValueError("num_cols must be at least 1.")
 
     # layout
     if aggregation is None:

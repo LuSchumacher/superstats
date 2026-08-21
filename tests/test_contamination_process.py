@@ -3,9 +3,11 @@
 import numpy as np
 import pytest
 
+from superstats.prior import Prior
 from superstats.simulation.model import Model
 from superstats.simulation.augmentation.contamination import ContaminationProcess
 from superstats.simulation.augmentation.random_choice_contamination import RandomChoiceContamination
+from superstats.transition import Linear, RandomWalk
 
 
 def _make_bare_model(contamination=None, missing=None, data_keys=("response_time", "choice")):
@@ -226,6 +228,65 @@ class TestApplyContaminationProcess:
         model = _make_bare_model(contamination=RandomChoiceContamination())
         with pytest.raises(KeyError):
             model._apply_contamination({"response_time": np.array([[1.0]])}, rng=None)
+
+    def test_prior_probability_can_be_registered_as_shared(self, sim_data):
+        process = RandomChoiceContamination(p_contaminated=Prior("beta", a=2, b=8), infer=True)
+
+        out = process.apply(sim_data, rng=np.random.default_rng(0))
+
+        assert process.parameter_groups() == {"shared_params": ["p_contaminated"]}
+        assert out["p_contaminated"].shape == (1,)
+
+    def test_stochastic_probability_can_vary_over_steps(self, sim_data):
+        process = RandomChoiceContamination(
+            p_contaminated=RandomWalk(bounds=(0.0, 1.0), sigma=0.0, delta=0.0),
+            infer=True,
+        )
+
+        out = process.apply(sim_data, rng=np.random.default_rng(0))
+
+        assert out["p_contaminated"].shape == sim_data["response_time"].shape
+        assert process.parameter_groups() == {
+            "local_params": ["p_contaminated"],
+            "fixed_params": ["p_contaminated_sigma", "p_contaminated_delta"],
+        }
+
+    def test_deterministic_probability_exposes_transition_hyperparameters(self, sim_data):
+        process = RandomChoiceContamination(
+            p_contaminated=Linear(
+                bounds=(0.0, 1.0),
+                intercept=Prior("beta", a=2, b=8),
+                beta=0.0,
+            ),
+            infer=True,
+        )
+
+        out = process.apply(sim_data, rng=np.random.default_rng(0))
+
+        assert out["p_contaminated"].shape == sim_data["response_time"].shape
+        assert process.parameter_groups() == {
+            "deterministic_params": ["p_contaminated"],
+            "hyper_params": ["p_contaminated_intercept"],
+            "fixed_params": ["p_contaminated_beta"],
+        }
+
+
+class TestContaminationParameterValidation:
+    def test_rejects_non_boolean_infer(self):
+        with pytest.raises(TypeError, match="infer must be a bool"):
+            RandomChoiceContamination(infer=1)
+
+    def test_rejects_probability_outside_unit_interval(self):
+        with pytest.raises(ValueError, match="between 0 and 1"):
+            RandomChoiceContamination(p_contaminated=1.1)
+
+    def test_rejects_unsupported_probability_type(self):
+        with pytest.raises(TypeError, match="p_contaminated must be"):
+            RandomChoiceContamination(p_contaminated="often")
+
+    def test_rejects_transition_bounds_outside_unit_interval(self):
+        with pytest.raises(ValueError, match="bounds within"):
+            RandomChoiceContamination(p_contaminated=RandomWalk(bounds=(-1.0, 1.0)))
 
 
 class TestSampleIntegrationOrdering:

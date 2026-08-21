@@ -41,6 +41,11 @@ class Model:
         - Plain `Callable`: must follow the same contract as
           `MissingProcess.__call__`, i.e.
           `(data_mapping, rng=None) -> filled_mapping | {"missing_mask": mask}`.
+    contamination : ContaminationProcess, Callable, "random_choice", or None, optional, default: None
+        Process applied to simulated observations before missingness. A
+        `RandomChoiceContamination` configured with `infer=True` contributes
+        its probability and transition parameters to this model's parameter
+        categories.
 
     Raises
     ------
@@ -81,6 +86,25 @@ class Model:
         self.hyper_keys = list(pilot["hyper_params"].keys()) if pilot.get("hyper_params") else []
         self.shared_keys = list(pilot["shared_params"].keys()) if pilot.get("shared_params") else []
         self.fixed_keys = list(pilot["fixed_params"].keys()) if pilot.get("fixed_params") else []
+
+        self._contamination_parameter_groups = {}
+        if self.contamination is not None and hasattr(self.contamination, "parameter_groups"):
+            self._contamination_parameter_groups = self.contamination.parameter_groups()
+            model_groups = {
+                "local_params": self.local_keys,
+                "deterministic_params": self.deterministic_keys,
+                "hyper_params": self.hyper_keys,
+                "shared_params": self.shared_keys,
+                "fixed_params": self.fixed_keys,
+            }
+            existing_keys = set().union(*model_groups.values())
+            contamination_keys = {key for keys in self._contamination_parameter_groups.values() for key in keys}
+            overlap = existing_keys & contamination_keys
+            if overlap:
+                raise ValueError(f"Contamination parameter names conflict with prior parameters: {sorted(overlap)}")
+            for group, keys in self._contamination_parameter_groups.items():
+                model_groups[group].extend(keys)
+
         self.data_keys = self._infer_data_keys(pilot)
 
     def _ordered_model_args(
@@ -507,7 +531,7 @@ class Model:
         2. Prepares parameters for vectorized simulation
         3. Runs the simulation simulator
         4. Reshapes outputs back to trajectory format
-        5. Applies `self.missing` to the data, if configured
+        5. Applies `self.contamination` and `self.missing`, if configured
 
         Parameters
         ----------
@@ -542,6 +566,10 @@ class Model:
             `RandomMissingProcess` also returns `"p_missing"`, shape
             (batch_size, 1)); omitted if `self.missing` is None
             or returns no extra keys.
+            - contamination probabilities and transition parameters. When
+              the contamination process has `infer=True`, these are shaped
+              and returned with their registered model-parameter category;
+              otherwise they remain augmentation metadata.
             - one entry per sampled parameter. Local (time-varying) params
               have shape (batch_size, num_steps); hyper and shared
               params have shape (batch_size, 1), or (batch_size, num_steps, 1)
@@ -588,6 +616,17 @@ class Model:
 
         # Apply contamination augmentation, if configured
         sim_data, contamination_extra = self._apply_contamination(sim_data, rng)
+
+        for group, keys in self._contamination_parameter_groups.items():
+            destination = {
+                "local_params": local_params,
+                "deterministic_params": deterministic_params,
+                "hyper_params": prior_draws["hyper_params"],
+                "shared_params": shared_params,
+                "fixed_params": fixed_params,
+            }[group]
+            for key in keys:
+                destination[key] = contamination_extra.pop(key)
 
         # Apply missingness augmentation, if configured
         sim_data, missing_mask, missing_extra = self._apply_missing(sim_data, rng)

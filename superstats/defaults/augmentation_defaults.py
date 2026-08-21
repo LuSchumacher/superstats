@@ -3,3 +3,4 @@
 from superstats.prior.prior import Prior
 
 DEFAULT_P_MISSING_PRIOR = Prior("beta", a=1.5, b=15)
+DEFAULT_P_CONTAMINATED_PRIOR = Prior("beta", a=1.5, b=15)

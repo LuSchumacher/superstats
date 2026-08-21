@@ -448,6 +448,66 @@ def test_model_random_choice_contamination():
     assert isinstance(gm.contamination, ContaminationProcess)
 
 
+def test_model_registers_inferred_contamination_prior_as_shared():
+    contamination = RandomChoiceContamination(
+        p_contaminated=Prior("beta", a=2, b=8),
+        infer=True,
+    )
+    gm = _build_model(contamination=contamination, missing=None)
+
+    result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS, tile_to_steps=True)
+
+    assert "p_contaminated" in gm.shared_keys
+    assert result["p_contaminated"].shape == (BATCH_SIZE, NUM_STEPS, 1)
+    adapted = Workflow.default_adapter(gm)(result)
+    assert adapted["inference_variables"].shape[-1] == 3
+
+
+def test_model_registers_inferred_contamination_transition_as_local():
+    contamination = RandomChoiceContamination(
+        p_contaminated=RandomWalk(
+            bounds=(0.0, 1.0),
+            sigma=Prior("halfnormal", scale=0.05),
+            delta=0.0,
+        ),
+        infer=True,
+    )
+    gm = _build_model(contamination=contamination, missing=None)
+
+    result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS, tile_to_steps=True)
+
+    assert "p_contaminated" in gm.local_keys
+    assert "p_contaminated_sigma" in gm.hyper_keys
+    assert "p_contaminated_delta" in gm.fixed_keys
+    assert result["p_contaminated"].shape == (BATCH_SIZE, NUM_STEPS, 1)
+    assert result["p_contaminated_sigma"].shape == (BATCH_SIZE, NUM_STEPS, 1)
+
+
+def test_model_does_not_register_contamination_when_infer_is_false():
+    contamination = RandomChoiceContamination(
+        p_contaminated=Prior("beta", a=2, b=8),
+        infer=False,
+    )
+    gm = _build_model(contamination=contamination, missing=None)
+
+    result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS)
+
+    assert "p_contaminated" not in gm.shared_keys
+    assert result["p_contaminated"].shape == (BATCH_SIZE,)
+
+
+def test_model_registers_inferred_fixed_contamination_as_fixed():
+    contamination = RandomChoiceContamination(p_contaminated=0.1, infer=True)
+    gm = _build_model(contamination=contamination, missing=None)
+
+    result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS)
+    result_with_fixed = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS, include_fixed=True)
+
+    assert "p_contaminated" in gm.fixed_keys
+    assert "p_contaminated" not in result
+    assert result_with_fixed["p_contaminated"] == pytest.approx(0.1)
+
+
 def test_model_rejects_non_callable_contamination():
     with pytest.raises(TypeError):
         _build_model(contamination="not-callable")
