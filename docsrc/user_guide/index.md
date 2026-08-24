@@ -14,4 +14,5 @@ introduction
 simulator.ipynb
 joint_prior.ipynb
 model.ipynb
+augmentation.ipynb
 ```

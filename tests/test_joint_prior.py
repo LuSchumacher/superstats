@@ -7,7 +7,20 @@ import pytest
 import superstats.prior.joint_prior as joint_prior_module
 from superstats.defaults import BASE_COL_WIDTH
 from superstats.prior import JointPrior, Prior
-from superstats.transition.stochastic import RandomWalk
+from superstats.simulation import Model
+from superstats.transition import (
+    AutoRegression,
+    Exponential,
+    GaussianProcess,
+    Jump,
+    LevyFlight,
+    Linear,
+    Logarithmic,
+    Mixture,
+    OrnsteinUhlenbeck,
+    Polynomial,
+    RandomWalk,
+)
 
 BATCH_SIZE = 6
 NUM_STEPS = 10
@@ -44,6 +57,156 @@ def test_joint_prior_sample_groups_and_shapes():
     assert result["fixed_params"]["tau"] == pytest.approx(0.2)
     assert result["fixed_params"]["bias"] == 0
     assert isinstance(result["fixed_params"]["bias"], int)
+
+
+STOCHASTIC_TRANSITION_CATEGORY_CASES = [
+    pytest.param(
+        lambda: RandomWalk(sigma=Prior("halfnormal", scale=0.1), delta=0.0),
+        {"sigma"},
+        {"delta"},
+        id="random-walk",
+    ),
+    pytest.param(
+        lambda: AutoRegression(sigma=Prior("halfnormal", scale=0.1), phi=0.9, delta=0.0),
+        {"sigma"},
+        {"phi", "delta"},
+        id="auto-regression",
+    ),
+    pytest.param(
+        lambda: OrnsteinUhlenbeck(sigma=Prior("halfnormal", scale=0.1), mu=0.0, theta=0.1),
+        {"sigma"},
+        {"mu", "theta"},
+        id="ornstein-uhlenbeck",
+    ),
+    pytest.param(
+        lambda: LevyFlight(
+            sigma=Prior("halfnormal", scale=0.1),
+            delta=0.0,
+            alpha=1.5,
+            beta=0.0,
+        ),
+        {"sigma"},
+        {"delta", "alpha", "beta"},
+        id="levy-flight",
+    ),
+    pytest.param(
+        lambda: Jump(p_jump=Prior("beta", a=2, b=2)),
+        {"p_jump"},
+        set(),
+        id="jump",
+    ),
+    pytest.param(
+        lambda: GaussianProcess(
+            kernel_params={
+                "length_scale": Prior("halfnormal", scale=0.5),
+                "amplitude": 1.0,
+            }
+        ),
+        {"length_scale"},
+        {"amplitude"},
+        id="gaussian-process",
+    ),
+    pytest.param(
+        lambda: Mixture(
+            transitions=[RandomWalk(), Jump()],
+            mixture_weights=(0.5, 0.5),
+        ),
+        {"rw_sigma"},
+        {"rw_delta", "jump_p_jump", "mixture_weights"},
+        id="mixture",
+    ),
+]
+
+
+DETERMINISTIC_TRANSITION_CATEGORY_CASES = [
+    pytest.param(
+        lambda: Linear(intercept=Prior("normal"), beta=0.0),
+        {"intercept"},
+        {"beta"},
+        id="linear",
+    ),
+    pytest.param(
+        lambda: Polynomial(intercept=Prior("normal"), betas=[0.0, 0.0], degree=2),
+        {"intercept"},
+        {"beta_1", "beta_2"},
+        id="polynomial",
+    ),
+    pytest.param(
+        lambda: Exponential(intercept=Prior("normal"), beta=0.0),
+        {"intercept"},
+        {"beta"},
+        id="exponential",
+    ),
+    pytest.param(
+        lambda: Logarithmic(intercept=Prior("normal"), beta=0.0),
+        {"intercept"},
+        {"beta"},
+        id="logarithmic",
+    ),
+]
+
+
+def _assert_parameter_categories(model, expected):
+    actual = {
+        "local_params": set(model.local_keys),
+        "deterministic_params": set(model.deterministic_keys),
+        "hyper_params": set(model.hyper_keys),
+        "shared_params": set(model.shared_keys),
+        "fixed_params": set(model.fixed_keys),
+    }
+    assert actual == expected
+    all_keys = [key for keys in actual.values() for key in keys]
+    assert len(all_keys) == len(set(all_keys)), "A parameter was registered in more than one category."
+
+
+@pytest.mark.parametrize("transition_factory, hyper_names, fixed_names", STOCHASTIC_TRANSITION_CATEGORY_CASES)
+def test_every_stochastic_transition_uses_exact_model_parameter_categories(
+    transition_factory,
+    hyper_names,
+    fixed_names,
+):
+    prior = JointPrior(theta=transition_factory(), shared=Prior("normal"), fixed=0.25)
+
+    def simulator(theta, shared, fixed):
+        return {"observation": theta + shared + fixed}
+
+    model = Model(prior=prior, simulator=simulator, missing=None)
+
+    _assert_parameter_categories(
+        model,
+        {
+            "local_params": {"theta"},
+            "deterministic_params": set(),
+            "hyper_params": {f"theta_{name}" for name in hyper_names},
+            "shared_params": {"shared"},
+            "fixed_params": {"fixed", *(f"theta_{name}" for name in fixed_names)},
+        },
+    )
+
+
+@pytest.mark.parametrize("transition_factory, hyper_names, fixed_names", DETERMINISTIC_TRANSITION_CATEGORY_CASES)
+def test_every_deterministic_transition_uses_exact_model_parameter_categories(
+    transition_factory,
+    hyper_names,
+    fixed_names,
+):
+    prior = JointPrior(theta=transition_factory(), shared=Prior("normal"), fixed=0.25)
+
+    def simulator(theta, shared, fixed):
+        return {"observation": theta + shared + fixed}
+
+    model = Model(prior=prior, simulator=simulator, missing=None)
+
+    _assert_parameter_categories(
+        model,
+        {
+            "local_params": set(),
+            "deterministic_params": {"theta"},
+            "hyper_params": {f"theta_{name}" for name in hyper_names},
+            "shared_params": {"shared"},
+            "fixed_params": {"fixed", *(f"theta_{name}" for name in fixed_names)},
+        },
+    )
 
 
 def test_joint_prior_rejects_non_positive_batch_size():
