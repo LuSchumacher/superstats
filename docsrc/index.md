@@ -29,7 +29,7 @@ Superstats trains a neural estimator on simulations from any generative model of
 
 ## Install
 
-We support Python 3.12 to 3.13. Install the latest version from source:
+We support Python 3.12 and 3.13. Install the latest release from PyPI:
 
 ```bash
 pip install superstats
@@ -43,7 +43,7 @@ pip install git+https://github.com/LuSchumacher/superstats.git@dev
 
 ### Deep learning backend
 
-Per default, `superstats` installs [JAX](https://docs.jax.dev/en/latest/installation.html) on Linux/MacOS machines and [PyTorch](https://pytorch.org/get-started/locally/) on Windows machines. This is because `JAX` does not natively support GPU acceleration on Windows. You can also manually install and configure any of the three backends:
+By default, `superstats` installs [JAX](https://docs.jax.dev/en/latest/installation.html) on Linux and macOS, and [PyTorch](https://pytorch.org/get-started/locally/) on Windows. This is because JAX does not natively support GPU acceleration on Windows. You can also manually install and configure any of the three backends:
 
 - [Install JAX](https://jax.readthedocs.io/en/latest/installation.html)
 - [Install PyTorch](https://pytorch.org/get-started/locally/)
@@ -52,7 +52,7 @@ Per default, `superstats` installs [JAX](https://docs.jax.dev/en/latest/installa
 
 ## Getting started
 
-A complete workflow using a diffusion decision model whose drift rate and thresold are free to vary across time:
+A workflow using a diffusion decision model whose drift rate and threshold can vary over time:
 
 ```python
 import superstats as sup
@@ -75,7 +75,7 @@ history = workflow.fit_online(num_steps=100, epochs=20, batch_size=16)
 samples = workflow.sample(data=rt_data, num_samples=250)
 ```
 
-It is highly recommended to use a GPU for fast training and inference. For an in-depth exposition, check out the examples below.
+A GPU is highly recommended for training and inference. Start with the [user-guide quickstart](user_guide/quickstart.ipynb), then explore the [examples folder](https://github.com/LuSchumacher/superstats/tree/main/examples), including the [minimal workflow demo](https://github.com/LuSchumacher/superstats/blob/main/examples/minimal_workflow_demo.ipynb), for a complete analysis with training and diagnostics.
 
 
 ## Contributing
