@@ -370,6 +370,34 @@ def test_time_varying_verification_labels_only_first_column():
     plt.close(fig)
 
 
+def test_time_varying_verification_uses_two_by_two_grid_for_single_parameter():
+    rng = np.random.default_rng(1)
+    targets = rng.normal(size=(6, 5, 1))
+    estimates = targets[:, None] + rng.normal(scale=0.2, size=(6, 20, 5, 1))
+
+    fig = plot_time_varying_verification(
+        estimates,
+        targets,
+        variable_names=["Drift rate"],
+    )
+
+    assert len(fig.axes) == 4
+    np.testing.assert_allclose(
+        fig.get_size_inches(),
+        [BASE_COL_WIDTH * 2, BASE_ROW_HEIGHT * 2 + 0.75],
+    )
+    assert [ax.get_title() for ax in fig.axes] == [
+        "Correlation (Truth vs. Estimate)",
+        "NRMSE",
+        "Posterior Contraction",
+        "Calibration Error",
+    ]
+    assert [ax.get_ylabel() for ax in fig.axes] == ["Value", "", "Value", ""]
+    assert [ax.get_xlabel() for ax in fig.axes] == ["", "", "Step", "Step"]
+    assert fig._suptitle.get_text() == "Drift rate"
+    plt.close(fig)
+
+
 def test_joint_prior_positions_legend_and_row_names_without_overlap():
     rng = np.random.default_rng(0)
     names = ["short", "a_much_longer_parameter_name"]
