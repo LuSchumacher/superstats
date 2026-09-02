@@ -15,6 +15,7 @@ import keras
 import logging
 
 from bayesflow.adapters import Adapter
+from bayesflow.utils.numpy_utils import credible_interval
 
 from superstats.defaults import (
     BASE_COLOR,
@@ -791,7 +792,7 @@ class Workflow:
         estimates: Mapping[str, np.ndarray] | np.ndarray,
         variable_keys: Sequence[str] | None = None,
         variable_names: Sequence[str] | None = None,
-        uncertainty_agg: Callable | None = None,
+        uncertainty_agg: Callable | None = credible_interval,
         **kwargs,
     ):
         """Plot time-invariant recovery, calibration, and contraction.
@@ -822,9 +823,10 @@ class Workflow:
             `len(variable_keys)`) and defaults to the auto-derived
             per-component names. For array input, defaults to `param_0`,
             `param_1`, ...
-        uncertainty_agg : callable or None, optional, default: None
-            Uncertainty aggregation passed only to `plot_recovery`. Pass
-            `None` to suppress recovery uncertainty intervals.
+        uncertainty_agg : callable or None, optional, default: credible_interval
+            Uncertainty aggregation passed only to `plot_recovery`. By
+            default, draws 95% credible intervals. Pass `None` to suppress
+            recovery uncertainty intervals.
         **kwargs
             Shared options forwarded to `plot_recovery`, `plot_calibration`,
             and `plot_z_score_contraction` (e.g. `label_fontsize`,
@@ -1004,10 +1006,11 @@ class Workflow:
             datasets when both `targets` and `aggregation` are given.
         aggregate_strategy : {"full_uncertainty", "no_epistemic"}, optional, default: "full_uncertainty"
             Only used when `aggregation` is not None.
-            "full_uncertainty": flatten datasets and posterior samples,
-            then summarize.
-            "no_epistemic": median across posterior samples per dataset
-            first, then aggregate.
+            "full_uncertainty": flatten only the dataset and posterior-sample
+            axes into one trajectory pool, retaining posterior and
+            between-dataset variation.
+            "no_epistemic": take the posterior median within each dataset,
+            preserving only between-dataset variation.
         uncertainty_fun    : {"std", "ci", "mad", "hdi"} or callable or None, optional, default: "ci"
             Named methods draw nested outer/inner ribbons: ±1/±0.5 SD,
             95%/65% CI, ±1.48/±0.74 MAD, or 95%/65% HDI. A callable
@@ -1020,7 +1023,8 @@ class Workflow:
             Window size for `sma`, or span parameter for `ema`.
         marginal           : bool, optional, default: True
             Attach a marginal distribution panel to the right of each
-            time-series axis.
+            time-series axis. It uses the same strategy-specific trajectory
+            pool as the uncertainty band.
         dist_type          : {"hist", "kde", "both"}, optional, default: "hist"
             Distribution type used for marginal panels.
         num_bins           : int or None, optional, default: None

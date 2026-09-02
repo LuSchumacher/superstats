@@ -284,6 +284,7 @@ def test_verify_time_invariant_expands_mixture_components(monkeypatch):
     assert call["targets"].shape == (2, 3)
     assert call["estimates"].shape == (2, 12, 3)
     assert call["variable_names"] == ["theta", "mix_mixture_weights_fast", "mix_mixture_weights_slow"]
+    assert call["uncertainty_agg"] is workflow_module.credible_interval
 
 
 def test_verify_time_invariant_validates_mapping_selection(monkeypatch):

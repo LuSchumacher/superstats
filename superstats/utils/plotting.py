@@ -88,6 +88,26 @@ def smooth_trajectories(
     return smoothed
 
 
+def _compute_hdi(
+    trajectories: np.ndarray,
+    probability: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute a per-step highest-density interval."""
+    num_steps = trajectories.shape[-1]
+    lower, upper = np.empty(num_steps), np.empty(num_steps)
+    for i in range(num_steps):
+        values = np.sort(trajectories[:, i])
+        num_values = len(values)
+        if num_values == 1:
+            lower[i] = upper[i] = values[0]
+            continue
+        window = max(1, min(num_values - 1, int(np.floor(probability * num_values))))
+        widths = values[window:] - values[: num_values - window]
+        index = np.argmin(widths)
+        lower[i], upper[i] = values[index], values[index + window]
+    return lower, upper
+
+
 def compute_uncertainty_band(
     trajectories: np.ndarray,
     uncertainty_fun: Literal["std", "ci", "mad", "hdi"] | Callable,
@@ -150,26 +170,6 @@ def compute_uncertainty_bands(
     else:
         inner = _compute_hdi(trajectories, probability=0.65)
     return outer, inner
-
-
-def _compute_hdi(
-    trajectories: np.ndarray,
-    probability: float,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Compute a per-step highest-density interval."""
-    num_steps = trajectories.shape[-1]
-    lower, upper = np.empty(num_steps), np.empty(num_steps)
-    for i in range(num_steps):
-        values = np.sort(trajectories[:, i])
-        num_values = len(values)
-        if num_values == 1:
-            lower[i] = upper[i] = values[0]
-            continue
-        window = max(1, min(num_values - 1, int(np.floor(probability * num_values))))
-        widths = values[window:] - values[: num_values - window]
-        index = np.argmin(widths)
-        lower[i], upper[i] = values[index], values[index + window]
-    return lower, upper
 
 
 def plot_uncertainty_band(

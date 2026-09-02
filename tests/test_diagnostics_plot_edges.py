@@ -246,7 +246,7 @@ def test_plot_posterior_resimulation_validates_inputs(prediction, empirical, kwa
         plot_posterior_resimulation(prediction, empirical, **kwargs)
 
 
-def test_posterior_resimulation_aggregate_spaghetti_uses_smoothed_dataset_centers():
+def test_posterior_resimulation_aggregate_spaghetti_uses_full_uncertainty_pool():
     rng = np.random.default_rng(11)
     prediction = rng.normal(size=(3, 4, 7))
     empirical = rng.normal(size=(3, 7))
@@ -263,8 +263,37 @@ def test_posterior_resimulation_aggregate_spaghetti_uses_smoothed_dataset_center
         spaghetti=True,
     )
 
-    assert len(fig.axes[0].lines) == 5
-    assert "Individual" in [text.get_text() for text in fig.legends[0].get_texts()]
+    assert len(fig.axes[0].lines) == prediction.shape[0] * prediction.shape[1] + 2
+    assert "Dataset × draw" in [text.get_text() for text in fig.legends[0].get_texts()]
+    plt.close(fig)
+
+
+def test_posterior_resimulation_no_epistemic_spaghetti_uses_dataset_medians():
+    prediction = np.array(
+        [
+            [[0.0, 1.0], [2.0, 3.0], [100.0, 101.0]],
+            [[10.0, 11.0], [12.0, 13.0], [14.0, 15.0]],
+        ]
+    )
+    empirical = np.zeros((2, 2))
+
+    fig = plot_posterior_resimulation(
+        {"value": prediction},
+        {"value": empirical},
+        aggregation=np.mean,
+        aggregate_strategy="no_epistemic",
+        uncertainty_fun=None,
+        marginal=False,
+        spaghetti=True,
+    )
+
+    spaghetti_lines = fig.axes[0].lines[: prediction.shape[0]]
+    np.testing.assert_allclose(
+        np.stack([line.get_ydata() for line in spaghetti_lines]),
+        np.median(prediction, axis=1),
+    )
+    assert len(fig.axes[0].lines) == prediction.shape[0] + 2
+    assert "Dataset median" in [text.get_text() for text in fig.legends[0].get_texts()]
     plt.close(fig)
 
 

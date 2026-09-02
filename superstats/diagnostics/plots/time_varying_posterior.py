@@ -94,10 +94,12 @@ def plot_time_varying_posterior(
         datasets when both `targets` and `aggregation` are given.
     aggregate_strategy : {"full_uncertainty", "no_epistemic"}, optional, default: "full_uncertainty"
         Only used when `aggregation` is not None.
-        "full_uncertainty": flatten datasets and posterior samples,
-        then summarize.
-        "no_epistemic": median across posterior samples per dataset
-        first, then aggregate.
+        "full_uncertainty": flatten only the dataset and posterior-sample
+        axes into one trajectory pool. The ribbon contains posterior and
+        between-dataset variation.
+        "no_epistemic": take the posterior median within each dataset,
+        preserving the dataset axis. The ribbon then contains only
+        between-dataset variation.
     uncertainty_fun    : {"std", "ci", "mad", "hdi"} or callable or None, optional, default: "ci"
         Named methods draw nested outer/inner ribbons: ±1/±0.5 SD,
         95%/65% CI, ±1.48/±0.74 MAD, or 95%/65% HDI. A callable
@@ -110,8 +112,8 @@ def plot_time_varying_posterior(
         Window size for `sma`, or span parameter for `ema`.
     marginal           : bool, optional, default: True
         Attach a marginal distribution panel to the right of each
-        time-series axis. The distribution is computed on the same
-        array used for the uncertainty band.
+        time-series axis. The distribution is computed from the exact same
+        strategy-specific trajectory pool used for the uncertainty band.
     dist_type          : {"hist", "kde", "both"}, optional, default: "hist"
         Distribution type used for marginal panels.
     num_bins           : int or None, optional, default: None

@@ -191,6 +191,50 @@ def test_time_varying_posterior_hist_shows_target_marginal():
     plt.close(fig)
 
 
+@pytest.mark.parametrize(
+    "aggregate_strategy",
+    ["full_uncertainty", "no_epistemic"],
+)
+def test_time_varying_posterior_aggregate_uses_one_pool_for_uncertainty_and_marginal(
+    monkeypatch,
+    aggregate_strategy,
+):
+    estimates = np.arange(2 * 3 * 4, dtype=float).reshape(2, 3, 4)
+    captured = {}
+
+    def fake_compute_uncertainty_bands(trajectories, uncertainty_fun, center):
+        captured["uncertainty"] = np.asarray(trajectories)
+        return (center, center), (center, center)
+
+    def fake_plot_dist(values, **kwargs):
+        captured["marginal"] = np.asarray(values)
+
+    monkeypatch.setattr(
+        time_varying_posterior_module,
+        "compute_uncertainty_bands",
+        fake_compute_uncertainty_bands,
+    )
+    monkeypatch.setattr(time_varying_posterior_module, "plot_dist", fake_plot_dist)
+
+    fig = plot_time_varying_posterior(
+        {"v": estimates[..., None]},
+        aggregation=np.mean,
+        aggregate_strategy=aggregate_strategy,
+        uncertainty_fun="std",
+        marginal=True,
+        dist_type="kde",
+    )
+
+    expected_pool = (
+        estimates.reshape(-1, estimates.shape[-1])
+        if aggregate_strategy == "full_uncertainty"
+        else np.median(estimates, axis=1)
+    )
+    np.testing.assert_allclose(captured["uncertainty"], expected_pool)
+    np.testing.assert_allclose(captured["marginal"], expected_pool.reshape(-1))
+    plt.close(fig)
+
+
 def test_time_varying_posterior_selects_datasets_in_requested_order():
     estimates = {
         "v": np.broadcast_to(
@@ -805,6 +849,10 @@ def test_aggregate_resimulation_marginal_uses_ribbon_pool(
         "alphas": [],
     }
 
+    def fake_compute_uncertainty_bands(trajectories, uncertainty_fun, center):
+        captured["uncertainty"] = np.asarray(trajectories)
+        return (center, center), (center, center)
+
     def fake_plot_dist(plotted_values, **kwargs):
         captured["values"].append(np.asarray(plotted_values))
         captured["alphas"].append(kwargs["alpha"])
@@ -814,6 +862,11 @@ def test_aggregate_resimulation_marginal_uses_ribbon_pool(
         "plot_dist",
         fake_plot_dist,
     )
+    monkeypatch.setattr(
+        posterior_resimulation_module,
+        "compute_uncertainty_bands",
+        fake_compute_uncertainty_bands,
+    )
 
     fig = plot_posterior_resimulation(
         {"value": pred_values},
@@ -821,16 +874,19 @@ def test_aggregate_resimulation_marginal_uses_ribbon_pool(
         kind="time_series",
         aggregation=np.mean,
         aggregate_strategy=aggregate_strategy,
-        uncertainty_fun=None,
+        uncertainty_fun="std",
         marginal=True,
         dist_alpha=0.35,
         dist_type="kde",
     )
 
     expected_values = (
-        pred_values.reshape(-1) if aggregate_strategy == "full_uncertainty" else pred_values.mean(axis=1).reshape(-1)
+        pred_values.reshape(-1)
+        if aggregate_strategy == "full_uncertainty"
+        else np.median(pred_values, axis=1).reshape(-1)
     )
     np.testing.assert_allclose(captured["values"][0], expected_values)
+    np.testing.assert_allclose(captured["uncertainty"], expected_values.reshape(-1, pred_values.shape[-1]))
     np.testing.assert_allclose(
         captured["values"][1],
         real_values.mean(axis=0),
@@ -885,6 +941,33 @@ def test_posterior_resimulation_uses_shared_legend_and_spacing():
     assert fig.subplotpars.hspace == pytest.approx(HSPACE)
     assert fig.subplotpars.wspace == pytest.approx(WSPACE)
     plt.close(fig)
+
+
+def test_posterior_resimulation_spaghetti_does_not_expand_tight_figure_width():
+    rng = np.random.default_rng(13)
+    prediction = {"value": rng.normal(size=(3, 5, 8))}
+    empirical = {"value": rng.normal(size=(3, 8))}
+
+    figures = [
+        plot_posterior_resimulation(
+            prediction,
+            empirical,
+            aggregation=np.mean,
+            aggregate_strategy="no_epistemic",
+            marginal=False,
+            spaghetti=spaghetti,
+        )
+        for spaghetti in (False, True)
+    ]
+    for fig in figures:
+        fig.canvas.draw()
+
+    tight_widths = [fig.get_tightbbox(fig.canvas.get_renderer()).width for fig in figures]
+
+    assert tight_widths[1] == pytest.approx(tight_widths[0])
+    assert figures[1].legends[0]._ncols == 2
+    for fig in figures:
+        plt.close(fig)
 
 
 def test_posterior_resimulation_dist_uses_num_bins_and_density_label():
