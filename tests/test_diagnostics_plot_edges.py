@@ -13,6 +13,7 @@ from superstats.diagnostics.plots import (
     plot_posterior_resimulation,
     plot_push_forward,
     plot_time_invariant_prior,
+    plot_time_varying_posterior,
     plot_time_varying_verification,
 )
 
@@ -62,7 +63,7 @@ def _three_bound_uncertainty(values):
 
 @pytest.mark.parametrize(
     "uncertainty_fun",
-    ["95ci", "mad", "95hdi", _two_bound_uncertainty, _three_bound_uncertainty],
+    ["ci", "mad", "hdi", _two_bound_uncertainty, _three_bound_uncertainty],
     ids=["confidence-interval", "mad", "hdi", "callable-two", "callable-three"],
 )
 def test_plot_push_forward_supports_uncertainty_modes(uncertainty_fun):
@@ -76,12 +77,38 @@ def test_plot_push_forward_supports_uncertainty_modes(uncertainty_fun):
         marginal=False,
     )
 
-    assert fig.axes[0].collections
+    expected_ribbons = 1 if callable(uncertainty_fun) else 2
+    assert len(fig.axes[0].collections) == expected_ribbons
     assert any(
         "Uncertainty" in text.get_text() or "%" in text.get_text() or "MAD" in text.get_text()
         for text in fig.legends[0].get_texts()
     )
     plt.close(fig)
+
+
+def test_all_time_series_diagnostics_draw_nested_named_uncertainty_ribbons():
+    rng = np.random.default_rng(12)
+    trajectories = rng.normal(size=(3, 20, 6))
+    targets = rng.normal(size=(3, 6))
+
+    resimulation_fig = plot_posterior_resimulation(
+        {"value": trajectories},
+        {"value": targets},
+        aggregation=np.mean,
+        uncertainty_fun="ci",
+        marginal=False,
+    )
+    posterior_fig = plot_time_varying_posterior(
+        {"value": trajectories[..., None]},
+        aggregation=np.mean,
+        uncertainty_fun="mad",
+        marginal=False,
+    )
+
+    assert len(resimulation_fig.axes[0].collections) == 2
+    assert len(posterior_fig.axes[0].collections) == 2
+    plt.close(resimulation_fig)
+    plt.close(posterior_fig)
 
 
 @pytest.mark.parametrize(

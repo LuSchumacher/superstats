@@ -950,7 +950,7 @@ class Workflow:
         variable_names: Sequence[str] | None = None,
         aggregation: Callable | None = None,
         aggregate_strategy: Literal["full_uncertainty", "no_epistemic"] = "full_uncertainty",
-        uncertainty_fun: Literal["std", "95ci", "mad", "95hdi"] | Callable | None = "95ci",
+        uncertainty_fun: Literal["std", "ci", "mad", "hdi"] | Callable | None = "ci",
         smoothing: Literal["sma", "ema"] | None = None,
         smoothing_window: int = 5,
         marginal: bool = True,
@@ -1008,9 +1008,11 @@ class Workflow:
             then summarize.
             "no_epistemic": median across posterior samples per dataset
             first, then aggregate.
-        uncertainty_fun    : {"std", "95ci", "mad", "95hdi"} or callable or None, optional, default: "95ci"
-            Band drawn around the center line. A callable receives (N, T)
-            trajectories and must return `(lo, hi)`, each of shape (T,).
+        uncertainty_fun    : {"std", "ci", "mad", "hdi"} or callable or None, optional, default: "ci"
+            Named methods draw nested outer/inner ribbons: ±1/±0.5 SD,
+            95%/65% CI, ±1.48/±0.74 MAD, or 95%/65% HDI. A callable
+            receives (N, T) trajectories and draws the single `(lo, hi)`
+            interval it returns, with each bound shaped (T,).
         smoothing          : {"sma", "ema"} or None, optional, default: None
             Applied to each trajectory before computing the center,
             uncertainty, and marginal.
@@ -1031,7 +1033,8 @@ class Workflow:
             use one column per selected dataset and aggregated plots use
             the shared compact dynamic layout.
         alpha              : float, optional, default: 0.5
-            Opacity of uncertainty bands.
+            Opacity of the darker inner uncertainty ribbon. The outer
+            ribbon uses half this opacity.
         color              : str, optional, default: BASE_COLOR
             Color used for posterior centers, bands, and marginals.
         title_fontsize     : int, optional, default: 22

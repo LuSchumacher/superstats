@@ -717,7 +717,7 @@ def test_plot_push_forward_positions_aggregate_legend():
     plt.close(fig)
 
 
-def test_aggregate_time_series_marginal_uses_center_per_step(
+def test_aggregate_time_series_marginal_uses_uncertainty_pool(
     monkeypatch,
 ):
     values = np.arange(24, dtype=float).reshape(4, 6) / 10
@@ -743,7 +743,7 @@ def test_aggregate_time_series_marginal_uses_center_per_step(
 
     np.testing.assert_allclose(
         captured["values"],
-        values.mean(axis=0),
+        values.reshape(-1),
     )
     plt.close(fig)
 

@@ -23,12 +23,12 @@ from superstats.defaults import (
 )
 from superstats.utils.indexing import format_dataset_label, normalize_data_indices
 from superstats.utils.plotting import (
-    compute_uncertainty_band,
+    compute_uncertainty_bands,
     get_default_num_cols,
     get_uncertainty_band_label,
     get_layout,
     plot_dist,
-    plot_uncertainty_band,
+    plot_uncertainty_bands,
     resolve_dist_alpha,
     smooth_trajectories,
 )
@@ -144,7 +144,7 @@ def plot_posterior_resimulation(
     kind: Literal["time_series", "dist"] = "time_series",
     aggregation: Callable | None = None,
     aggregate_strategy: Literal["full_uncertainty", "no_epistemic"] = "full_uncertainty",
-    uncertainty_fun: Literal["std", "95ci", "mad", "95hdi"] | Callable | None = "95hdi",
+    uncertainty_fun: Literal["std", "ci", "mad", "hdi"] | Callable | None = "hdi",
     smoothing: Literal["sma", "ema"] | None = None,
     smoothing_window: int = 5,
     marginal: bool = True,
@@ -193,9 +193,10 @@ def plot_posterior_resimulation(
         "no_epistemic": collapse resims to one representative
         trajectory per dataset first (via `aggregation`), then
         aggregate across datasets. Removes epistemic uncertainty.
-    uncertainty_fun     : {"std", "95ci", "mad", "95hdi"} or callable or None, optional, default: "95hdi"
-        "time_series" mode only. Function to draw a band around the
-        resimulated center line.
+    uncertainty_fun     : {"std", "ci", "mad", "hdi"} or callable or None, optional, default: "hdi"
+        "time_series" mode only. Named methods draw nested outer/inner
+        ribbons: ±1/±0.5 SD, 95%/65% CI, ±1.48/±0.74 MAD, or
+        95%/65% HDI. A callable draws the single interval it returns.
     smoothing           : {"sma", "ema"} or None, optional, default: None
         "time_series" mode only. Causal (past-only) smoothing applied to
         the real trajectories and, for resimulated data, to the
@@ -343,12 +344,12 @@ def plot_posterior_resimulation(
             real_center = _aggregate_center(empirical_x, aggregation, axis=0)
 
             if uncertainty_fun is not None:
-                lower, upper = compute_uncertainty_band(pooled_pred, uncertainty_fun, center)
-                has_uncertainty_band = plot_uncertainty_band(
+                uncertainty_bands = compute_uncertainty_bands(pooled_pred, uncertainty_fun, center)
+                has_uncertainty_band = plot_uncertainty_bands(
                     ax,
                     t,
-                    lower,
-                    upper,
+                    uncertainty_bands[0],
+                    uncertainty_bands[1],
                     color,
                     alpha=0.3,
                 )
@@ -441,12 +442,12 @@ def plot_posterior_resimulation(
                 center = np.median(pred_traj, axis=0)
 
                 if uncertainty_fun is not None:
-                    lower, upper = compute_uncertainty_band(pred_traj, uncertainty_fun, center)
-                    has_uncertainty_band |= plot_uncertainty_band(
+                    uncertainty_bands = compute_uncertainty_bands(pred_traj, uncertainty_fun, center)
+                    has_uncertainty_band |= plot_uncertainty_bands(
                         ax,
                         t,
-                        lower,
-                        upper,
+                        uncertainty_bands[0],
+                        uncertainty_bands[1],
                         color,
                         alpha=0.3,
                     )

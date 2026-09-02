@@ -11,6 +11,7 @@ from superstats.diagnostics.plots.prior_push_forward import plot_push_forward
 from superstats.simulation.augmentation.missing import MissingProcess
 from superstats.simulation.augmentation.contamination import ContaminationProcess
 from superstats.utils.dispatch import find_contamination, find_missing
+from superstats.utils.plotting import select_data_variable
 
 
 class Model:
@@ -187,6 +188,15 @@ class Model:
         )
         model_output = self.simulator(*ordered_params)
         return list(self._reshape_model_output(model_output, batch_size=1, num_steps=1).keys())
+
+    def _select_data_variable(
+        self,
+        data: Mapping[str, np.ndarray],
+        data_dim: int | str,
+    ) -> np.ndarray:
+        """Select and validate one of this model's named observation variables."""
+        model_data = {key: data[key] for key in self.data_keys}
+        return select_data_variable(model_data, data_dim)
 
     def _prepare_flat_params(
         self,
@@ -698,10 +708,10 @@ class Model:
             `aggregation(x, axis=...)` (e.g. np.mean, np.median).
             If None, individual datasets are shown in separate panels.
             If specified, all datasets are aggregated into a single panel.
-        uncertainty_fun : {"std", "95ci", "mad", "95hdi"} or callable or None, optional, default: None
-            Uncertainty function for aggregate time-series plots. Forwarded
-            directly to `plot_push_forward`, so the accepted values must
-            match that function's own supported set.
+        uncertainty_fun : {"std", "ci", "mad", "hdi"} or callable or None, optional, default: None
+            Uncertainty function for aggregate time-series plots. Named
+            methods draw nested outer/inner ribbons; a callable draws the
+            single interval it returns.
         marginal        : bool, optional, default: True
             If True, include marginal distributions beside time-series plots.
         dist_type       : {"hist", "kde", "both"}, optional, default: "hist"
@@ -723,10 +733,10 @@ class Model:
         fig : plt.Figure - the figure containing the requested plot
         """
         sample = self.sample(batch_size=batch_size, num_steps=num_steps)
-        data = {key: sample[key] for key in self.data_keys}
+        data = {"value": self._select_data_variable(sample, data_dim)}
         return plot_push_forward(
             data=data,
-            data_dim=data_dim,
+            data_dim="value",
             kind=kind,
             aggregation=aggregation,
             uncertainty_fun=uncertainty_fun,

@@ -10,11 +10,36 @@ from matplotlib.axes import Axes
 from superstats.defaults import DIST_ALPHA, OVERLAY_DIST_ALPHA
 
 UNCERTAINTY_BAND_LABELS = {
-    "std": "±1 SD",
-    "95ci": "95% CI",
-    "mad": "±1.48 MAD",
-    "95hdi": "95% HDI",
+    "std": "±1 / ±0.5 SD",
+    "ci": "95% / 65% CI",
+    "mad": "±1.48 / ±0.74 MAD",
+    "hdi": "95% / 65% HDI",
 }
+
+
+def select_data_variable(
+    data: Mapping[str, np.ndarray],
+    data_dim: int | str,
+) -> np.ndarray:
+    """Resolve named data to one ``(batch_size, num_steps)`` variable."""
+    if not isinstance(data, Mapping):
+        raise TypeError(f"data must be a mapping of named arrays, got {type(data)}.")
+
+    keys = list(data)
+    if isinstance(data_dim, int):
+        try:
+            key = keys[data_dim]
+        except IndexError as exc:
+            raise ValueError(f"data_dim index {data_dim} is out of range for data keys {keys!r}.") from exc
+    else:
+        key = data_dim
+        if key not in data:
+            raise KeyError(f"data key {key!r} not found. Available keys: {keys!r}.")
+
+    values = np.asarray(data[key])
+    if values.ndim != 2:
+        raise ValueError(f"Data variable {key!r} must have shape (batch_size, steps), got {values.shape}.")
+    return values
 
 
 def resolve_dist_alpha(
@@ -65,7 +90,7 @@ def smooth_trajectories(
 
 def compute_uncertainty_band(
     trajectories: np.ndarray,
-    uncertainty_fun: Literal["std", "95ci", "mad", "95hdi"] | Callable,
+    uncertainty_fun: Literal["std", "ci", "mad", "hdi"] | Callable,
     center: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Compute an uncertainty interval across trajectory axis 0."""
@@ -77,27 +102,74 @@ def compute_uncertainty_band(
     if uncertainty_fun == "std":
         sd = trajectories.std(axis=0)
         return center - sd, center + sd
-    if uncertainty_fun == "95ci":
+    if uncertainty_fun == "ci":
         return (
             np.percentile(trajectories, 2.5, axis=0),
             np.percentile(trajectories, 97.5, axis=0),
         )
     if uncertainty_fun == "mad":
-        mad = np.median(np.abs(trajectories - center), axis=0)
-        scaled_mad = 1.4826 * mad
+        median = np.median(trajectories, axis=0)
+        mad = np.median(np.abs(trajectories - median), axis=0)
+        scaled_mad = 1.48 * mad
         return center - scaled_mad, center + scaled_mad
-    if uncertainty_fun == "95hdi":
-        num_steps = trajectories.shape[-1]
-        lower, upper = np.empty(num_steps), np.empty(num_steps)
-        for i in range(num_steps):
-            values = np.sort(trajectories[:, i])
-            num_values = len(values)
-            window = int(np.floor(0.95 * num_values))
-            widths = values[window:] - values[: num_values - window]
-            index = np.argmin(widths)
-            lower[i], upper[i] = values[index], values[index + window]
-        return lower, upper
-    raise ValueError(f"uncertainty_fun must be 'std', '95ci', 'mad', '95hdi', or callable. Got {uncertainty_fun!r}.")
+    if uncertainty_fun == "hdi":
+        return _compute_hdi(trajectories, probability=0.95)
+    raise ValueError(f"uncertainty_fun must be 'std', 'ci', 'mad', 'hdi', or callable. Got {uncertainty_fun!r}.")
+
+
+def compute_uncertainty_bands(
+    trajectories: np.ndarray,
+    uncertainty_fun: Literal["std", "ci", "mad", "hdi"] | Callable,
+    center: np.ndarray,
+) -> tuple[tuple[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray] | None]:
+    """Compute outer and inner uncertainty intervals across trajectory axis 0.
+
+    Named uncertainty methods return two nested intervals: ±1 and ±0.5
+    standard deviations, central 95% and 65% intervals, ±1.48 and
+    ±0.74 median absolute deviations, or 95% and 65% highest-density
+    intervals. A custom callable defines one interval, so its inner interval
+    is ``None``.
+    """
+    outer = compute_uncertainty_band(trajectories, uncertainty_fun, center)
+    if callable(uncertainty_fun):
+        return outer, None
+
+    if uncertainty_fun == "std":
+        half_sd = 0.5 * trajectories.std(axis=0)
+        inner = (center - half_sd, center + half_sd)
+    elif uncertainty_fun == "ci":
+        inner = (
+            np.percentile(trajectories, 17.5, axis=0),
+            np.percentile(trajectories, 82.5, axis=0),
+        )
+    elif uncertainty_fun == "mad":
+        median = np.median(trajectories, axis=0)
+        mad = np.median(np.abs(trajectories - median), axis=0)
+        half_scaled_mad = 0.74 * mad
+        inner = (center - half_scaled_mad, center + half_scaled_mad)
+    else:
+        inner = _compute_hdi(trajectories, probability=0.65)
+    return outer, inner
+
+
+def _compute_hdi(
+    trajectories: np.ndarray,
+    probability: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute a per-step highest-density interval."""
+    num_steps = trajectories.shape[-1]
+    lower, upper = np.empty(num_steps), np.empty(num_steps)
+    for i in range(num_steps):
+        values = np.sort(trajectories[:, i])
+        num_values = len(values)
+        if num_values == 1:
+            lower[i] = upper[i] = values[0]
+            continue
+        window = max(1, min(num_values - 1, int(np.floor(probability * num_values))))
+        widths = values[window:] - values[: num_values - window]
+        index = np.argmin(widths)
+        lower[i], upper[i] = values[index], values[index + window]
+    return lower, upper
 
 
 def plot_uncertainty_band(
@@ -123,6 +195,38 @@ def plot_uncertainty_band(
             zorder=zorder,
         )
     return bool(visible)
+
+
+def plot_uncertainty_bands(
+    ax: Axes,
+    steps: np.ndarray,
+    outer: tuple[np.ndarray, np.ndarray],
+    inner: tuple[np.ndarray, np.ndarray] | None,
+    color: str,
+    alpha: float,
+    zorder: float = 1,
+) -> bool:
+    """Draw a bright outer ribbon and, when available, a darker inner ribbon."""
+    visible = plot_uncertainty_band(
+        ax,
+        steps,
+        outer[0],
+        outer[1],
+        color,
+        alpha=alpha * 0.5,
+        zorder=zorder,
+    )
+    if inner is not None:
+        visible |= plot_uncertainty_band(
+            ax,
+            steps,
+            inner[0],
+            inner[1],
+            color,
+            alpha=alpha,
+            zorder=zorder + 0.1,
+        )
+    return visible
 
 
 def get_default_num_cols(

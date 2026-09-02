@@ -36,10 +36,12 @@ from superstats.diagnostics.plots.time_varying_verification import (
 from superstats.networks.utils import expand_singletons_to_common_length
 from superstats.utils.plotting import (
     compute_uncertainty_band,
+    compute_uncertainty_bands,
     get_default_num_cols,
     get_layout,
     plot_dist,
     plot_uncertainty_band,
+    plot_uncertainty_bands,
     prepare_plot_data,
     smooth_trajectories,
 )
@@ -167,6 +169,60 @@ def test_shared_uncertainty_band_computes_and_draws_visible_intervals():
 
     assert visible is True
     assert ax.collections
+    plt.close(fig)
+
+
+@pytest.mark.parametrize(
+    ("uncertainty_fun", "expected_outer", "expected_inner"),
+    [
+        ("std", 1.0, 0.5),
+        ("mad", 1.48, 0.74),
+    ],
+)
+def test_shared_uncertainty_bands_have_nested_normal_scale_intervals(
+    uncertainty_fun,
+    expected_outer,
+    expected_inner,
+):
+    trajectories = np.array([[-1.0], [0.0], [1.0]])
+    center = np.array([0.0])
+
+    outer, inner = compute_uncertainty_bands(trajectories, uncertainty_fun, center)
+
+    raw_scale = trajectories.std(axis=0) if uncertainty_fun == "std" else np.array([1.0])
+    np.testing.assert_allclose(outer[0], -expected_outer * raw_scale)
+    np.testing.assert_allclose(outer[1], expected_outer * raw_scale)
+    np.testing.assert_allclose(inner[0], -expected_inner * raw_scale)
+    np.testing.assert_allclose(inner[1], expected_inner * raw_scale)
+
+
+@pytest.mark.parametrize("uncertainty_fun", ["ci", "hdi"])
+def test_shared_interval_uncertainty_bands_use_95_and_65_percent(uncertainty_fun):
+    trajectories = np.arange(100, dtype=float)[:, None]
+    center = np.array([49.5])
+
+    outer, inner = compute_uncertainty_bands(trajectories, uncertainty_fun, center)
+
+    assert outer[0][0] <= inner[0][0] < inner[1][0] <= outer[1][0]
+    assert inner[1][0] - inner[0][0] < outer[1][0] - outer[0][0]
+
+
+def test_shared_nested_uncertainty_renderer_draws_two_ribbons():
+    fig, ax = plt.subplots()
+
+    visible = plot_uncertainty_bands(
+        ax,
+        np.arange(2),
+        (np.array([-1.0, -1.0]), np.array([1.0, 1.0])),
+        (np.array([-0.5, -0.5]), np.array([0.5, 0.5])),
+        BASE_COLOR,
+        alpha=0.4,
+    )
+
+    assert visible is True
+    assert len(ax.collections) == 2
+    assert ax.collections[0].get_alpha() == pytest.approx(0.2)
+    assert ax.collections[1].get_alpha() == pytest.approx(0.4)
     plt.close(fig)
 
 

@@ -22,12 +22,12 @@ from superstats.defaults import (
 )
 from superstats.utils.indexing import format_dataset_label, normalize_data_indices
 from superstats.utils.plotting import (
-    compute_uncertainty_band,
+    compute_uncertainty_bands,
     get_default_num_cols,
     get_layout,
     get_uncertainty_band_label,
     plot_dist,
-    plot_uncertainty_band,
+    plot_uncertainty_bands,
     resolve_dist_alpha,
     smooth_trajectories,
 )
@@ -40,7 +40,7 @@ def plot_time_varying_posterior(
     variable_names: Sequence[str] | None = None,
     aggregation: Callable | None = None,
     aggregate_strategy: Literal["full_uncertainty", "no_epistemic"] = "full_uncertainty",
-    uncertainty_fun: Literal["std", "95ci", "mad", "95hdi"] | Callable | None = "95ci",
+    uncertainty_fun: Literal["std", "ci", "mad", "hdi"] | Callable | None = "ci",
     smoothing: Literal["sma", "ema"] | None = None,
     smoothing_window: int = 5,
     marginal: bool = True,
@@ -98,9 +98,11 @@ def plot_time_varying_posterior(
         then summarize.
         "no_epistemic": median across posterior samples per dataset
         first, then aggregate.
-    uncertainty_fun    : {"std", "95ci", "mad", "95hdi"} or callable or None, optional, default: "95ci"
-        Band drawn around the center line. A callable receives (N, T)
-        trajectories and must return `(lo, hi)`, each of shape (T,).
+    uncertainty_fun    : {"std", "ci", "mad", "hdi"} or callable or None, optional, default: "ci"
+        Named methods draw nested outer/inner ribbons: ±1/±0.5 SD,
+        95%/65% CI, ±1.48/±0.74 MAD, or 95%/65% HDI. A callable
+        receives (N, T) trajectories and draws the single `(lo, hi)`
+        interval it returns, with each bound shaped (T,).
     smoothing          : {"sma", "ema"} or None, optional, default: None
         Applied to each trajectory (and to `targets`, if given) before
         computing the center, uncertainty, and marginal.
@@ -124,7 +126,8 @@ def plot_time_varying_posterior(
     color              : str, optional, default: BASE_COLOR
         Line and band color.
     alpha              : float in [0, 1], optional, default: 0.5
-        Alpha for the uncertainty band.
+        Alpha for the darker inner uncertainty ribbon. The outer ribbon
+        uses half this opacity.
     title_fontsize     : int, optional, default: 22
         The font size of the panel titles.
     label_fontsize     : int, optional, default: 18
@@ -246,9 +249,9 @@ def plot_time_varying_posterior(
                 center = np.asarray(aggregation(trajectories, axis=0))
 
             # uncertainty bands
-            lo, hi = None, None
+            uncertainty_bands = None
             if uncertainty_fun is not None:
-                lo, hi = compute_uncertainty_band(
+                uncertainty_bands = compute_uncertainty_bands(
                     trajectories,
                     uncertainty_fun,
                     center,
@@ -283,12 +286,12 @@ def plot_time_varying_posterior(
                 ax_kde = None
 
             # plot
-            if lo is not None:
-                has_uncertainty_band |= plot_uncertainty_band(
+            if uncertainty_bands is not None:
+                has_uncertainty_band |= plot_uncertainty_bands(
                     ax,
                     t,
-                    lo,
-                    hi,
+                    uncertainty_bands[0],
+                    uncertainty_bands[1],
                     color,
                     alpha=alpha,
                 )
