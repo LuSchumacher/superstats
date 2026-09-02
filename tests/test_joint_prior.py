@@ -120,9 +120,9 @@ STOCHASTIC_TRANSITION_CATEGORY_CASES = [
 
 DETERMINISTIC_TRANSITION_CATEGORY_CASES = [
     pytest.param(
-        lambda: Linear(intercept=Prior("normal"), beta=0.0),
+        lambda: Linear(intercept=Prior("normal"), slope=0.0),
         {"intercept"},
-        {"beta"},
+        {"slope"},
         id="linear",
     ),
     pytest.param(
