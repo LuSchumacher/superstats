@@ -102,6 +102,40 @@ class RandomChoiceContamination(ContaminationProcess):
         }
         self.required_keys = set(self.key_map.values())
 
+    def _draw_parameter_groups(self, batch_size: int, num_steps: int) -> dict[str, dict]:
+        """Draw contamination probabilities and group them like `JointPrior`.
+
+        Note: `Prior.sample` draws from the global `np.random` state, not
+        from the `rng` passed into `apply`, so draws from a `Prior` are not
+        controlled by the seed threaded through `Model.sample`.
+        """
+        p = self.p_contaminated
+
+        if isinstance(p, Prior):
+            groups = {"shared_params": {"p_contaminated": p.sample(batch_size)}}
+        elif isinstance(p, StochasticTransition):
+            samples = p.sample(batch_size=batch_size, num_steps=num_steps)
+            groups = {
+                "local_params": {"p_contaminated": samples["local_params"]},
+                "hyper_params": {f"p_contaminated_{key}": value for key, value in samples["hyper_params"].items()},
+                "fixed_params": {f"p_contaminated_{key}": value for key, value in samples["fixed_params"].items()},
+            }
+        elif isinstance(p, DeterministicTransition):
+            samples = p.sample(batch_size=batch_size, num_steps=num_steps)
+            groups = {
+                "deterministic_params": {"p_contaminated": samples["deterministic_params"]},
+                "hyper_params": {f"p_contaminated_{key}": value for key, value in samples["hyper_params"].items()},
+                "fixed_params": {f"p_contaminated_{key}": value for key, value in samples["fixed_params"].items()},
+            }
+        else:
+            groups = {"fixed_params": {"p_contaminated": p}}
+
+        values = next(values["p_contaminated"] for values in groups.values() if "p_contaminated" in values)
+        if np.any((np.asarray(values) < 0.0) | (np.asarray(values) > 1.0)):
+            raise ValueError("Sampled p_contaminated values must be between 0 and 1.")
+
+        return groups
+
     def parameter_groups(self) -> dict[str, list[str]]:
         """Return parameter names grouped for registration on `Model`."""
         if not self.infer:
@@ -109,6 +143,32 @@ class RandomChoiceContamination(ContaminationProcess):
 
         groups = self._draw_parameter_groups(batch_size=1, num_steps=1)
         return {group: list(values) for group, values in groups.items() if values}
+
+    @staticmethod
+    def _choice_is_discrete(choice: np.ndarray) -> bool:
+        """Return whether numeric choices are integer-valued."""
+        if np.issubdtype(choice.dtype, np.integer) or np.issubdtype(choice.dtype, np.bool_):
+            return True
+        return bool(np.all(choice == np.floor(choice)))
+
+    @staticmethod
+    def _log_rt_stats(response_time: np.ndarray, mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Compute per-dataset log-RT mean/std over valid, positive RTs."""
+        stats_mask = mask & (response_time > 0)
+        counts = stats_mask.sum(axis=1, keepdims=True)
+
+        log_rt = np.zeros(response_time.shape)
+        np.log(response_time, out=log_rt, where=stats_mask)
+
+        sums = np.sum(log_rt, axis=1, keepdims=True)
+        mean_rt = np.divide(sums, counts, out=np.zeros_like(sums), where=counts > 0)
+
+        centered = np.where(stats_mask, log_rt - mean_rt, 0.0)
+        squared_sums = np.sum(centered**2, axis=1, keepdims=True)
+        var_rt = np.divide(squared_sums, counts, out=np.zeros_like(squared_sums), where=counts > 0)
+        std_rt = np.sqrt(var_rt)
+
+        return mean_rt, std_rt
 
     def apply(
         self,
