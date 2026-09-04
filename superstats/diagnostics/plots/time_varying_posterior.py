@@ -9,6 +9,7 @@ import seaborn as sns
 from typing import Literal
 
 from superstats.defaults import (
+    AGGREGATE_PLOT_WIDTH,
     BASE_COLOR,
     BASE_COL_WIDTH,
     BASE_ROW_HEIGHT,
@@ -22,12 +23,12 @@ from superstats.defaults import (
 )
 from superstats.utils.indexing import format_dataset_label, normalize_data_indices
 from superstats.utils.plotting import (
-    compute_uncertainty_band,
+    compute_uncertainty_bands,
     get_default_num_cols,
     get_layout,
     get_uncertainty_band_label,
     plot_dist,
-    plot_uncertainty_band,
+    plot_uncertainty_bands,
     resolve_dist_alpha,
     smooth_trajectories,
 )
@@ -39,8 +40,7 @@ def plot_time_varying_posterior(
     variable_keys: Sequence[str] | None = None,
     variable_names: Sequence[str] | None = None,
     aggregation: Callable | None = None,
-    aggregate_strategy: Literal["full_uncertainty", "no_epistemic"] = "full_uncertainty",
-    uncertainty_fun: Literal["std", "95ci", "mad", "95hdi"] | Callable | None = "95ci",
+    uncertainty_fun: Literal["std", "ci", "mad", "hdi"] | Callable | None = "hdi",
     smoothing: Literal["sma", "ema"] | None = None,
     smoothing_window: int = 5,
     marginal: bool = True,
@@ -92,15 +92,11 @@ def plot_time_varying_posterior(
         Called as `aggregation(trajectories, axis=0)` and must return
         a (T,) center. The same function aggregates `targets` across
         datasets when both `targets` and `aggregation` are given.
-    aggregate_strategy : {"full_uncertainty", "no_epistemic"}, optional, default: "full_uncertainty"
-        Only used when `aggregation` is not None.
-        "full_uncertainty": flatten datasets and posterior samples,
-        then summarize.
-        "no_epistemic": median across posterior samples per dataset
-        first, then aggregate.
-    uncertainty_fun    : {"std", "95ci", "mad", "95hdi"} or callable or None, optional, default: "95ci"
-        Band drawn around the center line. A callable receives (N, T)
-        trajectories and must return `(lo, hi)`, each of shape (T,).
+    uncertainty_fun    : {"std", "ci", "mad", "hdi"} or callable or None, optional, default: "hdi"
+        Named methods draw nested outer/inner ribbons: ±1/±0.5 SD,
+        95%/65% CI, ±1.48/±0.74 MAD, or 95%/65% HDI. A callable
+        receives (N, T) trajectories and draws the single `(lo, hi)`
+        interval it returns, with each bound shaped (T,).
     smoothing          : {"sma", "ema"} or None, optional, default: None
         Applied to each trajectory (and to `targets`, if given) before
         computing the center, uncertainty, and marginal.
@@ -108,8 +104,10 @@ def plot_time_varying_posterior(
         Window size for `sma`, or span parameter for `ema`.
     marginal           : bool, optional, default: True
         Attach a marginal distribution panel to the right of each
-        time-series axis. The distribution is computed on the same
-        array used for the uncertainty band.
+        time-series axis. The distribution is computed from the exact same
+        strategy-specific posterior trajectory pool used for the uncertainty
+        band. When targets are provided, their marginal pools all selected
+        target trajectories rather than only the aggregated target line.
     dist_type          : {"hist", "kde", "both"}, optional, default: "hist"
         Distribution type used for marginal panels.
     num_bins           : int or None, optional, default: None
@@ -118,13 +116,13 @@ def plot_time_varying_posterior(
         Opacity of marginal distributions. If None, uses 1.0 for a
         single distribution and 0.5 when targets are overlaid.
     num_cols           : int or None, optional, default: None
-        Exact number of grid columns. If None, non-aggregated plots use
-        one column per selected dataset and aggregated plots use the
-        shared compact dynamic layout.
+        Exact number of grid columns. If None, uses the shared compact
+        dynamic layout based on the number of panels.
     color              : str, optional, default: BASE_COLOR
         Line and band color.
     alpha              : float in [0, 1], optional, default: 0.5
-        Alpha for the uncertainty band.
+        Alpha for the darker inner uncertainty ribbon. The outer ribbon
+        uses half this opacity.
     title_fontsize     : int, optional, default: 22
         The font size of the panel titles.
     label_fontsize     : int, optional, default: 18
@@ -148,8 +146,8 @@ def plot_time_varying_posterior(
     ValueError
         If `estimates`/`targets` are inconsistent (mismatched dict
         keys, or a `variable_names` length mismatch for array input),
-        or if `aggregate_strategy`, or `uncertainty_fun` when given as
-        a string, is not one of the recognized values.
+        or if `uncertainty_fun` when given as a string is not one of the
+        recognized values.
     """
     if isinstance(estimates, Mapping):
         keys = list(variable_keys) if variable_keys is not None else list(estimates.keys())
@@ -185,22 +183,18 @@ def plot_time_varying_posterior(
 
     # layout
     if aggregation is None:
-        matrix_layout = num_cols is None
-        if matrix_layout:
-            num_rows = P
-            layout_num_cols = D
-        else:
-            layout_num_cols = num_cols
-            num_rows = int(np.ceil(P * D / layout_num_cols))
+        if num_cols is None:
+            num_cols = get_default_num_cols(P * D)
+        layout_num_cols = num_cols
+        num_rows = int(np.ceil(P * D / layout_num_cols))
         col_width = BASE_COL_WIDTH
         row_height = BASE_ROW_HEIGHT
     else:
-        matrix_layout = False
         if num_cols is None:
             num_cols = get_default_num_cols(P)
         num_rows = int(np.ceil(P / num_cols))
         layout_num_cols = num_cols
-        col_width = BASE_COL_WIDTH
+        col_width = AGGREGATE_PLOT_WIDTH if P == 1 else BASE_COL_WIDTH
         row_height = BASE_ROW_HEIGHT
 
     plot_figsize, legend_bottom, legend_y = get_layout(
@@ -229,13 +223,7 @@ def plot_time_varying_posterior(
             if aggregation is None:
                 trajectories = local_estimates[name][d, :, :]
             else:
-                param = local_estimates[name]
-                if aggregate_strategy == "full_uncertainty":
-                    trajectories = param.reshape(D * S, T)
-                elif aggregate_strategy == "no_epistemic":
-                    trajectories = np.median(param, axis=1)
-                else:
-                    raise ValueError(f"Unknown aggregate_strategy: {aggregate_strategy!r}")
+                trajectories = np.asarray(aggregation(local_estimates[name], axis=0))
 
             trajectories = smooth_trajectories(trajectories, smoothing, smoothing_window)
 
@@ -246,9 +234,9 @@ def plot_time_varying_posterior(
                 center = np.asarray(aggregation(trajectories, axis=0))
 
             # uncertainty bands
-            lo, hi = None, None
+            uncertainty_bands = None
             if uncertainty_fun is not None:
-                lo, hi = compute_uncertainty_band(
+                uncertainty_bands = compute_uncertainty_bands(
                     trajectories,
                     uncertainty_fun,
                     center,
@@ -256,6 +244,7 @@ def plot_time_varying_posterior(
 
             # target trajectory (optional)
             target_line = None
+            target_marginal_values = None
             if local_targets is not None:
                 if aggregation is None:
                     target_line = smooth_trajectories(
@@ -263,6 +252,7 @@ def plot_time_varying_posterior(
                         smoothing,
                         smoothing_window,
                     )[0]
+                    target_marginal_values = target_line
                 else:
                     smoothed_targets = smooth_trajectories(
                         local_targets[name],
@@ -270,6 +260,7 @@ def plot_time_varying_posterior(
                         smoothing_window,
                     )
                     target_line = np.asarray(aggregation(smoothed_targets, axis=0))
+                    target_marginal_values = target_line
 
             # axes setup
             ax_base = axes_flat[panel]
@@ -283,12 +274,12 @@ def plot_time_varying_posterior(
                 ax_kde = None
 
             # plot
-            if lo is not None:
-                has_uncertainty_band |= plot_uncertainty_band(
+            if uncertainty_bands is not None:
+                has_uncertainty_band |= plot_uncertainty_bands(
                     ax,
                     t,
-                    lo,
-                    hi,
+                    uncertainty_bands[0],
+                    uncertainty_bands[1],
                     color,
                     alpha=alpha,
                 )
@@ -297,46 +288,40 @@ def plot_time_varying_posterior(
                 ax.plot(t, target_line, color="black", linewidth=1.5, linestyle="--", zorder=5)
 
             if aggregation is None:
-                if matrix_layout:
-                    if panel < D:
-                        ax.set_title(
-                            format_dataset_label(selected_indices[d]),
-                            fontsize=title_fontsize,
-                            pad=15,
-                        )
-                    if d == 0:
-                        ax.set_ylabel(
-                            name,
-                            fontsize=label_fontsize,
-                            rotation=0,
-                            labelpad=Y_LABEL_PAD,
-                        )
-                    if panel >= (P - 1) * D:
-                        ax.set_xlabel(
-                            "Step",
-                            fontsize=label_fontsize,
-                            labelpad=LABEL_PAD,
-                        )
+                if P == 1:
+                    title = format_dataset_label(selected_indices[d])
+                elif D == 1:
+                    title = name
                 else:
-                    title = name if D == 1 else f"{name} — {format_dataset_label(selected_indices[d])}"
-                    ax.set_title(
-                        title,
-                        fontsize=title_fontsize,
-                        pad=15,
+                    title = f"{name} — {format_dataset_label(selected_indices[d])}"
+                ax.set_title(
+                    title,
+                    fontsize=title_fontsize,
+                    pad=15,
+                )
+                if P == 1 and panel % layout_num_cols == 0:
+                    ax.set_ylabel(
+                        name,
+                        fontsize=label_fontsize,
+                        rotation=0,
+                        labelpad=Y_LABEL_PAD,
+                        ha="right",
                     )
+                else:
                     ax.set_ylabel(
                         "Parameter value" if panel % layout_num_cols == 0 else "",
                         fontsize=label_fontsize,
                         labelpad=Y_LABEL_PAD,
                     )
-                    if panel // layout_num_cols == num_rows - 1:
-                        ax.set_xlabel(
-                            "Step",
-                            fontsize=label_fontsize,
-                            labelpad=LABEL_PAD,
-                        )
+                if panel // layout_num_cols == num_rows - 1:
+                    ax.set_xlabel(
+                        "Step",
+                        fontsize=label_fontsize,
+                        labelpad=LABEL_PAD,
+                    )
             else:
-                ax.set_title(name, fontsize=title_fontsize, pad=15)
+                if P > 1:
+                    ax.set_title(name, fontsize=title_fontsize, pad=15)
                 if panel // layout_num_cols == num_rows - 1:
                     ax.set_xlabel(
                         "Step",
@@ -371,7 +356,7 @@ def plot_time_varying_posterior(
                 if target_line is not None:
                     target_marginal_ax = ax_kde.twiny() if dist_type == "hist" else ax_kde
                     plot_dist(
-                        target_line.reshape(-1),
+                        target_marginal_values,
                         ax=target_marginal_ax,
                         dist_type=dist_type,
                         color="black",
@@ -409,6 +394,9 @@ def plot_time_varying_posterior(
         fontsize=label_fontsize,
         framealpha=0.0,
         bbox_to_anchor=(0.5, legend_y),
+        columnspacing=0.7,
+        handlelength=1.3,
+        handletextpad=0.5,
     )
     sns.despine()
     plt.tight_layout()

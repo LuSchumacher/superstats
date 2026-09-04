@@ -50,6 +50,22 @@ class RandomMissingProcess(MissingProcess):
         self.missing_value = missing_value
         self.shared_across_batch = shared_across_batch
 
+    def apply(self, data: Mapping[str, np.ndarray], rng: np.random.Generator | None = None) -> dict:
+        """Apply missingness to a mapping of simulated data arrays."""
+        rng = self._default_rng(rng)
+        data = {key: np.array(value, copy=True) for key, value in data.items()}
+
+        keys = list(data)
+        first = data[keys[0]]
+        batch_size, num_steps = first.shape
+        mask, p_used = self._draw_mask(batch_size, num_steps, rng)
+
+        filled = {
+            key: self._fill_array(value, mask, self._missing_value_for_key(key, index, len(keys)))
+            for index, (key, value) in enumerate(data.items())
+        }
+        return filled | {"missing_mask": mask, "p_missing": p_used}
+
     def _draw_p(self, n: int) -> np.ndarray:
         """Return `n` missing-probabilities in [0, 1].
 
@@ -98,24 +114,3 @@ class RandomMissingProcess(MissingProcess):
         if value.shape != (num_keys,):
             raise ValueError(f"Array missing_value for mapping data must have shape ({num_keys},), got {value.shape}.")
         return value[index]
-
-    def apply(self, data: Mapping[str, np.ndarray], rng: np.random.Generator | None = None) -> dict:
-        rng = self._default_rng(rng)
-
-        data = {key: np.array(value, copy=True) for key, value in data.items()}
-
-        keys = list(data)
-        first = data[keys[0]]
-        batch_size, num_steps = first.shape
-
-        mask, p_used = self._draw_mask(batch_size, num_steps, rng)
-
-        filled = {
-            key: self._fill_array(value, mask, self._missing_value_for_key(key, i, len(keys)))
-            for i, (key, value) in enumerate(data.items())
-        }
-
-        return filled | {
-            "missing_mask": mask,
-            "p_missing": p_used,
-        }

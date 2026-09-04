@@ -171,7 +171,7 @@ def test_deterministic_trajectories_are_simulated_but_not_inferred():
 def test_resimulate_reconstructs_linear_deterministic_parameter():
     prior = JointPrior(
         v=RandomWalk(bounds=(-3.0, 3.0), initial_prior=Prior("normal", loc=0.0, scale=0.5), sigma=0.0, delta=0.0),
-        a=Linear(intercept=0.5, beta=0.5),
+        a=Linear(intercept=0.5, slope=0.5),
         tau=0.2,
         bias=0.0,
     )

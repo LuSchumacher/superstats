@@ -11,6 +11,7 @@ from superstats.diagnostics.plots.prior_push_forward import plot_push_forward
 from superstats.simulation.augmentation.missing import MissingProcess
 from superstats.simulation.augmentation.contamination import ContaminationProcess
 from superstats.utils.dispatch import find_contamination, find_missing
+from superstats.utils.plotting import select_data_variable
 
 
 class Model:
@@ -107,6 +108,286 @@ class Model:
 
         self.data_keys = self._infer_data_keys(pilot)
 
+    def sample(
+        self,
+        batch_size: int,
+        num_steps: int,
+        include_fixed: bool = False,
+        tile_to_steps: bool = False,
+        rng: np.random.Generator | None = None,
+    ) -> Dict[str, np.ndarray]:
+        """Sample parameters from the prior and generate simulated data.
+
+        This method performs a complete generative process:
+        1. Samples parameters from the joint prior distribution
+        2. Prepares parameters for vectorized simulation
+        3. Runs the simulation simulator
+        4. Reshapes outputs back to trajectory format
+        5. Applies `self.contamination` and `self.missing`, if configured
+
+        Parameters
+        ----------
+        batch_size    : int
+            Number of independent simulation batches to generate.
+        num_steps     : int
+            Number of time steps per trajectory.
+        include_fixed : bool, optional, default: False
+            If True, include `fixed_params` in the returned dictionary.
+        tile_to_steps : bool, optional, default: False
+            If True, tile `hyper_params` and `shared_params` from shape
+            (batch_size, 1) to (batch_size, num_steps, 1), aligning
+            them with the time axis of local parameters.
+        rng           : np.random.Generator or None, optional, default: None
+            Random generator forwarded to `self.missing`. If
+            None, the missing process falls back to its own default
+            (an unseeded generator).
+
+        Returns
+        -------
+        result : dict - flat dictionary with the following entries:
+            - one entry per simulated observation variable, each with
+            shape (batch_size, num_steps), corrupted by
+            `self.missing` if one is configured.
+            - `"time_steps"`: shape (batch_size, num_steps), each row
+            equal to `1..num_steps`.
+            - `"missing_mask"`: included only if `self.missing`
+            is not None; shape matches the mask returned by the process
+            (for `RandomMissingProcess`, (batch_size, num_steps)).
+            - any additional keys the missing process returns beyond the
+            simulator data keys and `"missing_mask"` (e.g.
+            `RandomMissingProcess` also returns `"p_missing"`, shape
+            (batch_size, 1)); omitted if `self.missing` is None
+            or returns no extra keys.
+            - contamination probabilities and transition parameters. When
+              the contamination process has `infer=True`, these are shaped
+              and returned with their registered model-parameter category;
+              otherwise they remain augmentation metadata.
+            - one entry per sampled parameter. Local (time-varying) params
+              have shape (batch_size, num_steps); hyper and shared
+              params have shape (batch_size, 1), or (batch_size, num_steps, 1)
+              when `tile_to_steps` is True.
+            - fixed params are included only when `include_fixed` is True.
+
+            The instance attributes `local_keys`, `hyper_keys`,
+            `shared_keys`, `fixed_keys`, and `data_keys` record which
+            keys belong to which group.
+
+        Raises
+        ------
+        ValueError
+            If required parameters are missing from the prior or have
+            invalid shapes.
+        """
+        # Sample parameters
+        prior_draws = self.prior.sample(batch_size=batch_size, num_steps=num_steps)
+        local_params = prior_draws["local_params"]
+        deterministic_params = prior_draws.get("deterministic_params", {})
+        shared_params = prior_draws.get("shared_params", {})
+        fixed_params = prior_draws.get("fixed_params", {})
+
+        # Combine parameter dictionaries
+        combined_params = dict(local_params)
+        combined_params.update(deterministic_params)
+        combined_params.update(shared_params)
+
+        # Include fixed params that are used by the simulator
+        for name in self.param_order:
+            if name in fixed_params:
+                combined_params[name] = fixed_params[name]
+
+        ordered_params = self._ordered_model_args(
+            combined_params,
+            batch_size=batch_size,
+            num_steps=num_steps,
+            missing_context="prior and has no default",
+        )
+
+        # Run simulator
+        model_output = self.simulator(*ordered_params)
+        sim_data = self._reshape_model_output(model_output, batch_size, num_steps, expected_data_keys=self.data_keys)
+
+        # Apply contamination augmentation, if configured
+        sim_data, contamination_extra = self._apply_contamination(sim_data, rng)
+
+        for group, keys in self._contamination_parameter_groups.items():
+            destination = {
+                "local_params": local_params,
+                "deterministic_params": deterministic_params,
+                "hyper_params": prior_draws["hyper_params"],
+                "shared_params": shared_params,
+                "fixed_params": fixed_params,
+            }[group]
+            for key in keys:
+                destination[key] = contamination_extra.pop(key)
+
+        # Apply missingness augmentation, if configured
+        sim_data, missing_mask, missing_extra = self._apply_missing(sim_data, rng)
+
+        local_params = self._normalize_local_params(local_params, batch_size, num_steps)
+        deterministic_params = self._normalize_local_params(deterministic_params, batch_size, num_steps)
+        hyper_params = self._normalize_batch_params(prior_draws.get("hyper_params", {}), batch_size)
+        shared_params = self._normalize_batch_params(shared_params, batch_size)
+
+        if tile_to_steps:
+            if hyper_params is not None:
+                hyper_params = {k: np.tile(v[:, np.newaxis, :], (1, num_steps, 1)) for k, v in hyper_params.items()}
+            if shared_params is not None:
+                shared_params = {k: np.tile(v[:, np.newaxis, :], (1, num_steps, 1)) for k, v in shared_params.items()}
+
+        time_steps = np.broadcast_to(np.arange(1, num_steps + 1)[None, :], (batch_size, num_steps))
+
+        result = {**sim_data, "time_steps": time_steps}
+        if contamination_extra:
+            result.update(contamination_extra)
+        if missing_mask is not None:
+            result["missing_mask"] = missing_mask
+        if missing_extra:
+            result.update(missing_extra)
+        if local_params:
+            result.update(local_params)
+        if deterministic_params:
+            result.update(deterministic_params)
+        if hyper_params:
+            result.update(hyper_params)
+        if shared_params:
+            result.update(shared_params)
+        if include_fixed and fixed_params:
+            result.update(fixed_params)
+
+        return result
+
+    def simulate_from_parameters(
+        self,
+        params: Dict[str, np.ndarray],
+        batch_size: int,
+        num_steps: int,
+    ) -> Dict[str, np.ndarray]:
+        """Simulate simulator outputs for given parameter values.
+
+        Parameters
+        ----------
+        params     : dict of np.ndarray
+            Parameter values to simulate from, keyed by simulator parameter
+            name. See `_prepare_flat_params` for the accepted shapes.
+        batch_size : int
+            Number of independent simulation batches.
+        num_steps  : int
+            Number of time steps per trajectory.
+
+        Returns
+        -------
+        sim_data : dict of np.ndarray
+            Named simulated variables. Each value has shape
+            (batch_size, num_steps).
+
+        Raises
+        ------
+        ValueError
+            If a required parameter is missing from `params` and has no
+            default in the simulator signature, or has an unsupported shape.
+        """
+        combined_params = dict(params)
+
+        ordered_params = self._ordered_model_args(
+            combined_params,
+            batch_size=batch_size,
+            num_steps=num_steps,
+            missing_context="params and has no default",
+        )
+
+        model_output = self.simulator(*ordered_params)
+        return self._reshape_model_output(model_output, batch_size, num_steps, expected_data_keys=self.data_keys)
+
+    def plot_push_forward(
+        self,
+        batch_size: int = 20,
+        num_steps: int = 200,
+        data_dim: int | str = 0,
+        kind: Literal["time_series", "dist"] = "dist",
+        aggregation: Callable | None = None,
+        uncertainty_fun: Literal["std", "ci", "mad", "hdi"] | Callable | None = "hdi",
+        marginal: bool = True,
+        dist_type: Literal["hist", "kde", "both"] = "hist",
+        num_bins: int | None = None,
+        dist_alpha: float | None = None,
+        spaghetti: bool = False,
+        num_cols: int | None = None,
+        **kwargs,
+    ) -> plt.Figure:
+        """Render prior push-forward diagnostics for the generative simulator.
+
+        Parameters
+        ----------
+        batch_size      : int, optional, default: 20
+            Number of simulated datasets to generate.
+        num_steps       : int, optional, default: 200
+            Number of time steps per simulation.
+        data_dim        : int or str, optional, default: 0
+            Observation variable to plot. Integers index
+            `self.data_keys`; strings select a variable by name.
+        kind            : {"dist", "time_series"}, optional, default: "dist"
+            Plot type.
+        aggregation     : callable or None, optional, default: None
+            Aggregation function over the dataset dimension, called as
+            `aggregation(x, axis=...)` (e.g. np.mean, np.median).
+            If None, individual datasets are shown in separate panels.
+            If specified, all datasets are aggregated into a single panel.
+        uncertainty_fun : {"std", "ci", "mad", "hdi"} or callable or None, optional, default: "hdi"
+            Uncertainty function for aggregate time-series plots. Named
+            methods draw nested outer/inner ribbons; a callable draws the
+            single interval it returns.
+        marginal        : bool, optional, default: True
+            If True, include marginal distributions beside time-series plots.
+        dist_type       : {"hist", "kde", "both"}, optional, default: "hist"
+            Distribution type used for continuous distributions and marginals.
+        num_bins        : int or None, optional, default: None
+            Number of histogram bins. If None, Seaborn selects the bins.
+        dist_alpha      : float or None, optional, default: None
+            Opacity of distributions and marginal distributions. If None,
+            uses 1.0 for one distribution and 0.5 for overlays.
+        spaghetti       : bool, optional, default: False
+            If True, include individual time series.
+        num_cols        : int or None, optional, default: None
+            Number of panel columns. If None, uses the compact dynamic layout.
+        **kwargs
+            Forwarded to `plot_push_forward`.
+
+        Returns
+        -------
+        fig : plt.Figure - the figure containing the requested plot
+        """
+        sample = self.sample(batch_size=batch_size, num_steps=num_steps)
+        data = {"value": self._select_data_variable(sample, data_dim)}
+        return plot_push_forward(
+            data=data,
+            data_dim="value",
+            kind=kind,
+            aggregation=aggregation,
+            uncertainty_fun=uncertainty_fun,
+            spaghetti=spaghetti,
+            marginal=marginal,
+            dist_type=dist_type,
+            num_bins=num_bins,
+            dist_alpha=dist_alpha,
+            num_cols=num_cols,
+            **kwargs,
+        )
+
+    def get_fixed_params(self) -> Dict[str, np.ndarray]:
+        """Return deterministic fixed parameters from the prior for simulator simulation.
+
+        Draws a single pilot sample from `self.prior` and keeps only the
+        fixed-parameter entries that the simulator actually consumes.
+
+        Returns
+        -------
+        fixed_params : dict of np.ndarray - mapping from parameter name
+            to its fixed value, restricted to names in `self.param_order`
+        """
+        prior_draws = self.prior.sample(batch_size=1, num_steps=1)
+        fixed_params = prior_draws.get("fixed_params", {})
+        return {name: np.asarray(value) for name, value in fixed_params.items() if name in self.param_order}
+
     def _ordered_model_args(
         self,
         combined_params: Dict[str, np.ndarray],
@@ -187,6 +468,15 @@ class Model:
         )
         model_output = self.simulator(*ordered_params)
         return list(self._reshape_model_output(model_output, batch_size=1, num_steps=1).keys())
+
+    def _select_data_variable(
+        self,
+        data: Mapping[str, np.ndarray],
+        data_dim: int | str,
+    ) -> np.ndarray:
+        """Select and validate one of this model's named observation variables."""
+        model_data = {key: data[key] for key in self.data_keys}
+        return select_data_variable(model_data, data_dim)
 
     def _prepare_flat_params(
         self,
@@ -283,63 +573,6 @@ class Model:
             raise ValueError(f"Unexpected shape for parameter '{name}': {p.shape}")
 
         return flat_params
-
-    def get_fixed_params(self) -> Dict[str, np.ndarray]:
-        """Return deterministic fixed parameters from the prior for simulator simulation.
-
-        Draws a single pilot sample from `self.prior` and keeps only the
-        fixed-parameter entries that the simulator actually consumes.
-
-        Returns
-        -------
-        fixed_params : dict of np.ndarray - mapping from parameter name
-            to its fixed value, restricted to names in `self.param_order`
-        """
-        prior_draws = self.prior.sample(batch_size=1, num_steps=1)
-        fixed_params = prior_draws.get("fixed_params", {})
-        return {name: np.asarray(value) for name, value in fixed_params.items() if name in self.param_order}
-
-    def simulate_from_parameters(
-        self,
-        params: Dict[str, np.ndarray],
-        batch_size: int,
-        num_steps: int,
-    ) -> Dict[str, np.ndarray]:
-        """Simulate simulator outputs for given parameter values.
-
-        Parameters
-        ----------
-        params     : dict of np.ndarray
-            Parameter values to simulate from, keyed by simulator parameter
-            name. See `_prepare_flat_params` for the accepted shapes.
-        batch_size : int
-            Number of independent simulation batches.
-        num_steps  : int
-            Number of time steps per trajectory.
-
-        Returns
-        -------
-        sim_data : dict of np.ndarray
-            Named simulated variables. Each value has shape
-            (batch_size, num_steps).
-
-        Raises
-        ------
-        ValueError
-            If a required parameter is missing from `params` and has no
-            default in the simulator signature, or has an unsupported shape.
-        """
-        combined_params = dict(params)
-
-        ordered_params = self._ordered_model_args(
-            combined_params,
-            batch_size=batch_size,
-            num_steps=num_steps,
-            missing_context="params and has no default",
-        )
-
-        model_output = self.simulator(*ordered_params)
-        return self._reshape_model_output(model_output, batch_size, num_steps, expected_data_keys=self.data_keys)
 
     def _normalize_local_params(
         self,
@@ -515,226 +748,3 @@ class Model:
         missing_mask = result["missing_mask"]
         extra = {k: v for k, v in result.items() if k not in (*self.data_keys, "missing_mask")}
         return sim_data, missing_mask, extra
-
-    def sample(
-        self,
-        batch_size: int,
-        num_steps: int,
-        include_fixed: bool = False,
-        tile_to_steps: bool = False,
-        rng: np.random.Generator | None = None,
-    ) -> Dict[str, np.ndarray]:
-        """Sample parameters from the prior and generate simulated data.
-
-        This method performs a complete generative process:
-        1. Samples parameters from the joint prior distribution
-        2. Prepares parameters for vectorized simulation
-        3. Runs the simulation simulator
-        4. Reshapes outputs back to trajectory format
-        5. Applies `self.contamination` and `self.missing`, if configured
-
-        Parameters
-        ----------
-        batch_size    : int
-            Number of independent simulation batches to generate.
-        num_steps     : int
-            Number of time steps per trajectory.
-        include_fixed : bool, optional, default: False
-            If True, include `fixed_params` in the returned dictionary.
-        tile_to_steps : bool, optional, default: False
-            If True, tile `hyper_params` and `shared_params` from shape
-            (batch_size, 1) to (batch_size, num_steps, 1), aligning
-            them with the time axis of local parameters.
-        rng           : np.random.Generator or None, optional, default: None
-            Random generator forwarded to `self.missing`. If
-            None, the missing process falls back to its own default
-            (an unseeded generator).
-
-        Returns
-        -------
-        result : dict - flat dictionary with the following entries:
-            - one entry per simulated observation variable, each with
-            shape (batch_size, num_steps), corrupted by
-            `self.missing` if one is configured.
-            - `"time_steps"`: shape (batch_size, num_steps), each row
-            equal to `1..num_steps`.
-            - `"missing_mask"`: included only if `self.missing`
-            is not None; shape matches the mask returned by the process
-            (for `RandomMissingProcess`, (batch_size, num_steps)).
-            - any additional keys the missing process returns beyond the
-            simulator data keys and `"missing_mask"` (e.g.
-            `RandomMissingProcess` also returns `"p_missing"`, shape
-            (batch_size, 1)); omitted if `self.missing` is None
-            or returns no extra keys.
-            - contamination probabilities and transition parameters. When
-              the contamination process has `infer=True`, these are shaped
-              and returned with their registered model-parameter category;
-              otherwise they remain augmentation metadata.
-            - one entry per sampled parameter. Local (time-varying) params
-              have shape (batch_size, num_steps); hyper and shared
-              params have shape (batch_size, 1), or (batch_size, num_steps, 1)
-              when `tile_to_steps` is True.
-            - fixed params are included only when `include_fixed` is True.
-
-            The instance attributes `local_keys`, `hyper_keys`,
-            `shared_keys`, `fixed_keys`, and `data_keys` record which
-            keys belong to which group.
-
-        Raises
-        ------
-        ValueError
-            If required parameters are missing from the prior or have
-            invalid shapes.
-        """
-        # Sample parameters
-        prior_draws = self.prior.sample(batch_size=batch_size, num_steps=num_steps)
-        local_params = prior_draws["local_params"]
-        deterministic_params = prior_draws.get("deterministic_params", {})
-        shared_params = prior_draws.get("shared_params", {})
-        fixed_params = prior_draws.get("fixed_params", {})
-
-        # Combine parameter dictionaries
-        combined_params = dict(local_params)
-        combined_params.update(deterministic_params)
-        combined_params.update(shared_params)
-
-        # Include fixed params that are used by the simulator
-        for name in self.param_order:
-            if name in fixed_params:
-                combined_params[name] = fixed_params[name]
-
-        ordered_params = self._ordered_model_args(
-            combined_params,
-            batch_size=batch_size,
-            num_steps=num_steps,
-            missing_context="prior and has no default",
-        )
-
-        # Run simulator
-        model_output = self.simulator(*ordered_params)
-        sim_data = self._reshape_model_output(model_output, batch_size, num_steps, expected_data_keys=self.data_keys)
-
-        # Apply contamination augmentation, if configured
-        sim_data, contamination_extra = self._apply_contamination(sim_data, rng)
-
-        for group, keys in self._contamination_parameter_groups.items():
-            destination = {
-                "local_params": local_params,
-                "deterministic_params": deterministic_params,
-                "hyper_params": prior_draws["hyper_params"],
-                "shared_params": shared_params,
-                "fixed_params": fixed_params,
-            }[group]
-            for key in keys:
-                destination[key] = contamination_extra.pop(key)
-
-        # Apply missingness augmentation, if configured
-        sim_data, missing_mask, missing_extra = self._apply_missing(sim_data, rng)
-
-        local_params = self._normalize_local_params(local_params, batch_size, num_steps)
-        deterministic_params = self._normalize_local_params(deterministic_params, batch_size, num_steps)
-        hyper_params = self._normalize_batch_params(prior_draws.get("hyper_params", {}), batch_size)
-        shared_params = self._normalize_batch_params(shared_params, batch_size)
-
-        if tile_to_steps:
-            if hyper_params is not None:
-                hyper_params = {k: np.tile(v[:, np.newaxis, :], (1, num_steps, 1)) for k, v in hyper_params.items()}
-            if shared_params is not None:
-                shared_params = {k: np.tile(v[:, np.newaxis, :], (1, num_steps, 1)) for k, v in shared_params.items()}
-
-        time_steps = np.broadcast_to(np.arange(1, num_steps + 1)[None, :], (batch_size, num_steps))
-
-        result = {**sim_data, "time_steps": time_steps}
-        if contamination_extra:
-            result.update(contamination_extra)
-        if missing_mask is not None:
-            result["missing_mask"] = missing_mask
-        if missing_extra:
-            result.update(missing_extra)
-        if local_params:
-            result.update(local_params)
-        if deterministic_params:
-            result.update(deterministic_params)
-        if hyper_params:
-            result.update(hyper_params)
-        if shared_params:
-            result.update(shared_params)
-        if include_fixed and fixed_params:
-            result.update(fixed_params)
-
-        return result
-
-    def plot_push_forward(
-        self,
-        batch_size: int = 20,
-        num_steps: int = 200,
-        data_dim: int | str = 0,
-        kind: Literal["time_series", "dist"] = "dist",
-        aggregation: Callable | None = None,
-        uncertainty_fun: str | Callable | None = None,
-        marginal: bool = True,
-        dist_type: Literal["hist", "kde", "both"] = "hist",
-        num_bins: int | None = None,
-        dist_alpha: float | None = None,
-        spaghetti: bool = False,
-        num_cols: int | None = None,
-        **kwargs,
-    ) -> plt.Figure:
-        """Render prior push-forward diagnostics for the generative simulator.
-
-        Parameters
-        ----------
-        batch_size      : int, optional, default: 20
-            Number of simulated datasets to generate.
-        num_steps       : int, optional, default: 200
-            Number of time steps per simulation.
-        data_dim        : int or str, optional, default: 0
-            Observation variable to plot. Integers index
-            `self.data_keys`; strings select a variable by name.
-        kind            : {"dist", "time_series"}, optional, default: "dist"
-            Plot type.
-        aggregation     : callable or None, optional, default: None
-            Aggregation function over the dataset dimension, called as
-            `aggregation(x, axis=...)` (e.g. np.mean, np.median).
-            If None, individual datasets are shown in separate panels.
-            If specified, all datasets are aggregated into a single panel.
-        uncertainty_fun : {"std", "95ci", "mad", "95hdi"} or callable or None, optional, default: None
-            Uncertainty function for aggregate time-series plots. Forwarded
-            directly to `plot_push_forward`, so the accepted values must
-            match that function's own supported set.
-        marginal        : bool, optional, default: True
-            If True, include marginal distributions beside time-series plots.
-        dist_type       : {"hist", "kde", "both"}, optional, default: "hist"
-            Distribution type used for continuous distributions and marginals.
-        num_bins        : int or None, optional, default: None
-            Number of histogram bins. If None, Seaborn selects the bins.
-        dist_alpha      : float or None, optional, default: None
-            Opacity of distributions and marginal distributions. If None,
-            uses 1.0 for one distribution and 0.5 for overlays.
-        spaghetti       : bool, optional, default: False
-            If True, include individual time series.
-        num_cols        : int or None, optional, default: None
-            Number of panel columns. If None, uses the compact dynamic layout.
-        **kwargs
-            Forwarded to `plot_push_forward`.
-
-        Returns
-        -------
-        fig : plt.Figure - the figure containing the requested plot
-        """
-        sample = self.sample(batch_size=batch_size, num_steps=num_steps)
-        data = {key: sample[key] for key in self.data_keys}
-        return plot_push_forward(
-            data=data,
-            data_dim=data_dim,
-            kind=kind,
-            aggregation=aggregation,
-            uncertainty_fun=uncertainty_fun,
-            spaghetti=spaghetti,
-            marginal=marginal,
-            dist_type=dist_type,
-            num_bins=num_bins,
-            dist_alpha=dist_alpha,
-            num_cols=num_cols,
-            **kwargs,
-        )

@@ -63,6 +63,26 @@ class StochasticTransition(ABC):
         self.hyper_specs = {}
         self.transition_name = self.__class__.__name__
 
+    @abstractmethod
+    def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
+        """Generate `batch_size` latent trajectories of length `num_steps`.
+
+        Parameters
+        ----------
+        batch_size : int
+            Number of independent trajectories to draw.
+        num_steps  : int
+            Number of time steps per trajectory (including initial state).
+
+        Returns
+        -------
+        result : dict - dictionary with at least keys `local_params`
+            (ndarray of shape (batch_size, steps)), `hyper_params`,
+            and `fixed_params` describing sampled and fixed
+            hyperparameters
+        """
+        raise NotImplementedError
+
     def _resolve(self, name: str, spec: ParamSpec) -> tuple[Prior | float, bool]:
         """Resolve a single hyperparameter spec to a value and sample flag.
 
@@ -173,23 +193,3 @@ class StochasticTransition(ABC):
                 fixed_params[name] = value
 
         return hyper_params, fixed_params
-
-    @abstractmethod
-    def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
-        """Generate `batch_size` latent trajectories of length `num_steps`.
-
-        Parameters
-        ----------
-        batch_size : int
-            Number of independent trajectories to draw.
-        num_steps  : int
-            Number of time steps per trajectory (including initial state).
-
-        Returns
-        -------
-        result : dict - dictionary with at least keys `local_params`
-            (ndarray of shape (batch_size, steps)), `hyper_params`,
-            and `fixed_params` describing sampled and fixed
-            hyperparameters
-        """
-        raise NotImplementedError

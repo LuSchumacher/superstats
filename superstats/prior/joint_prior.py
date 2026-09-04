@@ -116,28 +116,6 @@ class JointPrior:
             "fixed_params": fixed_params,
         }
 
-    def _param_bounds(self) -> dict:
-        """Collect y-axis bounds declared on the underlying parameter objects.
-
-        Returns
-        -------
-        bounds : dict - mapping from parameter name to its `bounds`
-            attribute, for parameters that define one
-        """
-        return {
-            name: obj.bounds for name, obj in self.params.items() if hasattr(obj, "bounds") and obj.bounds is not None
-        }
-
-    def _mixture_names(self) -> dict:
-        """Collect mixture component names declared on the underlying parameter objects.
-
-        Returns
-        -------
-        names : dict - mapping from parameter name to its `names`
-            attribute, for parameters that define one
-        """
-        return {name: obj.names for name, obj in self.params.items() if hasattr(obj, "names")}
-
     def plot_time_varying_prior(
         self,
         num_steps: int = 200,
@@ -194,7 +172,11 @@ class JointPrior:
         local_params = {**samples["local_params"], **samples["deterministic_params"]}
         return plot_time_varying_prior(
             local_params=local_params,
-            param_bounds=self._param_bounds(),
+            param_bounds={
+                name: obj.bounds
+                for name, obj in self.params.items()
+                if hasattr(obj, "bounds") and obj.bounds is not None
+            },
             num_cols=num_cols,
             marginal=marginal,
             dist_type=dist_type,
@@ -256,7 +238,7 @@ class JointPrior:
         return plot_time_invariant_prior(
             hyper_params=samples["hyper_params"],
             shared_params=samples["shared_params"],
-            mixture_names=self._mixture_names(),
+            mixture_names={name: obj.names for name, obj in self.params.items() if hasattr(obj, "names")},
             dist_type=dist_type,
             num_bins=num_bins,
             dist_alpha=dist_alpha,
@@ -328,8 +310,12 @@ class JointPrior:
             local_params=local_params,
             hyper_params=samples["hyper_params"],
             shared_params=samples["shared_params"],
-            param_bounds=self._param_bounds(),
-            mixture_names=self._mixture_names(),
+            param_bounds={
+                name: obj.bounds
+                for name, obj in self.params.items()
+                if hasattr(obj, "bounds") and obj.bounds is not None
+            },
+            mixture_names={name: obj.names for name, obj in self.params.items() if hasattr(obj, "names")},
             hyper_param_groups=self._last_hyper_param_groups,
             marginal=marginal,
             dist_type=dist_type,

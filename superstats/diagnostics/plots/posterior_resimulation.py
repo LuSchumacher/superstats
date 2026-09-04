@@ -10,6 +10,7 @@ import matplotlib.patches as mpatches
 import seaborn as sns
 
 from superstats.defaults import (
+    AGGREGATE_PLOT_WIDTH,
     BASE_COLOR,
     BASE_COL_WIDTH,
     BASE_ROW_HEIGHT,
@@ -23,12 +24,12 @@ from superstats.defaults import (
 )
 from superstats.utils.indexing import format_dataset_label, normalize_data_indices
 from superstats.utils.plotting import (
-    compute_uncertainty_band,
+    compute_uncertainty_bands,
     get_default_num_cols,
     get_uncertainty_band_label,
     get_layout,
     plot_dist,
-    plot_uncertainty_band,
+    plot_uncertainty_bands,
     resolve_dist_alpha,
     smooth_trajectories,
 )
@@ -38,7 +39,7 @@ def _select_resimulation_variable(
     prediction: Mapping[str, np.ndarray],
     empirical: Mapping[str, np.ndarray],
     data_dim: int | str,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, str]:
     """Resolve named posterior predictive data to one variable."""
     if not isinstance(prediction, Mapping) or not isinstance(empirical, Mapping):
         raise TypeError("prediction and empirical must be mappings of named arrays.")
@@ -67,45 +68,7 @@ def _select_resimulation_variable(
         raise ValueError(
             f"Empirical variable {key!r} must have shape (num_datasets, num_steps), got {empirical_x.shape}."
         )
-    return prediction_x, empirical_x
-
-
-def _aggregate_center(x: np.ndarray, aggregation: Callable, axis: int = 0) -> np.ndarray:
-    """Reduce x along `axis` using `aggregation`.
-
-    Parameters
-    ----------
-    x           : np.ndarray
-        Array to reduce.
-    aggregation : callable
-        Reduction to apply, called as `aggregation(x, axis=axis)`.
-    axis        : int, optional, default: 0
-        Axis to reduce over.
-
-    Returns
-    -------
-    center : np.ndarray - `x` reduced along `axis`
-    """
-    return np.asarray(aggregation(x, axis=axis))
-
-
-def _aggregate_label(aggregation: Callable | None) -> str:
-    """Human-readable label for whatever `aggregation` resolves to.
-
-    Parameters
-    ----------
-    aggregation : callable or None
-        None resolves to "Median" (the fixed per-dataset default); a
-        callable resolves to its `__name__`.
-
-    Returns
-    -------
-    label : str - "Median", or a capitalized version of the callable's
-        name
-    """
-    if aggregation is None:
-        return "Median"
-    return getattr(aggregation, "__name__", "aggregate").replace("_", " ").capitalize()
+    return prediction_x, empirical_x, key
 
 
 def _is_discrete(values: np.ndarray, max_discrete_values: int) -> tuple[np.ndarray, bool]:
@@ -143,8 +106,7 @@ def plot_posterior_resimulation(
     data_dim: int | str = 0,
     kind: Literal["time_series", "dist"] = "time_series",
     aggregation: Callable | None = None,
-    aggregate_strategy: Literal["full_uncertainty", "no_epistemic"] = "full_uncertainty",
-    uncertainty_fun: Literal["std", "95ci", "mad", "95hdi"] | Callable | None = "95hdi",
+    uncertainty_fun: Literal["std", "ci", "mad", "hdi"] | Callable | None = "hdi",
     smoothing: Literal["sma", "ema"] | None = None,
     smoothing_window: int = 5,
     marginal: bool = True,
@@ -182,32 +144,23 @@ def plot_posterior_resimulation(
     aggregation         : callable or None, optional, default: None
         None: one panel per dataset.
         callable: a single panel aggregated across datasets. Called as
-        `aggregation(x, axis=...)` (e.g. np.mean, np.median). Also
-        used (instead of a hardcoded median) to collapse resims into
-        a per-dataset representative when `aggregate_strategy="no_epistemic"`.
-    aggregate_strategy  : {"full_uncertainty", "no_epistemic"}, optional, default: "full_uncertainty"
-        Only used when `aggregation` is not None.
-        "full_uncertainty": flatten datasets and posterior resims
-        together, then summarize. Captures both epistemic and
-        aleatoric uncertainty.
-        "no_epistemic": collapse resims to one representative
-        trajectory per dataset first (via `aggregation`), then
-        aggregate across datasets. Removes epistemic uncertainty.
-    uncertainty_fun     : {"std", "95ci", "mad", "95hdi"} or callable or None, optional, default: "95hdi"
-        "time_series" mode only. Function to draw a band around the
-        resimulated center line.
+        `aggregation(x, axis=...)` (e.g. np.mean, np.median).
+    uncertainty_fun     : {"std", "ci", "mad", "hdi"} or callable or None, optional, default: "hdi"
+        "time_series" mode only. Named methods draw nested outer/inner
+        ribbons: ±1/±0.5 SD, 95%/65% CI, ±1.48/±0.74 MAD, or
+        95%/65% HDI. A callable draws the single interval it returns.
     smoothing           : {"sma", "ema"} or None, optional, default: None
         "time_series" mode only. Causal (past-only) smoothing applied to
-        the real trajectories and, for resimulated data, to the
-        trajectories that result *after* `aggregate_strategy` has
-        pooled resims - i.e. pooling happens on raw data, smoothing is
-        applied afterward, and the center/uncertainty band are computed
-        on the smoothed result.
+        the real trajectories and, for aggregated resimulated data, after
+        datasets have been reduced independently for each resimulation.
     smoothing_window    : int, optional, default: 5
         Window size for `sma`, or span parameter for `ema`.
     marginal            : bool, optional, default: True
         "time_series" mode only. Attach a marginal distribution panel to
-        the right of each trajectory axis.
+        the right of each trajectory axis. The predictive marginal uses
+        the same per-resimulation aggregate trajectories as the uncertainty
+        ribbon. The empirical marginal uses the aggregated empirical
+        trajectory.
     dist_alpha          : float or None, optional, default: None
         Opacity of predictive and empirical distributions, including
         trajectory marginals. If None, uses 1.0 for a single distribution
@@ -218,9 +171,9 @@ def plot_posterior_resimulation(
         Number of histogram bins. If None, Seaborn selects the bins.
     spaghetti           : bool, optional, default: False
         "time_series" mode only. Per-dataset panels: overlay individual
-        resim draws behind the band. Aggregated panel: overlay each
-        dataset's own representative trajectory (via `aggregation`)
-        behind the aggregate band.
+        resim draws behind the band. Aggregated panel: overlay the
+        per-resimulation aggregate trajectories used by the ribbon and
+        marginal.
     num_cols            : int or None, optional, default: None
         Exact number of grid columns. If None, uses the shared compact
         dynamic layout based on the selected datasets.
@@ -256,28 +209,15 @@ def plot_posterior_resimulation(
     ValueError
         If `kind` is not "time_series" or "dist", if `prediction` or
         `empirical` don't have the expected shape, if their
-        (num_datasets, num_steps) don't match, or if `aggregate_strategy`
-        is not "full_uncertainty" or "no_epistemic".
-
-    Notes
-    -----
-    ``aggregate_strategy="no_epistemic"`` is a hierarchical collapse of
-    the resimulation axis before aggregating datasets. It removes all
-    variation along that axis. This isolates epistemic uncertainty only
-    when the resimulation axis contains epistemic variation exclusively;
-    ordinary posterior-predictive draws may also contain observation noise.
+        (num_datasets, num_steps) don't match.
     """
     if kind not in {"time_series", "dist"}:
         raise ValueError("kind must be 'time_series' or 'dist'.")
     if dist_type not in {"hist", "kde", "both"}:
         raise ValueError("dist_type must be one of 'hist', 'kde', or 'both'.")
-    if aggregation is not None and aggregate_strategy not in {"full_uncertainty", "no_epistemic"}:
-        raise ValueError(
-            f"aggregate_strategy must be 'full_uncertainty' or 'no_epistemic', got {aggregate_strategy!r}."
-        )
     if num_cols is not None and num_cols < 1:
         raise ValueError("num_cols must be at least 1.")
-    prediction_x, empirical_x = _select_resimulation_variable(
+    prediction_x, empirical_x, data_name = _select_resimulation_variable(
         prediction,
         empirical,
         data_dim,
@@ -298,7 +238,11 @@ def plot_posterior_resimulation(
 
     t = np.arange(T)
     show_aggregate = aggregation is not None
-    agg_label = _aggregate_label(aggregation)
+    agg_label = (
+        "Median"
+        if aggregation is None
+        else getattr(aggregation, "__name__", "aggregate").replace("_", " ").capitalize()
+    )
     dist_alpha = resolve_dist_alpha(
         dist_alpha,
         1 if kind == "dist" and show_aggregate else 2,
@@ -311,7 +255,7 @@ def plot_posterior_resimulation(
                 1,
                 1,
                 figsize,
-                col_width=BASE_COL_WIDTH,
+                col_width=AGGREGATE_PLOT_WIDTH,
                 row_height=BASE_ROW_HEIGHT,
             )
             fig, base_ax = plt.subplots(figsize=plot_figsize)
@@ -324,40 +268,31 @@ def plot_posterior_resimulation(
                 ax = base_ax
                 ax_marg = None
 
-            # pool resims per aggregate_strategy
-            if aggregate_strategy == "full_uncertainty":
-                pooled_pred = prediction_x.reshape(D * S, T)
-            elif aggregate_strategy == "no_epistemic":
-                pooled_pred = _aggregate_center(prediction_x, aggregation, axis=1)
-            else:
-                raise ValueError(
-                    f"aggregate_strategy must be 'full_uncertainty' or 'no_epistemic', got {aggregate_strategy!r}."
-                )
+            # Build the one trajectory pool used by center, ribbon,
+            # marginal, and aggregate spaghetti.
+            pooled_pred = np.asarray(aggregation(prediction_x, axis=0))
 
             # smooth the pooled trajectories
             if smoothing is not None:
                 pooled_pred = smooth_trajectories(pooled_pred, smoothing, smoothing_window)
 
             # aggregate (center) and uncertainty, on the smoothed pool
-            center = _aggregate_center(pooled_pred, aggregation, axis=0)
-            real_center = _aggregate_center(empirical_x, aggregation, axis=0)
+            center = np.asarray(aggregation(pooled_pred, axis=0))
+            real_center = np.asarray(aggregation(empirical_x, axis=0))
 
             if uncertainty_fun is not None:
-                lower, upper = compute_uncertainty_band(pooled_pred, uncertainty_fun, center)
-                has_uncertainty_band = plot_uncertainty_band(
+                uncertainty_bands = compute_uncertainty_bands(pooled_pred, uncertainty_fun, center)
+                has_uncertainty_band = plot_uncertainty_bands(
                     ax,
                     t,
-                    lower,
-                    upper,
+                    uncertainty_bands[0],
+                    uncertainty_bands[1],
                     color,
                     alpha=0.3,
                 )
 
             if spaghetti:
-                per_dataset_center = _aggregate_center(prediction_x, aggregation, axis=1)
-                if smoothing is not None:
-                    per_dataset_center = smooth_trajectories(per_dataset_center, smoothing, smoothing_window)
-                for line in per_dataset_center:
+                for line in pooled_pred:
                     ax.plot(t, line, color=color, alpha=alpha, linewidth=1.0, zorder=2)
 
             ax.plot(t, center, color=color, linewidth=2.0, zorder=3)
@@ -389,7 +324,7 @@ def plot_posterior_resimulation(
                 )
                 empirical_marg_ax = ax_marg.twiny() if dist_type == "hist" else ax_marg
                 plot_dist(
-                    real_center.reshape(-1),
+                    real_center,
                     ax=empirical_marg_ax,
                     dist_type=dist_type,
                     color=real_color,
@@ -441,12 +376,12 @@ def plot_posterior_resimulation(
                 center = np.median(pred_traj, axis=0)
 
                 if uncertainty_fun is not None:
-                    lower, upper = compute_uncertainty_band(pred_traj, uncertainty_fun, center)
-                    has_uncertainty_band |= plot_uncertainty_band(
+                    uncertainty_bands = compute_uncertainty_bands(pred_traj, uncertainty_fun, center)
+                    has_uncertainty_band |= plot_uncertainty_bands(
                         ax,
                         t,
-                        lower,
-                        upper,
+                        uncertainty_bands[0],
+                        uncertainty_bands[1],
                         color,
                         alpha=0.3,
                     )
@@ -507,15 +442,17 @@ def plot_posterior_resimulation(
             for j in range(D, len(axes)):
                 axes[j].axis("off")
 
-        handles = [
-            mlines.Line2D([], [], color=real_color, linewidth=2.0, linestyle="--", label="Empirical"),
-            mlines.Line2D([], [], color=color, linewidth=2.0, label=agg_label),
-        ]
+        handles = [mlines.Line2D([], [], color=color, linewidth=2.0, label=agg_label)]
         if has_uncertainty_band:
             band_label = get_uncertainty_band_label(uncertainty_fun)
             handles.append(mpatches.Patch(facecolor=color, alpha=0.3, edgecolor="none", label=band_label))
+        handles.append(mlines.Line2D([], [], color=real_color, linewidth=2.0, linestyle="--", label="Empirical"))
         if spaghetti:
-            handles.append(mlines.Line2D([], [], color=color, linewidth=1.0, alpha=1, label="Individual"))
+            if show_aggregate:
+                spaghetti_label = "Aggregated draw"
+            else:
+                spaghetti_label = "Individual"
+            handles.append(mlines.Line2D([], [], color=color, linewidth=1.0, alpha=1, label=spaghetti_label))
 
     else:
         if show_aggregate:
@@ -523,24 +460,17 @@ def plot_posterior_resimulation(
                 1,
                 1,
                 figsize,
-                col_width=BASE_COL_WIDTH,
+                col_width=AGGREGATE_PLOT_WIDTH,
                 row_height=BASE_ROW_HEIGHT,
             )
             fig, ax = plt.subplots(figsize=plot_figsize)
 
-            stat_pred = _aggregate_center(prediction_x, aggregation, axis=-1)
-            stat_real = _aggregate_center(empirical_x, aggregation, axis=-1)
+            stat_pred = np.asarray(aggregation(prediction_x, axis=-1))
+            stat_real = np.asarray(aggregation(empirical_x, axis=-1))
 
-            if aggregate_strategy == "full_uncertainty":
-                pooled_stat = stat_pred.reshape(D * S)
-            elif aggregate_strategy == "no_epistemic":
-                pooled_stat = _aggregate_center(stat_pred, aggregation, axis=1)
-            else:
-                raise ValueError(
-                    f"aggregate_strategy must be 'full_uncertainty' or 'no_epistemic', got {aggregate_strategy!r}."
-                )
+            pooled_stat = np.asarray(aggregation(stat_pred, axis=0))
 
-            reference = float(_aggregate_center(stat_real, aggregation, axis=0))
+            reference = float(np.asarray(aggregation(stat_real, axis=0)))
 
             categories, discrete = _is_discrete(
                 pooled_stat,
@@ -692,10 +622,13 @@ def plot_posterior_resimulation(
     fig.legend(
         handles=handles,
         loc="lower center",
-        ncol=len(handles),
+        ncol=len(handles) if len(handles) <= 3 else 2,
         fontsize=label_fontsize,
         framealpha=0.0,
         bbox_to_anchor=(0.5, legend_y),
+        columnspacing=0.7,
+        handlelength=1.3,
+        handletextpad=0.5,
     )
 
     sns.despine()
