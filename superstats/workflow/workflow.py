@@ -33,7 +33,9 @@ from superstats.diagnostics.plots import (
     plot_calibration,
     plot_z_score_contraction,
     plot_time_varying_posterior,
-    plot_time_invariant_posterior,
+    plot_marginals,
+    plot_pairs,
+    plot_forest,
 )
 
 
@@ -143,85 +145,25 @@ class Workflow:
 
         return adapter
 
-    def _load_history(self) -> None:
-        """Load persisted training history from `checkpoint_filepath`, if present.
+    @property
+    def history(self):
+        """keras.callbacks.History or None - the workflow's training history."""
+        return self.workflow.history
 
-        A no-op if `checkpoint_filepath` is None or no `history.pkl`
-        file exists there.
+    @property
+    def approximator(self):
+        """The underlying trained BayesFlow approximator object.
+
+        Reads through to `self.workflow.approximator` by default (kept in
+        sync automatically by `bf.BasicWorkflow` during training), but can
+        be explicitly assigned - e.g. when restoring a checkpoint from
+        disk in `__init__`.
         """
-        if self.checkpoint_filepath is None:
-            return
-        path = os.path.join(self.checkpoint_filepath, "history.pkl")
-        if not os.path.exists(path):
-            return
-        with open(path, "rb") as f:
-            self.workflow.history = pickle.load(f)
+        return self.workflow.approximator
 
-    def _save_history(self, new_history: keras.callbacks.History) -> None:
-        """Merge and persist training history to `checkpoint_filepath`, if present.
-
-        A no-op if `checkpoint_filepath` is None.
-
-        Parameters
-        ----------
-        new_history : keras.callbacks.History
-            History from the most recent training run. Merged into any
-            existing `self.workflow.history` before saving.
-        """
-        if self.checkpoint_filepath is None:
-            return
-        existing = self.workflow.history
-        if existing is not None and existing is not new_history:
-            for key, values in new_history.history.items():
-                existing.history.setdefault(key, []).extend(values)
-            new_history = existing
-        os.makedirs(self.checkpoint_filepath, exist_ok=True)
-        with open(os.path.join(self.checkpoint_filepath, "history.pkl"), "wb") as f:
-            pickle.dump(new_history, f)
-        self.workflow.history = new_history
-
-    def _prepare_conditions(self, data: Mapping[str, np.ndarray]) -> dict[str, np.ndarray]:
-        """Add adapter-required auxiliary condition keys to named observations."""
-        if not isinstance(data, Mapping):
-            raise TypeError(f"data must be a mapping of named arrays, got {type(data)}.")
-
-        conditions = dict(data)
-        if self.model is None:
-            return conditions
-
-        data_keys = self.model.data_keys
-        missing_keys = [key for key in data_keys if key not in conditions]
-        if missing_keys:
-            raise KeyError(f"Missing observed data keys {missing_keys!r}. Expected keys: {data_keys!r}.")
-
-        first = conditions[data_keys[0]]
-        num_datasets = first.shape[0]
-        num_steps = first.shape[1]
-
-        if "time_steps" not in conditions:
-            log_warning("No time_steps provided; adding contiguous default time steps.")
-            conditions["time_steps"] = np.broadcast_to(np.arange(1, num_steps + 1)[None, :], (num_datasets, num_steps))
-
-        elif conditions["time_steps"].shape != (num_datasets, num_steps):
-            raise ValueError(
-                f"'time_steps' must have shape {(num_datasets, num_steps)}, got {conditions['time_steps'].shape}."
-            )
-
-        if getattr(self.model, "has_mask", False):
-            if "missing_mask" not in conditions:
-                log_warning("No missing_mask provided although model has missingness; assuming no missings.")
-                conditions["missing_mask"] = np.zeros((num_datasets, num_steps), dtype=bool)
-
-            elif conditions["missing_mask"].shape != (num_datasets, num_steps):
-                raise ValueError(
-                    f"'missing_mask' must have shape {(num_datasets, num_steps)}, "
-                    f"got {conditions['missing_mask'].shape}."
-                )
-
-        remaining_keys = data_keys + ["missing_mask", "time_steps"]
-        conditions = {k: v for k, v in conditions.items() if k in remaining_keys}
-
-        return conditions
+    @approximator.setter
+    def approximator(self, value):
+        self.workflow.approximator = value
 
     def fit_offline(
         self, data, validation_data, epochs: int = 100, batch_size: int = 32, save_history: bool = True, **kwargs
@@ -310,26 +252,6 @@ class Workflow:
             self._save_history(history)
 
         return history
-
-    @property
-    def history(self):
-        """keras.callbacks.History or None - the workflow's training history."""
-        return self.workflow.history
-
-    @property
-    def approximator(self):
-        """The underlying trained BayesFlow approximator object.
-
-        Reads through to `self.workflow.approximator` by default (kept in
-        sync automatically by `bf.BasicWorkflow` during training), but can
-        be explicitly assigned - e.g. when restoring a checkpoint from
-        disk in `__init__`.
-        """
-        return self.workflow.approximator
-
-    @approximator.setter
-    def approximator(self, value):
-        self.workflow.approximator = value
 
     def sample(
         self,
@@ -518,6 +440,149 @@ class Workflow:
 
         return {name: value.reshape(batch_size, num_sims, num_steps) for name, value in raw_sim.items()}
 
+    def prepare_data(
+        self,
+        df: pd.DataFrame,
+        id_col: str,
+        data_mapping: Mapping[str, str],
+        missing_value: int | float | None = None,
+        time_col: str | None = None,
+    ) -> dict[str, np.ndarray]:
+        """Convert a long-format DataFrame into the model's dict-of-arrays format.
+
+        Groups `df` by `id_col` and reshapes the columns named in
+        `data_mapping` into arrays of shape (batch_size, num_steps).
+
+        If `time_col` is given, it must contain discrete integer-like
+        values. The actual labels may be negative or non-contiguous; they
+        are normalized to positions `1..num_steps` in sorted time order.
+        Otherwise, rows are placed by order of appearance within each
+        `id_col` group. Missing or padded positions are flagged in
+        `"missing_mask"` and filled with the model's missing-value
+        convention when one exists.
+
+        Parameters
+        ----------
+        df           : pd.DataFrame
+            Long-format data with one row per (dataset, step). Must contain
+            `id_col`, `time_col` (if given), and every key in
+            `data_mapping`.
+        id_col       : str
+            Name of the column in `df` identifying which dataset/sequence
+            each row belongs to. Rows are grouped by this column, in order
+            of first appearance, to form the batch dimension.
+        data_mapping : Mapping[str, str]
+            Maps a column name in `df` to the corresponding key expected by
+            the model, e.g. `{"rt": "response_time", "correct":
+            "choice"}`. The set of values (not keys) must exactly match
+            `self.model.data_keys`.
+        missing_value : int or float
+            Sentinel value marking a missing observation, and used to
+            initialize/pad positions with no corresponding row.
+        time_col     : str or None, optional, default: None
+            Name of the column in `df` giving each row's discrete time
+            label. If None, rows are placed by order of appearance within
+            their `id_col` group instead.
+
+        Returns
+        -------
+        data : dict of np.ndarray
+            One entry per model data key, each of shape
+            (batch_size, num_steps), plus `"missing_mask"` (1 where any
+            mapped column equals `missing_value` at that step, 0 otherwise)
+            and `"time_steps"` (each row equal to `1..num_steps`).
+        """
+        model = getattr(self, "model", None)
+        if model is None:
+            raise AttributeError("prepare_data needs a Workflow with a model.")
+
+        required_cols = [id_col, *data_mapping]
+        if time_col is not None:
+            required_cols.append(time_col)
+        missing_cols = [col for col in required_cols if col not in df.columns]
+
+        if missing_cols:
+            raise KeyError(f"df is missing required column(s): {missing_cols}")
+        if df.empty:
+            raise ValueError("prepare_data requires at least one row.")
+
+        mapped_keys = list(data_mapping.values())
+        expected_keys = list(model.data_keys)
+        if sorted(mapped_keys) != sorted(expected_keys):
+            raise ValueError(
+                f"data_mapping values {sorted(mapped_keys)!r} do not match model.data_keys {sorted(expected_keys)!r}."
+            )
+
+        if missing_value is None:
+            missing_value = -1
+
+        groups = df.groupby(id_col, sort=False)
+        dataset_ids = list(groups.groups.keys())
+
+        if time_col is not None:
+            time_float = pd.to_numeric(df[time_col], errors="coerce").to_numpy(dtype=float)
+            if not np.all(np.isfinite(time_float)) or not np.all(np.isclose(time_float, np.rint(time_float))):
+                raise ValueError(f"time_col '{time_col}' must contain discrete integer-like values.")
+
+            # Map arbitrary discrete labels, including negatives, onto dense columns.
+            time_values = pd.Series(np.rint(time_float).astype(np.int64), index=df.index)
+            time_lookup = {value: idx for idx, value in enumerate(sorted(time_values.unique()))}
+            num_steps = len(time_lookup)
+        else:
+            time_values = None
+            time_lookup = None
+            num_steps = int(groups.size().max())
+
+        batch_size = len(dataset_ids)
+        data = {data_key: np.full((batch_size, num_steps), missing_value, dtype=float) for data_key in expected_keys}
+
+        def _col_idx(group: pd.DataFrame, dataset_id) -> np.ndarray:
+            if time_col is None:
+                return np.arange(len(group))
+            idx = np.array([time_lookup[value] for value in time_values.loc[group.index]], dtype=int)
+            if len(np.unique(idx)) != len(idx):
+                raise ValueError(f"Duplicate '{time_col}' values found within id '{dataset_id}'.")
+            return idx
+
+        def _as_float_values(group: pd.DataFrame, col: str) -> np.ndarray:
+            try:
+                return group[col].to_numpy(dtype=float)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"Column '{col}' must be numeric.") from exc
+
+        for i, dataset_id in enumerate(dataset_ids):
+            group = groups.get_group(dataset_id)
+            col_idx = _col_idx(group, dataset_id)
+            for col, data_key in data_mapping.items():
+                data[data_key][i, col_idx] = _as_float_values(group, col)
+
+        missing_mask = np.zeros((batch_size, num_steps), dtype=bool)
+        for data_key in expected_keys:
+            missing_mask |= pd.isna(data[data_key])
+            if not pd.isna(missing_value):
+                missing_mask |= data[data_key] == missing_value
+
+        model_missing_value = getattr(getattr(model, "missing", None), "missing_value", missing_value)
+
+        def _missing_fill(data_key: str, index: int):
+            if isinstance(model_missing_value, Mapping):
+                return model_missing_value[data_key]
+            value = np.asarray(model_missing_value)
+            if value.ndim == 0:
+                return model_missing_value
+            if value.shape == (len(expected_keys),):
+                return value[index]
+            raise ValueError(f"model missing_value must be scalar, mapping, or shape ({len(expected_keys)},).")
+
+        # A missing value in any observed variable drops the whole time step.
+        for i, data_key in enumerate(expected_keys):
+            data[data_key][missing_mask] = _missing_fill(data_key, i)
+
+        data["missing_mask"] = missing_mask
+        data["time_steps"] = np.broadcast_to(np.arange(1, num_steps + 1)[None, :], (batch_size, num_steps))
+
+        return data
+
     def plot_history(
         self,
         history,
@@ -614,90 +679,6 @@ class Workflow:
             aggregation=aggregation,
             **kwargs,
         )
-
-    def _prepare_time_varying_at_steps(
-        self,
-        targets: Mapping[str, np.ndarray],
-        estimates: Mapping[str, np.ndarray],
-        time_steps: int | Sequence[int],
-        variable_keys: Sequence[str] | None = None,
-        variable_names: Sequence[str] | None = None,
-    ) -> tuple[np.ndarray, np.ndarray, list[str]]:
-        """Select local parameters at specific zero-based time-step indices."""
-        keys = list(variable_keys) if variable_keys is not None else list(self.model.local_keys)
-        if not keys:
-            raise ValueError("No time-varying parameters found.")
-
-        missing = [key for key in keys if key not in estimates or key not in targets]
-        if missing:
-            raise ValueError(f"variable_keys not found in both estimates and targets: {missing}")
-
-        names = list(variable_names) if variable_names is not None else keys
-        if len(names) != len(keys):
-            raise ValueError(f"variable_names has {len(names)} entries but there are {len(keys)} variables.")
-
-        target_arrays = {}
-        estimate_arrays = {}
-        expected_shape = None
-        for key in keys:
-            target = np.asarray(targets[key])
-            estimate = np.asarray(estimates[key])
-            if target.ndim != 3 or target.shape[-1] != 1:
-                raise ValueError(f"Target '{key}' must have shape (num_datasets, num_steps, 1), got {target.shape}.")
-            if estimate.ndim != 4 or estimate.shape[-1] != 1:
-                raise ValueError(
-                    f"Estimate '{key}' must have shape (num_datasets, num_samples, num_steps, 1), got {estimate.shape}."
-                )
-
-            shape = (
-                target.shape[0],
-                estimate.shape[1],
-                target.shape[1],
-            )
-            if estimate.shape[0] != shape[0] or estimate.shape[2] != shape[2]:
-                raise ValueError(
-                    f"Estimate and target shapes for '{key}' are inconsistent: {estimate.shape} and {target.shape}."
-                )
-            if expected_shape is not None and shape != expected_shape:
-                raise ValueError("All selected variables must have matching dataset, sample, and time-step dimensions.")
-            expected_shape = shape
-            target_arrays[key] = target
-            estimate_arrays[key] = estimate
-
-        num_steps = expected_shape[2]
-        if isinstance(time_steps, Integral) and not isinstance(time_steps, bool):
-            selected_steps = [int(time_steps)]
-        elif isinstance(time_steps, Sequence) and not isinstance(
-            time_steps,
-            (str, bytes),
-        ):
-            selected_steps = list(time_steps)
-            if not selected_steps:
-                raise ValueError("time_steps must contain at least one index.")
-            if any(not isinstance(step, Integral) or isinstance(step, bool) for step in selected_steps):
-                raise TypeError("time_steps must be an int or a sequence of ints.")
-            selected_steps = [int(step) for step in selected_steps]
-        else:
-            raise TypeError("time_steps must be an int or a sequence of ints.")
-
-        normalized_steps = [step + num_steps if step < 0 else step for step in selected_steps]
-        invalid = [step for step in normalized_steps if step < 0 or step >= num_steps]
-        if invalid:
-            raise ValueError(f"time_steps contains out-of-range index {invalid[0]} for {num_steps} steps.")
-
-        target_columns = []
-        estimate_columns = []
-        resolved_names = []
-        show_steps = len(normalized_steps) > 1
-        for step in normalized_steps:
-            for key, name in zip(keys, names):
-                target_columns.append(target_arrays[key][:, step, 0])
-                estimate_columns.append(estimate_arrays[key][:, :, step, 0])
-                resolved_names.append(f"{name} (step {step})" if show_steps else name)
-
-        targets_arr = np.stack(target_columns, axis=-1)
-        estimates_arr = np.stack(estimate_columns, axis=-1)
-        return estimates_arr, targets_arr, resolved_names
 
     def recovery_at_steps(
         self,
@@ -951,8 +932,7 @@ class Workflow:
         variable_keys: Sequence[str] | None = None,
         variable_names: Sequence[str] | None = None,
         aggregation: Callable | None = None,
-        aggregate_strategy: Literal["full_uncertainty", "no_epistemic"] = "full_uncertainty",
-        uncertainty_fun: Literal["std", "ci", "mad", "hdi"] | Callable | None = "ci",
+        uncertainty_fun: Literal["std", "ci", "mad", "hdi"] | Callable | None = "hdi",
         smoothing: Literal["sma", "ema"] | None = None,
         smoothing_window: int = 5,
         marginal: bool = True,
@@ -1004,14 +984,7 @@ class Workflow:
             Called as `aggregation(trajectories, axis=0)` and must return
             a (T,) center. The same function aggregates `targets` across
             datasets when both `targets` and `aggregation` are given.
-        aggregate_strategy : {"full_uncertainty", "no_epistemic"}, optional, default: "full_uncertainty"
-            Only used when `aggregation` is not None.
-            "full_uncertainty": flatten only the dataset and posterior-sample
-            axes into one trajectory pool, retaining posterior and
-            between-dataset variation.
-            "no_epistemic": take the posterior median within each dataset,
-            preserving only between-dataset variation.
-        uncertainty_fun    : {"std", "ci", "mad", "hdi"} or callable or None, optional, default: "ci"
+        uncertainty_fun    : {"std", "ci", "mad", "hdi"} or callable or None, optional, default: "hdi"
             Named methods draw nested outer/inner ribbons: ±1/±0.5 SD,
             95%/65% CI, ±1.48/±0.74 MAD, or 95%/65% HDI. A callable
             receives (N, T) trajectories and draws the single `(lo, hi)`
@@ -1024,7 +997,8 @@ class Workflow:
         marginal           : bool, optional, default: True
             Attach a marginal distribution panel to the right of each
             time-series axis. It uses the same strategy-specific trajectory
-            pool as the uncertainty band.
+            pool as the uncertainty band. The target marginal uses the
+            corresponding aggregated or per-dataset target trajectories.
         dist_type          : {"hist", "kde", "both"}, optional, default: "hist"
             Distribution type used for marginal panels.
         num_bins           : int or None, optional, default: None
@@ -1070,7 +1044,6 @@ class Workflow:
             variable_keys=variable_keys,
             variable_names=variable_names,
             aggregation=aggregation,
-            aggregate_strategy=aggregate_strategy,
             uncertainty_fun=uncertainty_fun,
             smoothing=smoothing,
             smoothing_window=smoothing_window,
@@ -1089,14 +1062,10 @@ class Workflow:
             **kwargs,
         )
 
-    def plot_time_invariant_posterior(
+    def plot_marginals(
         self,
         estimates: Mapping[str, np.ndarray] | np.ndarray,
         targets: Mapping[str, np.ndarray] | np.ndarray | None = None,
-        variable_keys: Sequence[str] | None = None,
-        variable_names: Sequence[str] | None = None,
-        aggregation: Callable | None = None,
-        mixture_names: dict | None = None,
         dist_type: Literal["hist", "kde", "both"] = "hist",
         num_bins: int | None = None,
         dist_alpha: float | None = None,
@@ -1106,10 +1075,14 @@ class Workflow:
         label_fontsize: int = LABEL_FONTSIZE,
         tick_fontsize: int = TICK_FONTSIZE,
         figsize: tuple[float, float] | None = None,
-        data_idx: int | Sequence[int] | None = None,
+        data_idx: int | None = None,
         **kwargs,
     ):
-        """Plot time-invariant posterior diagnostics.
+        """Plot univariate marginals for one time-invariant posterior.
+
+        Posterior sample and step axes are flattened within the selected
+        dataset and resampled without replacement to the original posterior
+        draw count.
 
         Parameters
         ----------
@@ -1120,29 +1093,8 @@ class Workflow:
             (num_datasets, num_post_samples, num_steps, num_params)
             directly.
         targets        : Mapping[str, np.ndarray], np.ndarray, or None, optional, default: None
-            Ground-truth values, matching the input type of `estimates`.
-            If given, drawn as black dashed vertical lines - per dataset
-            when `aggregation` is None, or collapsed with `aggregation`
-            into a single line per panel otherwise.
-        variable_keys  : sequence of str or None, optional, default: None
-            Which variables to select and plot, and in what order, when
-            `estimates` is a dict. Defaults to
-            `self.model.hyper_keys + self.model.shared_keys` when
-            not supplied. Ignored for array input.
-        variable_names : sequence of str or None, optional, default: None
-            Display names for the plotted panels. Defaults to
-            `variable_keys` (dict input) or `param_0`, `param_1`, ...
-            (array input).
-        aggregation    : callable or None, optional, default: None
-            Controls both the posterior layout and the target summary. If
-            None: one panel per (dataset, parameter) pair. If a callable
-            (e.g. np.mean, np.median): posterior samples (and `targets`,
-            if given) are pooled/aggregated across datasets into one
-            panel per parameter.
-        mixture_names  : dict or None, optional, default: None
-            Mapping from parameter name to a list of component names.
-            Defaults to `self.model.prior._mixture_names()` when not
-            supplied.
+            Time-invariant ground-truth values matching `estimates`. If
+            given, drawn as black dashed vertical lines.
         dist_type      : {"hist", "kde", "both"}, optional, default: "hist"
             Distribution type used for posterior distributions.
         num_bins       : int or None, optional, default: None
@@ -1151,9 +1103,8 @@ class Workflow:
             Opacity of posterior distributions. If None, uses 1.0 for one
             distribution and 0.5 for overlaid mixture components.
         num_cols       : int or None, optional, default: None
-            Exact number of grid columns. If None, non-aggregated plots
-            use one column per selected dataset and aggregated plots use
-            the shared compact dynamic layout.
+            Exact number of grid columns. If None, uses the shared compact
+            dynamic layout.
         color          : str, optional, default: BASE_COLOR
             Base color used for non-mixture distributions.
         title_fontsize : int, optional, default: 22
@@ -1164,29 +1115,40 @@ class Workflow:
             Font size for axis tick labels.
         figsize        : tuple of two floats or None, optional, default: None
             Explicit figure size in inches.
-        data_idx       : int, sequence of int, or None, optional, default: None
-            Dataset indices to plot. None selects all datasets. A single
-            integer preserves the dataset axis, and a sequence preserves
-            the requested order.
+        data_idx       : int or None, optional, default: None
+            Dataset index to plot. Required when estimates contain more
+            than one dataset.
         **kwargs
             Additional arguments forwarded to
-            `plot_time_invariant_posterior`.
+            `plot_marginals`.
 
         Returns
         -------
         fig : plt.Figure - the figure instance for optional saving
-        """
-        if variable_keys is None:
-            variable_keys = self.model.hyper_keys + self.model.shared_keys
-        if mixture_names is None:
-            mixture_names = self.model.prior._mixture_names()
 
-        return plot_time_invariant_posterior(
+        Raises
+        ------
+        ValueError
+            If multiple datasets are supplied without `data_idx`, if input
+            shapes are invalid, or if `num_cols` is less than one.
+        TypeError
+            If `data_idx` is not an integer.
+
+        Notes
+        -----
+        Parameter keys and mixture-component names are obtained from the
+        workflow's model. Use :meth:`plot_forest` to compare the same
+        parameters across datasets.
+        """
+        variable_keys = self.model.hyper_keys + self.model.shared_keys
+        mixture_names = {
+            name: param.names for name, param in self.model.prior.params.items() if hasattr(param, "names")
+        }
+
+        return plot_marginals(
             estimates=estimates,
             targets=targets,
             variable_keys=variable_keys,
-            variable_names=variable_names,
-            aggregation=aggregation,
             mixture_names=mixture_names,
             dist_type=dist_type,
             num_bins=num_bins,
@@ -1201,8 +1163,313 @@ class Workflow:
             **kwargs,
         )
 
-    @staticmethod
+    def plot_pairs(
+        self,
+        estimates: Mapping[str, np.ndarray] | np.ndarray,
+        targets: Mapping[str, np.ndarray] | np.ndarray | None = None,
+        data_idx: int | None = None,
+        dist_type: Literal["hist", "kde", "both"] = "hist",
+        **kwargs,
+    ):
+        """Plot a traditional pairs plot for one time-invariant posterior.
+
+        Diagonal panels show univariate marginals, upper panels show draws,
+        and lower panels show bivariate densities. Posterior sample and step
+        axes are flattened within the selected dataset and resampled to the
+        original posterior draw count.
+
+        Parameters
+        ----------
+        estimates : Mapping[str, np.ndarray] or np.ndarray
+            Posterior samples. Mapping values must have shape
+            ``(num_datasets, num_post_samples, num_steps, num_components)``;
+            array input must have shape ``(num_datasets, num_post_samples,
+            num_steps, num_parameters)``.
+        targets : Mapping[str, np.ndarray], np.ndarray, or None, optional, default: None
+            Time-invariant ground-truth values matching ``estimates``. If
+            supplied, targets are shown with cross markers.
+        data_idx : int or None, optional, default: None
+            Dataset to plot. Required when ``estimates`` contains more than
+            one dataset.
+        dist_type : {"hist", "kde", "both"}, optional, default: "hist"
+            Distribution representation in the diagonal marginal panels.
+        **kwargs
+            Additional arguments forwarded to :func:`plot_pairs`, such as
+            ``height``, posterior and target colors, alpha, and font sizes.
+
+        Returns
+        -------
+        fig : plt.Figure
+            Pair-grid figure with a shared bottom legend.
+
+        Raises
+        ------
+        ValueError
+            If multiple datasets are supplied without ``data_idx`` or if the
+            input shapes are invalid.
+        TypeError
+            If ``data_idx`` is not an integer.
+
+        Notes
+        -----
+        Parameter keys and mixture-component names are obtained from the
+        workflow's model. This method displays one posterior at a time; its
+        sample and step axes are never pooled across datasets.
+        """
+        variable_keys = self.model.hyper_keys + self.model.shared_keys
+        mixture_names = {
+            name: param.names for name, param in self.model.prior.params.items() if hasattr(param, "names")
+        }
+
+        return plot_pairs(
+            estimates=estimates,
+            targets=targets,
+            variable_keys=variable_keys,
+            mixture_names=mixture_names,
+            data_idx=data_idx,
+            dist_type=dist_type,
+            **kwargs,
+        )
+
+    def plot_forest(
+        self,
+        estimates: Mapping[str, np.ndarray] | np.ndarray,
+        targets: Mapping[str, np.ndarray] | np.ndarray | None = None,
+        aggregation: Callable | None = None,
+        uncertainty_fun: Literal["std", "ci", "mad", "hdi"] | Callable | None = "hdi",
+        data_idx: int | Sequence[int] | None = None,
+        **kwargs,
+    ):
+        """Compare time-invariant posteriors across datasets in a forest plot.
+
+        With ``aggregation=None``, each parameter has a panel whose rows are
+        the selected datasets. A callable aggregates those datasets into one
+        panel, with parameters on the y-axis.
+
+        Parameters
+        ----------
+        estimates : Mapping[str, np.ndarray] or np.ndarray
+            Posterior samples. Mapping values must have shape
+            ``(num_datasets, num_post_samples, num_steps, num_components)``;
+            array input must have shape ``(num_datasets, num_post_samples,
+            num_steps, num_parameters)``.
+        targets : Mapping[str, np.ndarray], np.ndarray, or None, optional, default: None
+            Time-invariant ground-truth values matching ``estimates``. If
+            provided, targets are drawn with black cross markers.
+        aggregation : callable or None, optional, default: None
+            Reduction applied across selected datasets, called as
+            ``aggregation(values, axis=0)``. ``None`` retains a row per
+            dataset; a callable produces one aggregate panel.
+        uncertainty_fun : {"std", "ci", "mad", "hdi"}, callable, or None, optional, default: "hdi"
+            Aggregate uncertainty method. Named methods display outer and
+            inner bands, a callable returns one ``(lower, upper)`` interval,
+            and ``None`` omits uncertainty. Ignored without aggregation.
+        data_idx : int, sequence of int, or None, optional, default: None
+            Dataset or datasets to include. ``None`` includes every dataset.
+        **kwargs
+            Additional arguments forwarded to :func:`plot_forest`, including
+            ``interval_probabilities``, layout, color, and font options.
+
+        Returns
+        -------
+        fig : plt.Figure
+            Forest-plot figure.
+
+        Raises
+        ------
+        ValueError
+            If interval probabilities, aggregation output, shapes, or
+            forwarded layout arguments are invalid.
+
+        Notes
+        -----
+        Parameter keys and mixture-component names are obtained from the
+        workflow's model. In non-aggregate mode, samples are flattened and
+        resampled independently within each dataset before interval
+        calculation.
+        """
+        variable_keys = self.model.hyper_keys + self.model.shared_keys
+        mixture_names = {
+            name: param.names for name, param in self.model.prior.params.items() if hasattr(param, "names")
+        }
+
+        return plot_forest(
+            estimates=estimates,
+            targets=targets,
+            variable_keys=variable_keys,
+            mixture_names=mixture_names,
+            aggregation=aggregation,
+            uncertainty_fun=uncertainty_fun,
+            data_idx=data_idx,
+            **kwargs,
+        )
+
+    def _load_history(self) -> None:
+        """Load persisted training history from `checkpoint_filepath`, if present.
+
+        A no-op if `checkpoint_filepath` is None or no `history.pkl`
+        file exists there.
+        """
+        if self.checkpoint_filepath is None:
+            return
+        path = os.path.join(self.checkpoint_filepath, "history.pkl")
+        if not os.path.exists(path):
+            return
+        with open(path, "rb") as f:
+            self.workflow.history = pickle.load(f)
+
+    def _save_history(self, new_history: keras.callbacks.History) -> None:
+        """Merge and persist training history to `checkpoint_filepath`, if present.
+
+        A no-op if `checkpoint_filepath` is None.
+
+        Parameters
+        ----------
+        new_history : keras.callbacks.History
+            History from the most recent training run. Merged into any
+            existing `self.workflow.history` before saving.
+        """
+        if self.checkpoint_filepath is None:
+            return
+        existing = self.workflow.history
+        if existing is not None and existing is not new_history:
+            for key, values in new_history.history.items():
+                existing.history.setdefault(key, []).extend(values)
+            new_history = existing
+        os.makedirs(self.checkpoint_filepath, exist_ok=True)
+        with open(os.path.join(self.checkpoint_filepath, "history.pkl"), "wb") as f:
+            pickle.dump(new_history, f)
+        self.workflow.history = new_history
+
+    def _prepare_conditions(self, data: Mapping[str, np.ndarray]) -> dict[str, np.ndarray]:
+        """Add adapter-required auxiliary condition keys to named observations."""
+        if not isinstance(data, Mapping):
+            raise TypeError(f"data must be a mapping of named arrays, got {type(data)}.")
+
+        conditions = dict(data)
+        if self.model is None:
+            return conditions
+
+        data_keys = self.model.data_keys
+        missing_keys = [key for key in data_keys if key not in conditions]
+        if missing_keys:
+            raise KeyError(f"Missing observed data keys {missing_keys!r}. Expected keys: {data_keys!r}.")
+
+        first = conditions[data_keys[0]]
+        num_datasets = first.shape[0]
+        num_steps = first.shape[1]
+
+        if "time_steps" not in conditions:
+            log_warning("No time_steps provided; adding contiguous default time steps.")
+            conditions["time_steps"] = np.broadcast_to(np.arange(1, num_steps + 1)[None, :], (num_datasets, num_steps))
+
+        elif conditions["time_steps"].shape != (num_datasets, num_steps):
+            raise ValueError(
+                f"'time_steps' must have shape {(num_datasets, num_steps)}, got {conditions['time_steps'].shape}."
+            )
+
+        if getattr(self.model, "has_mask", False):
+            if "missing_mask" not in conditions:
+                log_warning("No missing_mask provided although model has missingness; assuming no missings.")
+                conditions["missing_mask"] = np.zeros((num_datasets, num_steps), dtype=bool)
+
+            elif conditions["missing_mask"].shape != (num_datasets, num_steps):
+                raise ValueError(
+                    f"'missing_mask' must have shape {(num_datasets, num_steps)}, "
+                    f"got {conditions['missing_mask'].shape}."
+                )
+
+        remaining_keys = data_keys + ["missing_mask", "time_steps"]
+        conditions = {k: v for k, v in conditions.items() if k in remaining_keys}
+
+        return conditions
+
+    def _prepare_time_varying_at_steps(
+        self,
+        targets: Mapping[str, np.ndarray],
+        estimates: Mapping[str, np.ndarray],
+        time_steps: int | Sequence[int],
+        variable_keys: Sequence[str] | None = None,
+        variable_names: Sequence[str] | None = None,
+    ) -> tuple[np.ndarray, np.ndarray, list[str]]:
+        """Select local parameters at specific zero-based time-step indices."""
+        keys = list(variable_keys) if variable_keys is not None else list(self.model.local_keys)
+        if not keys:
+            raise ValueError("No time-varying parameters found.")
+
+        missing = [key for key in keys if key not in estimates or key not in targets]
+        if missing:
+            raise ValueError(f"variable_keys not found in both estimates and targets: {missing}")
+
+        names = list(variable_names) if variable_names is not None else keys
+        if len(names) != len(keys):
+            raise ValueError(f"variable_names has {len(names)} entries but there are {len(keys)} variables.")
+
+        target_arrays = {}
+        estimate_arrays = {}
+        expected_shape = None
+        for key in keys:
+            target = np.asarray(targets[key])
+            estimate = np.asarray(estimates[key])
+            if target.ndim != 3 or target.shape[-1] != 1:
+                raise ValueError(f"Target '{key}' must have shape (num_datasets, num_steps, 1), got {target.shape}.")
+            if estimate.ndim != 4 or estimate.shape[-1] != 1:
+                raise ValueError(
+                    f"Estimate '{key}' must have shape (num_datasets, num_samples, num_steps, 1), got {estimate.shape}."
+                )
+
+            shape = (
+                target.shape[0],
+                estimate.shape[1],
+                target.shape[1],
+            )
+            if estimate.shape[0] != shape[0] or estimate.shape[2] != shape[2]:
+                raise ValueError(
+                    f"Estimate and target shapes for '{key}' are inconsistent: {estimate.shape} and {target.shape}."
+                )
+            if expected_shape is not None and shape != expected_shape:
+                raise ValueError("All selected variables must have matching dataset, sample, and time-step dimensions.")
+            expected_shape = shape
+            target_arrays[key] = target
+            estimate_arrays[key] = estimate
+
+        num_steps = expected_shape[2]
+        if isinstance(time_steps, Integral) and not isinstance(time_steps, bool):
+            selected_steps = [int(time_steps)]
+        elif isinstance(time_steps, Sequence) and not isinstance(
+            time_steps,
+            (str, bytes),
+        ):
+            selected_steps = list(time_steps)
+            if not selected_steps:
+                raise ValueError("time_steps must contain at least one index.")
+            if any(not isinstance(step, Integral) or isinstance(step, bool) for step in selected_steps):
+                raise TypeError("time_steps must be an int or a sequence of ints.")
+            selected_steps = [int(step) for step in selected_steps]
+        else:
+            raise TypeError("time_steps must be an int or a sequence of ints.")
+
+        normalized_steps = [step + num_steps if step < 0 else step for step in selected_steps]
+        invalid = [step for step in normalized_steps if step < 0 or step >= num_steps]
+        if invalid:
+            raise ValueError(f"time_steps contains out-of-range index {invalid[0]} for {num_steps} steps.")
+
+        target_columns = []
+        estimate_columns = []
+        resolved_names = []
+        show_steps = len(normalized_steps) > 1
+        for step in normalized_steps:
+            for key, name in zip(keys, names):
+                target_columns.append(target_arrays[key][:, step, 0])
+                estimate_columns.append(estimate_arrays[key][:, :, step, 0])
+                resolved_names.append(f"{name} (step {step})" if show_steps else name)
+
+        targets_arr = np.stack(target_columns, axis=-1)
+        estimates_arr = np.stack(estimate_columns, axis=-1)
+        return estimates_arr, targets_arr, resolved_names
+
     def _normalize_time_invariant_target(
+        self,
         name: str,
         values: np.ndarray,
         batch_size: int,
@@ -1236,146 +1503,3 @@ class Workflow:
                 f"Target '{name}' varies across steps but verify_time_invariant requires a time-invariant target."
             )
         return tiled[:, 0, :]
-
-    def prepare_data(
-        self,
-        df: pd.DataFrame,
-        id_col: str,
-        data_mapping: Mapping[str, str],
-        missing_value: int | float | None = None,
-        time_col: str | None = None,
-    ) -> dict[str, np.ndarray]:
-        """Convert a long-format DataFrame into the model's dict-of-arrays format.
-
-        Groups `df` by `id_col` and reshapes the columns named in
-        `data_mapping` into arrays of shape (batch_size, num_steps).
-
-        If `time_col` is given, it must contain discrete integer-like
-        values. The actual labels may be negative or non-contiguous; they
-        are normalized to positions `1..num_steps` in sorted time order.
-        Otherwise, rows are placed by order of appearance within each
-        `id_col` group. Missing or padded positions are flagged in
-        `"missing_mask"` and filled with the model's missing-value
-        convention when one exists.
-
-        Parameters
-        ----------
-        df           : pd.DataFrame
-            Long-format data with one row per (dataset, step). Must contain
-            `id_col`, `time_col` (if given), and every key in
-            `data_mapping`.
-        id_col       : str
-            Name of the column in `df` identifying which dataset/sequence
-            each row belongs to. Rows are grouped by this column, in order
-            of first appearance, to form the batch dimension.
-        data_mapping : Mapping[str, str]
-            Maps a column name in `df` to the corresponding key expected by
-            the model, e.g. `{"rt": "response_time", "correct":
-            "choice"}`. The set of values (not keys) must exactly match
-            `self.model.data_keys`.
-        missing_value : int or float
-            Sentinel value marking a missing observation, and used to
-            initialize/pad positions with no corresponding row.
-        time_col     : str or None, optional, default: None
-            Name of the column in `df` giving each row's discrete time
-            label. If None, rows are placed by order of appearance within
-            their `id_col` group instead.
-
-        Returns
-        -------
-        data : dict of np.ndarray
-            One entry per model data key, each of shape
-            (batch_size, num_steps), plus `"missing_mask"` (1 where any
-            mapped column equals `missing_value` at that step, 0 otherwise)
-            and `"time_steps"` (each row equal to `1..num_steps`).
-        """
-        model = getattr(self, "model", None)
-        if model is None:
-            raise AttributeError("prepare_data needs a Workflow with a model.")
-
-        required_cols = [id_col, *data_mapping]
-        if time_col is not None:
-            required_cols.append(time_col)
-        missing_cols = [col for col in required_cols if col not in df.columns]
-
-        if missing_cols:
-            raise KeyError(f"df is missing required column(s): {missing_cols}")
-        if df.empty:
-            raise ValueError("prepare_data requires at least one row.")
-
-        mapped_keys = list(data_mapping.values())
-        expected_keys = list(model.data_keys)
-        if sorted(mapped_keys) != sorted(expected_keys):
-            raise ValueError(
-                f"data_mapping values {sorted(mapped_keys)!r} do not match model.data_keys {sorted(expected_keys)!r}."
-            )
-
-        if missing_value is None:
-            missing_value = -1
-
-        groups = df.groupby(id_col, sort=False)
-        dataset_ids = list(groups.groups.keys())
-
-        if time_col is not None:
-            time_float = pd.to_numeric(df[time_col], errors="coerce").to_numpy(dtype=float)
-            if not np.all(np.isfinite(time_float)) or not np.all(np.isclose(time_float, np.rint(time_float))):
-                raise ValueError(f"time_col '{time_col}' must contain discrete integer-like values.")
-
-            # Map arbitrary discrete labels, including negatives, onto dense columns.
-            time_values = pd.Series(np.rint(time_float).astype(np.int64), index=df.index)
-            time_lookup = {value: idx for idx, value in enumerate(sorted(time_values.unique()))}
-            num_steps = len(time_lookup)
-        else:
-            time_values = None
-            time_lookup = None
-            num_steps = int(groups.size().max())
-
-        batch_size = len(dataset_ids)
-        data = {data_key: np.full((batch_size, num_steps), missing_value, dtype=float) for data_key in expected_keys}
-
-        def _col_idx(group: pd.DataFrame, dataset_id) -> np.ndarray:
-            if time_col is None:
-                return np.arange(len(group))
-            idx = np.array([time_lookup[value] for value in time_values.loc[group.index]], dtype=int)
-            if len(np.unique(idx)) != len(idx):
-                raise ValueError(f"Duplicate '{time_col}' values found within id '{dataset_id}'.")
-            return idx
-
-        def _as_float_values(group: pd.DataFrame, col: str) -> np.ndarray:
-            try:
-                return group[col].to_numpy(dtype=float)
-            except (TypeError, ValueError) as exc:
-                raise ValueError(f"Column '{col}' must be numeric.") from exc
-
-        for i, dataset_id in enumerate(dataset_ids):
-            group = groups.get_group(dataset_id)
-            col_idx = _col_idx(group, dataset_id)
-            for col, data_key in data_mapping.items():
-                data[data_key][i, col_idx] = _as_float_values(group, col)
-
-        missing_mask = np.zeros((batch_size, num_steps), dtype=bool)
-        for data_key in expected_keys:
-            missing_mask |= pd.isna(data[data_key])
-            if not pd.isna(missing_value):
-                missing_mask |= data[data_key] == missing_value
-
-        model_missing_value = getattr(getattr(model, "missing", None), "missing_value", missing_value)
-
-        def _missing_fill(data_key: str, index: int):
-            if isinstance(model_missing_value, Mapping):
-                return model_missing_value[data_key]
-            value = np.asarray(model_missing_value)
-            if value.ndim == 0:
-                return model_missing_value
-            if value.shape == (len(expected_keys),):
-                return value[index]
-            raise ValueError(f"model missing_value must be scalar, mapping, or shape ({len(expected_keys)},).")
-
-        # A missing value in any observed variable drops the whole time step.
-        for i, data_key in enumerate(expected_keys):
-            data[data_key][missing_mask] = _missing_fill(data_key, i)
-
-        data["missing_mask"] = missing_mask
-        data["time_steps"] = np.broadcast_to(np.arange(1, num_steps + 1)[None, :], (batch_size, num_steps))
-
-        return data

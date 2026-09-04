@@ -1,3 +1,5 @@
+import warnings
+
 import matplotlib
 
 matplotlib.use("Agg")
@@ -40,13 +42,15 @@ def test_plot_push_forward_validates_inputs(data, kwargs, error, message):
         plot_push_forward(data, **kwargs)
 
 
-def test_plot_push_forward_warns_when_uncertainty_is_not_applicable():
+def test_plot_push_forward_silently_ignores_inapplicable_uncertainty():
     data = {"value": np.arange(12, dtype=float).reshape(3, 4)}
 
-    with pytest.warns(UserWarning, match="requires aggregation"):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
         time_fig = plot_push_forward(data, kind="time_series", marginal=False)
 
-    with pytest.warns(UserWarning, match="not supported"):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
         dist_fig = plot_push_forward(data, kind="dist", aggregation=np.mean)
 
     plt.close(time_fig)
@@ -216,13 +220,6 @@ def test_plot_push_forward_individual_time_series_supports_marginals(values):
         (
             {"value": np.ones((1, 2, 3))},
             {"value": np.ones((1, 3))},
-            {"aggregation": np.mean, "aggregate_strategy": "invalid"},
-            ValueError,
-            "aggregate_strategy",
-        ),
-        (
-            {"value": np.ones((1, 2, 3))},
-            {"value": np.ones((1, 3))},
             {"num_cols": 0},
             ValueError,
             "num_cols",
@@ -237,7 +234,6 @@ def test_plot_push_forward_individual_time_series_supports_marginals(values):
         "empirical-shape",
         "shape-mismatch",
         "dist-type",
-        "aggregate-strategy",
         "columns",
     ],
 )
@@ -246,7 +242,7 @@ def test_plot_posterior_resimulation_validates_inputs(prediction, empirical, kwa
         plot_posterior_resimulation(prediction, empirical, **kwargs)
 
 
-def test_posterior_resimulation_aggregate_spaghetti_uses_full_uncertainty_pool():
+def test_posterior_resimulation_aggregate_spaghetti_uses_per_resimulation_aggregates():
     rng = np.random.default_rng(11)
     prediction = rng.normal(size=(3, 4, 7))
     empirical = rng.normal(size=(3, 7))
@@ -256,44 +252,18 @@ def test_posterior_resimulation_aggregate_spaghetti_uses_full_uncertainty_pool()
         {"value": empirical},
         kind="time_series",
         aggregation=np.mean,
-        smoothing="sma",
-        smoothing_window=3,
         uncertainty_fun=None,
         marginal=False,
         spaghetti=True,
     )
 
-    assert len(fig.axes[0].lines) == prediction.shape[0] * prediction.shape[1] + 2
-    assert "Dataset × draw" in [text.get_text() for text in fig.legends[0].get_texts()]
-    plt.close(fig)
-
-
-def test_posterior_resimulation_no_epistemic_spaghetti_uses_dataset_medians():
-    prediction = np.array(
-        [
-            [[0.0, 1.0], [2.0, 3.0], [100.0, 101.0]],
-            [[10.0, 11.0], [12.0, 13.0], [14.0, 15.0]],
-        ]
-    )
-    empirical = np.zeros((2, 2))
-
-    fig = plot_posterior_resimulation(
-        {"value": prediction},
-        {"value": empirical},
-        aggregation=np.mean,
-        aggregate_strategy="no_epistemic",
-        uncertainty_fun=None,
-        marginal=False,
-        spaghetti=True,
-    )
-
-    spaghetti_lines = fig.axes[0].lines[: prediction.shape[0]]
+    spaghetti_lines = fig.axes[0].lines[: prediction.shape[1]]
     np.testing.assert_allclose(
         np.stack([line.get_ydata() for line in spaghetti_lines]),
-        np.median(prediction, axis=1),
+        prediction.mean(axis=0),
     )
-    assert len(fig.axes[0].lines) == prediction.shape[0] + 2
-    assert "Dataset median" in [text.get_text() for text in fig.legends[0].get_texts()]
+    assert len(fig.axes[0].lines) == prediction.shape[1] + 2
+    assert "Aggregated draw" in [text.get_text() for text in fig.legends[0].get_texts()]
     plt.close(fig)
 
 
@@ -317,24 +287,23 @@ def test_posterior_resimulation_individual_spaghetti_hides_unused_panel():
     plt.close(fig)
 
 
-def test_posterior_resimulation_discrete_distribution_supports_no_epistemic_strategy():
+def test_posterior_resimulation_discrete_distribution_aggregates_each_resimulation():
     prediction = np.array(
         [
             np.zeros((3, 4)),
-            np.ones((3, 4)),
+            np.full((3, 4), 2),
         ]
     )
-    empirical = np.array([[0, 0, 0, 0], [1, 1, 1, 1]])
+    empirical = np.array([[0, 0, 0, 0], [2, 2, 2, 2]])
 
     fig = plot_posterior_resimulation(
         {"choice": prediction},
         {"choice": empirical},
         kind="dist",
         aggregation=np.mean,
-        aggregate_strategy="no_epistemic",
     )
 
-    assert fig.axes[0].get_xticks().tolist() == [0, 1]
+    assert fig.axes[0].get_xticks().tolist() == [1.0]
     assert sum(patch.get_height() for patch in fig.axes[0].patches) == pytest.approx(1.0)
     plt.close(fig)
 

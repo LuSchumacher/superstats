@@ -1,3 +1,4 @@
+import inspect
 import pickle
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -314,34 +315,51 @@ def test_verify_time_invariant_validates_mapping_selection(monkeypatch):
     ],
 )
 def test_normalize_time_invariant_target(values, batch_size, components, expected, match):
+    workflow = bare_workflow()
     if match:
         with pytest.raises(ValueError, match=match):
-            Workflow._normalize_time_invariant_target("theta", values, batch_size, components)
+            workflow._normalize_time_invariant_target("theta", values, batch_size, components)
     else:
-        result = Workflow._normalize_time_invariant_target("theta", values, batch_size, components)
+        result = workflow._normalize_time_invariant_target("theta", values, batch_size, components)
         np.testing.assert_array_equal(result, expected)
 
 
 def test_posterior_plot_wrappers_supply_model_defaults(monkeypatch):
     varying_plot = Mock(return_value="varying")
-    invariant_plot = Mock(return_value="invariant")
+    marginals_plot = Mock(return_value="marginals")
+    pairs_plot = Mock(return_value="pairs")
+    forest_plot = Mock(return_value="forest")
     monkeypatch.setattr(workflow_module, "plot_time_varying_posterior", varying_plot)
-    monkeypatch.setattr(workflow_module, "plot_time_invariant_posterior", invariant_plot)
+    monkeypatch.setattr(workflow_module, "plot_marginals", marginals_plot)
+    monkeypatch.setattr(workflow_module, "plot_pairs", pairs_plot)
+    monkeypatch.setattr(workflow_module, "plot_forest", forest_plot)
     mixture_names = {"mix": ["a", "b"]}
     model = SimpleNamespace(
         local_keys=["theta"],
         hyper_keys=["sigma"],
         shared_keys=["tau"],
-        prior=SimpleNamespace(_mixture_names=Mock(return_value=mixture_names)),
+        prior=SimpleNamespace(params={"mix": SimpleNamespace(names=["a", "b"])}),
     )
     workflow = bare_workflow(model)
 
     assert workflow.plot_time_varying_posterior(np.ones((1, 2, 3, 1)), color="red") == "varying"
-    assert workflow.plot_time_invariant_posterior(np.ones((1, 2, 3, 2)), color="blue") == "invariant"
+    assert workflow.plot_marginals(np.ones((1, 2, 3, 2)), color="blue") == "marginals"
+    assert workflow.plot_pairs(np.ones((1, 2, 3, 2))) == "pairs"
+    assert workflow.plot_forest(np.ones((1, 2, 3, 2))) == "forest"
     assert varying_plot.call_args.kwargs["variable_keys"] == ["theta"]
     assert varying_plot.call_args.kwargs["color"] == "red"
-    assert invariant_plot.call_args.kwargs["variable_keys"] == ["sigma", "tau"]
-    assert invariant_plot.call_args.kwargs["mixture_names"] == mixture_names
+    for plot in (marginals_plot, pairs_plot, forest_plot):
+        assert plot.call_args.kwargs["variable_keys"] == ["sigma", "tau"]
+        assert plot.call_args.kwargs["mixture_names"] == mixture_names
+        assert "variable_names" not in plot.call_args.kwargs
+
+
+def test_time_invariant_plot_wrappers_derive_parameter_metadata_from_model():
+    for method in (Workflow.plot_marginals, Workflow.plot_pairs, Workflow.plot_forest):
+        parameters = inspect.signature(method).parameters
+        assert "variable_keys" not in parameters
+        assert "variable_names" not in parameters
+        assert "mixture_names" not in parameters
 
 
 @pytest.mark.parametrize(

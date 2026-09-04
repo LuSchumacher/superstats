@@ -227,11 +227,19 @@ def test_joint_prior_rejects_unknown_parameter_type():
         prior.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS)
 
 
-def test_joint_prior_param_bounds_collects_transition_bounds():
+def test_joint_prior_time_varying_plot_forwards_transition_bounds(monkeypatch):
+    captured = {}
+
+    def fake_plot(**kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(joint_prior_module, "plot_time_varying_prior", fake_plot)
     prior = _build_joint_prior()
-    bounds = prior._param_bounds()
-    assert "v" in bounds
-    np.testing.assert_allclose(bounds["v"], prior.params["v"].bounds)
+    prior.plot_time_varying_prior(num_steps=2, num_trajectories=1)
+
+    assert "v" in captured["param_bounds"]
+    np.testing.assert_allclose(captured["param_bounds"]["v"], prior.params["v"].bounds)
 
 
 def test_joint_prior_plot_methods_have_no_var_keyword_arguments():

@@ -1,6 +1,5 @@
 """Prior push-forward plotting helpers."""
 
-import warnings
 from collections.abc import Callable, Mapping
 from typing import Literal
 
@@ -11,6 +10,7 @@ import matplotlib.patches as mpatches
 import seaborn as sns
 
 from superstats.defaults import (
+    AGGREGATE_PLOT_WIDTH,
     BASE_COLOR,
     BASE_COL_WIDTH,
     BASE_ROW_HEIGHT,
@@ -40,7 +40,7 @@ def plot_push_forward(
     data_dim: int | str = 0,
     kind: Literal["time_series", "dist"] = "dist",
     aggregation: Callable | None = None,
-    uncertainty_fun: Literal["std", "ci", "mad", "hdi"] | Callable | None = "ci",
+    uncertainty_fun: Literal["std", "ci", "mad", "hdi"] | Callable | None = "hdi",
     marginal: bool = True,
     dist_type: Literal["hist", "kde", "both"] = "hist",
     num_bins: int | None = None,
@@ -73,7 +73,7 @@ def plot_push_forward(
         `aggregation(x, axis=...)` (e.g. np.mean, np.median).
         If None, individual datasets are shown in separate panels.
         If specified, all datasets are aggregated into a single panel.
-    uncertainty_fun     : {"std", "ci", "mad", "hdi"} or callable or None, optional, default: "ci"
+    uncertainty_fun     : {"std", "ci", "mad", "hdi"} or callable or None, optional, default: "hdi"
         Uncertainty function. Named methods draw nested outer/inner ribbons:
         ±1/±0.5 SD, 95%/65% CI, ±1.48/±0.74 MAD, or 95%/65% HDI.
         A callable draws the single interval it returns. Only used when
@@ -129,23 +129,7 @@ def plot_push_forward(
 
     x = select_data_variable(data, data_dim)
     show_aggregate = aggregation is not None
-    show_uncertainty = uncertainty_fun is not None
-
-    if show_uncertainty and not show_aggregate:
-        warnings.warn(
-            "uncertainty_fun requires aggregation to be specified; ignoring uncertainty_fun.",
-            stacklevel=2,
-        )
-        uncertainty_fun = None
-        show_uncertainty = False
-
-    if show_uncertainty and kind == "dist":
-        warnings.warn(
-            "uncertainty_fun is not supported for kind='dist'; ignoring uncertainty_fun.",
-            stacklevel=2,
-        )
-        uncertainty_fun = None
-        show_uncertainty = False
+    show_uncertainty = uncertainty_fun is not None and show_aggregate and kind == "time_series"
 
     batch_size, steps = x.shape
     if num_cols is None:
@@ -172,7 +156,7 @@ def plot_push_forward(
                 1,
                 1,
                 figsize,
-                col_width=BASE_COL_WIDTH,
+                col_width=AGGREGATE_PLOT_WIDTH,
                 row_height=BASE_ROW_HEIGHT,
             )
             fig, base_ax = plt.subplots(figsize=plot_figsize)
@@ -313,7 +297,7 @@ def plot_push_forward(
             )
 
         elif kind == "dist":
-            default_figsize = (BASE_COL_WIDTH, BASE_ROW_HEIGHT)
+            default_figsize = (AGGREGATE_PLOT_WIDTH, BASE_ROW_HEIGHT + 1.6)
             fig, ax = plt.subplots(figsize=figsize if figsize is not None else default_figsize)
 
             if discrete:

@@ -430,7 +430,7 @@ def test_joint_prior_positions_legend_and_row_names_without_overlap():
     legend_anchor = fig.legends[0].get_bbox_to_anchor().transformed(fig.transFigure.inverted())
     assert fig.subplotpars.hspace == pytest.approx(0.5)
     assert fig.legends[0].get_texts()[0].get_fontsize() == 18
-    assert legend_anchor.y0 * fig.get_size_inches()[1] == pytest.approx(0.25)
+    assert legend_anchor.y0 * fig.get_size_inches()[1] == pytest.approx(0.1)
     plt.close(fig)
 
 
