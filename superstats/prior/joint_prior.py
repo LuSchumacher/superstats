@@ -1,6 +1,7 @@
 """Joint priors over time-varying and time-invariant parameters."""
 
 from typing import Any, Dict, Literal
+import inspect
 
 import numpy as np
 from matplotlib.figure import Figure
@@ -46,7 +47,12 @@ class JointPrior:
         self.params = kwargs
         self._last_hyper_param_groups = {}
 
-    def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
+    def sample(
+        self,
+        batch_size: int,
+        num_steps: int,
+        context: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any]:
         """Draw a joint parameter sample.
 
         Parameters
@@ -55,6 +61,9 @@ class JointPrior:
             Number of independent samples to draw.
         num_steps  : int
             Number of time steps per trajectory.
+        context : dict, optional
+            Context variables forwarded to each transition model whose
+            ``sample`` method accepts a ``context`` keyword argument.
 
         Returns
         -------
@@ -95,7 +104,14 @@ class JointPrior:
             else:
                 raise TypeError(f"Unknown parameter type for '{name}': {type(param).__name__}")
 
-            samples = param.sample(batch_size=batch_size, num_steps=num_steps)
+            sample_signature = inspect.signature(param.sample)
+            accepts_context = "context" in sample_signature.parameters or any(
+                parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in sample_signature.parameters.values()
+            )
+            sample_kwargs = {"batch_size": batch_size, "num_steps": num_steps}
+            if accepts_context:
+                sample_kwargs["context"] = context or {}
+            samples = param.sample(**sample_kwargs)
             target[name] = samples[sample_key]
 
             hyper_param_groups[name] = []

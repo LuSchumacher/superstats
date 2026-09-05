@@ -74,14 +74,16 @@ def sample_rdm(
     """
     num_trials = v_base.shape[0]
     if correct_idx is None:
-        correct_idx = np.zeros(num_trials, dtype=np.float32)
+        resolved_correct_idx = np.zeros(num_trials, dtype=np.int32)
+    else:
+        resolved_correct_idx = correct_idx.astype(np.int32)
     response_time = np.empty(num_trials, dtype=np.float32)
     choice = np.empty(num_trials, dtype=np.float32)
     sqrt_dt = np.sqrt(dt)
 
     for i in prange(num_trials):
         t = tau[i]
-        correct = correct_idx[i]
+        correct = resolved_correct_idx[i]
 
         thresholds = np.empty(num_accumulators, dtype=np.float32)
         drifts = np.empty(num_accumulators, dtype=np.float32)

@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 from superstats.prior import JointPrior, Prior
-from superstats.simulation import Model, sample_ddm
+from superstats.simulation import ContextMapping, ContextSimulator, Model, sample_ddm
 from superstats.simulation.augmentation import (
     ContaminationProcess,
     MissingProcess,
@@ -36,6 +36,20 @@ class _DeterministicTestTransition(DeterministicTransition):
     def sample(self, batch_size, num_steps):
         trajectory = np.broadcast_to(np.arange(num_steps, dtype=np.float32), (batch_size, num_steps))
         return {"deterministic_params": trajectory, "hyper_params": {}, "fixed_params": {}}
+
+
+class _ContextTestTransition(DeterministicTransition):
+    def __init__(self):
+        super().__init__()
+        self.contexts = []
+
+    def sample(self, batch_size, num_steps, context=None):
+        self.contexts.append(context)
+        return {
+            "deterministic_params": np.asarray(context["transition_offset"]),
+            "hyper_params": {},
+            "fixed_params": {},
+        }
 
 
 def _build_model(**kwargs):
@@ -84,6 +98,106 @@ def test_model_sample_shapes():
     assert "bias" not in result
     assert np.all(np.isfinite(result["response_time"]))
     assert np.all(np.isin(result["choice"], [-1.0, 0.0, 1.0]))
+
+
+def test_model_routes_context_to_transitions_design_and_simulator():
+    context_calls = []
+
+    def generate_context(*, batch_size, num_steps):
+        context_calls.append((batch_size, num_steps))
+        shape = (batch_size, num_steps)
+        return {
+            "transition_offset": np.full(shape, 1.0),
+            "design_offset": np.full(shape, 2.0),
+            "simulator_offset": np.full(shape, 3.0),
+        }
+
+    class DesignMatrix:
+        def __init__(self):
+            self.contexts = []
+
+        def resolve(self, *, parameters, context):
+            self.contexts.append(context)
+            return {**parameters, "v": parameters["v"] + context["design_offset"]}
+
+    simulator_contexts = []
+
+    def simulator(v, *, context):
+        simulator_contexts.append(context)
+        return {"observation": v + context["simulator_offset"].reshape(-1)}
+
+    transition = _ContextTestTransition()
+    design_matrix = DesignMatrix()
+    model = Model(
+        prior=JointPrior(v=transition),
+        simulator=simulator,
+        missing=None,
+        context=ContextSimulator(generate_context),
+        context_mapping=ContextMapping(
+            transition_context=("transition_offset",),
+            design_context=("design_offset",),
+            simulator_context=("simulator_offset",),
+        ),
+        design_matrix=design_matrix,
+    )
+
+    transition.contexts.clear()
+    design_matrix.contexts.clear()
+    simulator_contexts.clear()
+    result = model.sample(batch_size=2, num_steps=3)
+
+    assert context_calls == [(1, 1), (2, 3)]
+    assert set(transition.contexts[0]) == {"transition_offset"}
+    assert set(design_matrix.contexts[0]) == {"design_offset"}
+    assert set(simulator_contexts[0]) == {"simulator_offset"}
+    np.testing.assert_allclose(result["observation"], 6.0)
+
+
+def test_model_binds_simulator_context_matching_a_simulator_argument():
+    def generate_context(*, batch_size, num_steps):
+        return {
+            "correct_idx": np.tile(np.arange(num_steps) % 2, (batch_size, 1)).astype(np.int32),
+            "option_values": np.ones((batch_size, num_steps, 2), dtype=np.float32),
+        }
+
+    received_correct_idx = []
+
+    def simulator(v, correct_idx=None):
+        received_correct_idx.append(correct_idx)
+        return {"observation": correct_idx}
+
+    model = Model(
+        prior=JointPrior(v=Prior("normal", loc=0.0, scale=1.0)),
+        simulator=simulator,
+        missing=None,
+        context=ContextSimulator(generate_context),
+        context_mapping=ContextMapping(simulator_context=("correct_idx",)),
+    )
+
+    received_correct_idx.clear()
+    result = model.sample(batch_size=2, num_steps=3)
+
+    expected = np.array([[0, 1, 0], [0, 1, 0]], dtype=np.int32)
+    np.testing.assert_array_equal(received_correct_idx[0], expected.reshape(-1))
+    np.testing.assert_array_equal(result["observation"], expected)
+    np.testing.assert_array_equal(result["correct_idx"], expected)
+    assert model.data_keys == ["observation"]
+    assert model.context_keys == ["correct_idx", "option_values"]
+    assert model.summary_keys == ["observation", "correct_idx", "option_values"]
+
+    adapted = Workflow.default_adapter(model)(result)
+    assert adapted["summary_variables"].shape == (2, 3, 5)
+
+    workflow = object.__new__(Workflow)
+    workflow.model = model
+    conditions = workflow._prepare_conditions(
+        {
+            "observation": expected,
+            "correct_idx": expected,
+            "option_values": result["option_values"],
+        }
+    )
+    assert set(conditions) == {"observation", "correct_idx", "option_values", "time_steps"}
 
 
 def test_model_sample_include_fixed():
