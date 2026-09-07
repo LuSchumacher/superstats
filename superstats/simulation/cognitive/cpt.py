@@ -13,6 +13,17 @@ def _prelec(probability: float, gamma: float) -> float:
     return np.exp(-((-np.log(probability)) ** gamma))
 
 
+@njit(fastmath=True, inline="always")
+def _phi_approx(x: float) -> float:
+    """Stan Math's approximation to the standard normal CDF."""
+    # Stan's Phi_approx is inv_logit(0.07056 * x^3 + 1.5976 * x).
+    z = 0.07056 * x * x * x + 1.5976 * x
+    if z >= 0.0:
+        return 1.0 / (1.0 + np.exp(-z))
+    exp_z = np.exp(z)
+    return exp_z / (1.0 + exp_z)
+
+
 @njit(fastmath=True)
 def _cpt_utility(
     outcomes: np.ndarray,
@@ -90,7 +101,7 @@ def sample_cpt(
     lamda : np.ndarray of shape (num_steps,)
         Loss-aversion coefficient.
     tau : np.ndarray of shape (num_steps,)
-        Choice sensitivity.
+        Positive choice-noise scale. Larger values produce more stochastic choices.
     gamma : np.ndarray of shape (num_steps,)
         Curvature of the Prelec probability-weighting function.
     outcomes_a, outcomes_b : ndarray, shape (num_trials, num_outcomes)
@@ -104,6 +115,10 @@ def sample_cpt(
     -------
     data : dict of np.ndarray
         Named decision data. `"choice"` contains choices (1 for option A, 0 for option B).
+
+    Notes
+    -----
+    Choices use Stan's probit approximation: ``P(A) = Phi_approx((U_A - U_B) / tau)``.
     """
     if outcomes_a.ndim != 2 or outcomes_b.ndim != 2:
         raise ValueError("outcomes_a and outcomes_b must be two-dimensional")
@@ -113,6 +128,8 @@ def sample_cpt(
         raise ValueError("Each outcome matrix must have the same shape as its probability matrix")
     if outcomes_a.shape[0] != outcomes_b.shape[0]:
         raise ValueError("outcomes_a and outcomes_b must have the same number of steps")
+    if np.any(tau <= 0.0):
+        raise ValueError("tau must be strictly positive")
 
     probabilities_a = np.asarray(probabilities_a, dtype=np.float32)
     probabilities_b = np.asarray(probabilities_b, dtype=np.float32)
@@ -140,12 +157,8 @@ def sample_cpt(
 
         utility_a = _cpt_utility(outcomes_a[i], probabilities_a[i], alpha_t, lamda_t, gamma_t)
         utility_b = _cpt_utility(outcomes_b[i], probabilities_b[i], alpha_t, lamda_t, gamma_t)
-        logit = tau_t * (utility_a - utility_b)
-        if logit >= 0.0:
-            choice_probability = 1.0 / (1.0 + np.exp(-logit))
-        else:
-            exp_logit = np.exp(logit)
-            choice_probability = exp_logit / (1.0 + exp_logit)
+        delta = (utility_a - utility_b) / tau_t
+        choice_probability = _phi_approx(delta)
         choices[i] = np.random.binomial(1, choice_probability)
 
     return {"choice": choices}

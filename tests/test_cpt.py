@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from superstats.simulation import sample_cpt
+from superstats.simulation.cognitive.cpt import _phi_approx
 
 
 def _parameters():
@@ -63,4 +64,26 @@ def test_sample_cpt_rejects_mismatched_probability_shapes():
             np.ones((2, 1)),
             np.ones((2, 2)),
             np.ones((2, 1)),
+        )
+
+
+def test_phi_approx_matches_stan_choice_rule():
+    # Stan Math defines Phi_approx(x) as inv_logit(0.07056*x^3 + 1.5976*x).
+    x = 1.25
+    expected = 1.0 / (1.0 + np.exp(-(0.07056 * x**3 + 1.5976 * x)))
+
+    assert _phi_approx(x) == pytest.approx(expected)
+
+
+def test_sample_cpt_requires_positive_tau():
+    with pytest.raises(ValueError, match="strictly positive"):
+        sample_cpt(
+            np.ones(1),
+            np.ones(1),
+            np.zeros(1),
+            np.ones(1),
+            np.ones((1, 1)),
+            np.zeros((1, 1)),
+            np.ones((1, 1)),
+            np.ones((1, 1)),
         )
