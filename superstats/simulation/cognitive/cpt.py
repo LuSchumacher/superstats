@@ -15,8 +15,6 @@ def _prelec(probability: float, gamma: float) -> float:
 
 @njit(fastmath=True, inline="always")
 def _phi_approx(x: float) -> float:
-    """Stan Math's approximation to the standard normal CDF."""
-    # Stan's Phi_approx is inv_logit(0.07056 * x^3 + 1.5976 * x).
     z = 0.07056 * x * x * x + 1.5976 * x
     if z >= 0.0:
         return 1.0 / (1.0 + np.exp(-z))
