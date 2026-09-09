@@ -132,28 +132,6 @@ class JointPrior:
             "fixed_params": fixed_params,
         }
 
-    def _param_bounds(self) -> dict:
-        """Collect y-axis bounds declared on the underlying parameter objects.
-
-        Returns
-        -------
-        bounds : dict - mapping from parameter name to its `bounds`
-            attribute, for parameters that define one
-        """
-        return {
-            name: obj.bounds for name, obj in self.params.items() if hasattr(obj, "bounds") and obj.bounds is not None
-        }
-
-    def _mixture_names(self) -> dict:
-        """Collect mixture component names declared on the underlying parameter objects.
-
-        Returns
-        -------
-        names : dict - mapping from parameter name to its `names`
-            attribute, for parameters that define one
-        """
-        return {name: obj.names for name, obj in self.params.items() if hasattr(obj, "names")}
-
     def plot_time_varying_prior(
         self,
         num_steps: int = 200,
@@ -358,3 +336,25 @@ class JointPrior:
             alpha=alpha,
             figsize=figsize,
         )
+
+    def _param_bounds(self) -> dict:
+        """Collect y-axis bounds declared on the underlying parameter objects.
+
+        Returns
+        -------
+        bounds : dict - mapping from parameter name to its `bounds`
+            attribute, for parameters that define one
+        """
+        return {
+            name: obj.bounds for name, obj in self.params.items() if hasattr(obj, "bounds") and obj.bounds is not None
+        }
+
+    def _mixture_names(self) -> dict:
+        """Collect mixture component names declared on the underlying parameter objects.
+
+        Returns
+        -------
+        names : dict - mapping from parameter name to its `names`
+            attribute, for parameters that define one
+        """
+        return {name: obj.names for name, obj in self.params.items() if hasattr(obj, "names")}

@@ -143,200 +143,6 @@ class Workflow:
 
         return adapter
 
-    def _load_history(self) -> None:
-        """Load persisted training history from `checkpoint_filepath`, if present.
-
-        A no-op if `checkpoint_filepath` is None or no `history.pkl`
-        file exists there.
-        """
-        if self.checkpoint_filepath is None:
-            return
-        path = os.path.join(self.checkpoint_filepath, "history.pkl")
-        if not os.path.exists(path):
-            return
-        with open(path, "rb") as f:
-            self.workflow.history = pickle.load(f)
-
-    def _save_history(self, new_history: keras.callbacks.History) -> None:
-        """Merge and persist training history to `checkpoint_filepath`, if present.
-
-        A no-op if `checkpoint_filepath` is None.
-
-        Parameters
-        ----------
-        new_history : keras.callbacks.History
-            History from the most recent training run. Merged into any
-            existing `self.workflow.history` before saving.
-        """
-        if self.checkpoint_filepath is None:
-            return
-        existing = self.workflow.history
-        if existing is not None and existing is not new_history:
-            for key, values in new_history.history.items():
-                existing.history.setdefault(key, []).extend(values)
-            new_history = existing
-        os.makedirs(self.checkpoint_filepath, exist_ok=True)
-        with open(os.path.join(self.checkpoint_filepath, "history.pkl"), "wb") as f:
-            pickle.dump(new_history, f)
-        self.workflow.history = new_history
-
-    def _prepare_conditions(self, data: Mapping[str, np.ndarray]) -> dict[str, np.ndarray]:
-        """Add adapter-required auxiliary condition keys to named observations."""
-        if not isinstance(data, Mapping):
-            raise TypeError(f"data must be a mapping of named arrays, got {type(data)}.")
-
-        conditions = dict(data)
-        if self.model is None:
-            return conditions
-
-        data_keys = self.model.data_keys
-        summary_data_keys = getattr(self.model, "summary_keys", data_keys)
-        missing_keys = [key for key in summary_data_keys if key not in conditions]
-        if missing_keys:
-            raise KeyError(f"Missing summary keys {missing_keys!r}. Expected keys: {summary_data_keys!r}.")
-
-        first = conditions[data_keys[0]]
-        num_datasets = first.shape[0]
-        num_steps = first.shape[1]
-
-        if "time_steps" not in conditions:
-            log_warning("No time_steps provided; adding contiguous default time steps.")
-            conditions["time_steps"] = np.broadcast_to(np.arange(1, num_steps + 1)[None, :], (num_datasets, num_steps))
-
-        elif conditions["time_steps"].shape != (num_datasets, num_steps):
-            raise ValueError(
-                f"'time_steps' must have shape {(num_datasets, num_steps)}, got {conditions['time_steps'].shape}."
-            )
-
-        for key in summary_data_keys:
-            value = np.asarray(conditions[key])
-            if value.ndim < 2 or value.shape[:2] != (num_datasets, num_steps):
-                raise ValueError(f"'{key}' must have leading shape {(num_datasets, num_steps)}, got {value.shape}.")
-
-        if getattr(self.model, "has_mask", False):
-            if "missing_mask" not in conditions:
-                log_warning("No missing_mask provided although model has missingness; assuming no missings.")
-                conditions["missing_mask"] = np.zeros((num_datasets, num_steps), dtype=bool)
-
-            elif conditions["missing_mask"].shape != (num_datasets, num_steps):
-                raise ValueError(
-                    f"'missing_mask' must have shape {(num_datasets, num_steps)}, "
-                    f"got {conditions['missing_mask'].shape}."
-                )
-
-        remaining_keys = summary_data_keys + ["missing_mask", "time_steps"]
-        conditions = {k: v for k, v in conditions.items() if k in remaining_keys}
-
-        return conditions
-
-    def fit_offline(
-        self, data, validation_data, epochs: int = 100, batch_size: int = 32, save_history: bool = True, **kwargs
-    ) -> keras.callbacks.History:
-        """Train the approximator on a fixed, pre-simulated dataset.
-
-        Parameters
-        ----------
-        data            : Any
-            Training data, in the format expected by
-            `bf.BasicWorkflow.fit_offline`.
-        validation_data : Any
-            Validation data, in the same format as `data`.
-        epochs          : int, optional, default: 100
-            Number of training epochs.
-        batch_size      : int, optional, default: 32
-            Training batch size.
-        save_history    : bool, optional, default: True
-            If True, merge this run's history into `self.history` and
-            persist it to `checkpoint_filepath` (if set).
-        **kwargs
-            Forwarded to `bf.BasicWorkflow.fit_offline`.
-
-        Returns
-        -------
-        history : keras.callbacks.History - the training history for
-            this run
-        """
-        history = self.workflow.fit_offline(
-            data=data, epochs=epochs, batch_size=batch_size, validation_data=validation_data, **kwargs
-        )
-
-        if save_history:
-            self._save_history(history)
-
-        return history
-
-    def fit_online(
-        self,
-        num_steps: int,
-        epochs: int = 100,
-        num_batches_per_epoch: int = 100,
-        batch_size: int = 32,
-        save_history: bool = True,
-        **kwargs,
-    ) -> keras.callbacks.History:
-        """Train the approximator by simulating data on the fly.
-
-        Temporarily binds `self.model.sample` to always draw
-        trajectories of length `num_steps` with `tile_to_steps=True`,
-        then restores the original method afterward (even if training
-        raises).
-
-        Parameters
-        ----------
-        num_steps             : int
-            Number of time steps per simulated trajectory during
-            training.
-        epochs                : int, optional, default: 100
-            Number of training epochs.
-        num_batches_per_epoch : int, optional, default: 100
-            Number of simulated batches per epoch.
-        batch_size            : int, optional, default: 32
-            Training batch size.
-        save_history          : bool, optional, default: True
-            If True, merge this run's history into `self.history` and
-            persist it to `checkpoint_filepath` (if set).
-        **kwargs
-            Forwarded to `bf.BasicWorkflow.fit_online`.
-
-        Returns
-        -------
-        history : keras.callbacks.History - the training history for
-            this run
-        """
-        original_sample = self.model.sample
-        self.model.sample = functools.partial(original_sample, num_steps=num_steps, tile_to_steps=True)
-        try:
-            history = self.workflow.fit_online(
-                epochs=epochs, num_batches_per_epoch=num_batches_per_epoch, batch_size=batch_size, **kwargs
-            )
-        finally:
-            self.model.sample = original_sample
-
-        if save_history:
-            self._save_history(history)
-
-        return history
-
-    @property
-    def history(self):
-        """keras.callbacks.History or None - the workflow's training history."""
-        return self.workflow.history
-
-    @property
-    def approximator(self):
-        """The underlying trained BayesFlow approximator object.
-
-        Reads through to `self.workflow.approximator` by default (kept in
-        sync automatically by `bf.BasicWorkflow` during training), but can
-        be explicitly assigned - e.g. when restoring a checkpoint from
-        disk in `__init__`.
-        """
-        return self.workflow.approximator
-
-    @approximator.setter
-    def approximator(self, value):
-        self.workflow.approximator = value
-
     def sample(
         self,
         data: dict[str, np.ndarray],
@@ -524,6 +330,94 @@ class Workflow:
 
         return {name: value.reshape(batch_size, num_sims, num_steps) for name, value in raw_sim.items()}
 
+    def fit_offline(
+        self, data, validation_data, epochs: int = 100, batch_size: int = 32, save_history: bool = True, **kwargs
+    ) -> keras.callbacks.History:
+        """Train the approximator on a fixed, pre-simulated dataset.
+
+        Parameters
+        ----------
+        data            : Any
+            Training data, in the format expected by
+            `bf.BasicWorkflow.fit_offline`.
+        validation_data : Any
+            Validation data, in the same format as `data`.
+        epochs          : int, optional, default: 100
+            Number of training epochs.
+        batch_size      : int, optional, default: 32
+            Training batch size.
+        save_history    : bool, optional, default: True
+            If True, merge this run's history into `self.history` and
+            persist it to `checkpoint_filepath` (if set).
+        **kwargs
+            Forwarded to `bf.BasicWorkflow.fit_offline`.
+
+        Returns
+        -------
+        history : keras.callbacks.History - the training history for
+            this run
+        """
+        history = self.workflow.fit_offline(
+            data=data, epochs=epochs, batch_size=batch_size, validation_data=validation_data, **kwargs
+        )
+
+        if save_history:
+            self._save_history(history)
+
+        return history
+
+    def fit_online(
+        self,
+        num_steps: int,
+        epochs: int = 100,
+        num_batches_per_epoch: int = 100,
+        batch_size: int = 32,
+        save_history: bool = True,
+        **kwargs,
+    ) -> keras.callbacks.History:
+        """Train the approximator by simulating data on the fly.
+
+        Temporarily binds `self.model.sample` to always draw
+        trajectories of length `num_steps` with `tile_to_steps=True`,
+        then restores the original method afterward (even if training
+        raises).
+
+        Parameters
+        ----------
+        num_steps             : int
+            Number of time steps per simulated trajectory during
+            training.
+        epochs                : int, optional, default: 100
+            Number of training epochs.
+        num_batches_per_epoch : int, optional, default: 100
+            Number of simulated batches per epoch.
+        batch_size            : int, optional, default: 32
+            Training batch size.
+        save_history          : bool, optional, default: True
+            If True, merge this run's history into `self.history` and
+            persist it to `checkpoint_filepath` (if set).
+        **kwargs
+            Forwarded to `bf.BasicWorkflow.fit_online`.
+
+        Returns
+        -------
+        history : keras.callbacks.History - the training history for
+            this run
+        """
+        original_sample = self.model.sample
+        self.model.sample = functools.partial(original_sample, num_steps=num_steps, tile_to_steps=True)
+        try:
+            history = self.workflow.fit_online(
+                epochs=epochs, num_batches_per_epoch=num_batches_per_epoch, batch_size=batch_size, **kwargs
+            )
+        finally:
+            self.model.sample = original_sample
+
+        if save_history:
+            self._save_history(history)
+
+        return history
+
     def plot_history(
         self,
         history,
@@ -620,90 +514,6 @@ class Workflow:
             aggregation=aggregation,
             **kwargs,
         )
-
-    def _prepare_time_varying_at_steps(
-        self,
-        targets: Mapping[str, np.ndarray],
-        estimates: Mapping[str, np.ndarray],
-        time_steps: int | Sequence[int],
-        variable_keys: Sequence[str] | None = None,
-        variable_names: Sequence[str] | None = None,
-    ) -> tuple[np.ndarray, np.ndarray, list[str]]:
-        """Select local parameters at specific zero-based time-step indices."""
-        keys = list(variable_keys) if variable_keys is not None else list(self.model.local_keys)
-        if not keys:
-            raise ValueError("No time-varying parameters found.")
-
-        missing = [key for key in keys if key not in estimates or key not in targets]
-        if missing:
-            raise ValueError(f"variable_keys not found in both estimates and targets: {missing}")
-
-        names = list(variable_names) if variable_names is not None else keys
-        if len(names) != len(keys):
-            raise ValueError(f"variable_names has {len(names)} entries but there are {len(keys)} variables.")
-
-        target_arrays = {}
-        estimate_arrays = {}
-        expected_shape = None
-        for key in keys:
-            target = np.asarray(targets[key])
-            estimate = np.asarray(estimates[key])
-            if target.ndim != 3 or target.shape[-1] != 1:
-                raise ValueError(f"Target '{key}' must have shape (num_datasets, num_steps, 1), got {target.shape}.")
-            if estimate.ndim != 4 or estimate.shape[-1] != 1:
-                raise ValueError(
-                    f"Estimate '{key}' must have shape (num_datasets, num_samples, num_steps, 1), got {estimate.shape}."
-                )
-
-            shape = (
-                target.shape[0],
-                estimate.shape[1],
-                target.shape[1],
-            )
-            if estimate.shape[0] != shape[0] or estimate.shape[2] != shape[2]:
-                raise ValueError(
-                    f"Estimate and target shapes for '{key}' are inconsistent: {estimate.shape} and {target.shape}."
-                )
-            if expected_shape is not None and shape != expected_shape:
-                raise ValueError("All selected variables must have matching dataset, sample, and time-step dimensions.")
-            expected_shape = shape
-            target_arrays[key] = target
-            estimate_arrays[key] = estimate
-
-        num_steps = expected_shape[2]
-        if isinstance(time_steps, Integral) and not isinstance(time_steps, bool):
-            selected_steps = [int(time_steps)]
-        elif isinstance(time_steps, Sequence) and not isinstance(
-            time_steps,
-            (str, bytes),
-        ):
-            selected_steps = list(time_steps)
-            if not selected_steps:
-                raise ValueError("time_steps must contain at least one index.")
-            if any(not isinstance(step, Integral) or isinstance(step, bool) for step in selected_steps):
-                raise TypeError("time_steps must be an int or a sequence of ints.")
-            selected_steps = [int(step) for step in selected_steps]
-        else:
-            raise TypeError("time_steps must be an int or a sequence of ints.")
-
-        normalized_steps = [step + num_steps if step < 0 else step for step in selected_steps]
-        invalid = [step for step in normalized_steps if step < 0 or step >= num_steps]
-        if invalid:
-            raise ValueError(f"time_steps contains out-of-range index {invalid[0]} for {num_steps} steps.")
-
-        target_columns = []
-        estimate_columns = []
-        resolved_names = []
-        show_steps = len(normalized_steps) > 1
-        for step in normalized_steps:
-            for key, name in zip(keys, names):
-                target_columns.append(target_arrays[key][:, step, 0])
-                estimate_columns.append(estimate_arrays[key][:, :, step, 0])
-                resolved_names.append(f"{name} (step {step})" if show_steps else name)
-
-        targets_arr = np.stack(target_columns, axis=-1)
-        estimates_arr = np.stack(estimate_columns, axis=-1)
-        return estimates_arr, targets_arr, resolved_names
 
     def recovery_at_steps(
         self,
@@ -1201,42 +1011,6 @@ class Workflow:
             **kwargs,
         )
 
-    @staticmethod
-    def _normalize_time_invariant_target(
-        name: str,
-        values: np.ndarray,
-        batch_size: int,
-        num_components: int,
-    ) -> np.ndarray:
-        """Return a time-invariant target as `(batch_size, num_components)`."""
-        arr = np.asarray(values)
-        if arr.shape[0] != batch_size:
-            raise ValueError(f"Target '{name}' has batch size {arr.shape[0]}, expected {batch_size}.")
-
-        if arr.ndim == 1:
-            if num_components != 1:
-                raise ValueError(f"Target '{name}' must have {num_components} components, got shape {arr.shape}.")
-            return arr[:, None]
-
-        if arr.ndim == 2 and arr.shape[1] == num_components:
-            return arr
-
-        if arr.ndim == 2 and num_components == 1:
-            tiled = arr[..., None]
-        elif arr.ndim == 3 and arr.shape[2] == num_components:
-            tiled = arr
-        else:
-            raise ValueError(
-                f"Target '{name}' must have shape (batch_size, {num_components}) or "
-                f"(batch_size, num_steps, {num_components}), got {arr.shape}."
-            )
-
-        if not np.allclose(tiled, tiled[:, :1, :], equal_nan=True):
-            raise ValueError(
-                f"Target '{name}' varies across steps but verify_time_invariant requires a time-invariant target."
-            )
-        return tiled[:, 0, :]
-
     def prepare_data(
         self,
         df: pd.DataFrame,
@@ -1379,3 +1153,229 @@ class Workflow:
         data["time_steps"] = np.broadcast_to(np.arange(1, num_steps + 1)[None, :], (batch_size, num_steps))
 
         return data
+
+    @property
+    def history(self):
+        """keras.callbacks.History or None - the workflow's training history."""
+        return self.workflow.history
+
+    @property
+    def approximator(self):
+        """The underlying trained BayesFlow approximator object.
+
+        Reads through to `self.workflow.approximator` by default (kept in
+        sync automatically by `bf.BasicWorkflow` during training), but can
+        be explicitly assigned - e.g. when restoring a checkpoint from
+        disk in `__init__`.
+        """
+        return self.workflow.approximator
+
+    @approximator.setter
+    def approximator(self, value):
+        self.workflow.approximator = value
+
+    def _load_history(self) -> None:
+        """Load persisted training history from `checkpoint_filepath`, if present.
+
+        A no-op if `checkpoint_filepath` is None or no `history.pkl`
+        file exists there.
+        """
+        if self.checkpoint_filepath is None:
+            return
+        path = os.path.join(self.checkpoint_filepath, "history.pkl")
+        if not os.path.exists(path):
+            return
+        with open(path, "rb") as f:
+            self.workflow.history = pickle.load(f)
+
+    def _save_history(self, new_history: keras.callbacks.History) -> None:
+        """Merge and persist training history to `checkpoint_filepath`, if present.
+
+        A no-op if `checkpoint_filepath` is None.
+
+        Parameters
+        ----------
+        new_history : keras.callbacks.History
+            History from the most recent training run. Merged into any
+            existing `self.workflow.history` before saving.
+        """
+        if self.checkpoint_filepath is None:
+            return
+        existing = self.workflow.history
+        if existing is not None and existing is not new_history:
+            for key, values in new_history.history.items():
+                existing.history.setdefault(key, []).extend(values)
+            new_history = existing
+        os.makedirs(self.checkpoint_filepath, exist_ok=True)
+        with open(os.path.join(self.checkpoint_filepath, "history.pkl"), "wb") as f:
+            pickle.dump(new_history, f)
+        self.workflow.history = new_history
+
+    def _prepare_conditions(self, data: Mapping[str, np.ndarray]) -> dict[str, np.ndarray]:
+        """Add adapter-required auxiliary condition keys to named observations."""
+        if not isinstance(data, Mapping):
+            raise TypeError(f"data must be a mapping of named arrays, got {type(data)}.")
+
+        conditions = dict(data)
+        if self.model is None:
+            return conditions
+
+        data_keys = self.model.data_keys
+        summary_data_keys = getattr(self.model, "summary_keys", data_keys)
+        missing_keys = [key for key in summary_data_keys if key not in conditions]
+        if missing_keys:
+            raise KeyError(f"Missing summary keys {missing_keys!r}. Expected keys: {summary_data_keys!r}.")
+
+        first = conditions[data_keys[0]]
+        num_datasets = first.shape[0]
+        num_steps = first.shape[1]
+
+        if "time_steps" not in conditions:
+            log_warning("No time_steps provided; adding contiguous default time steps.")
+            conditions["time_steps"] = np.broadcast_to(np.arange(1, num_steps + 1)[None, :], (num_datasets, num_steps))
+
+        elif conditions["time_steps"].shape != (num_datasets, num_steps):
+            raise ValueError(
+                f"'time_steps' must have shape {(num_datasets, num_steps)}, got {conditions['time_steps'].shape}."
+            )
+
+        for key in summary_data_keys:
+            value = np.asarray(conditions[key])
+            if value.ndim < 2 or value.shape[:2] != (num_datasets, num_steps):
+                raise ValueError(f"'{key}' must have leading shape {(num_datasets, num_steps)}, got {value.shape}.")
+
+        if getattr(self.model, "has_mask", False):
+            if "missing_mask" not in conditions:
+                log_warning("No missing_mask provided although model has missingness; assuming no missings.")
+                conditions["missing_mask"] = np.zeros((num_datasets, num_steps), dtype=bool)
+
+            elif conditions["missing_mask"].shape != (num_datasets, num_steps):
+                raise ValueError(
+                    f"'missing_mask' must have shape {(num_datasets, num_steps)}, "
+                    f"got {conditions['missing_mask'].shape}."
+                )
+
+        remaining_keys = summary_data_keys + ["missing_mask", "time_steps"]
+        conditions = {k: v for k, v in conditions.items() if k in remaining_keys}
+
+        return conditions
+
+    def _prepare_time_varying_at_steps(
+        self,
+        targets: Mapping[str, np.ndarray],
+        estimates: Mapping[str, np.ndarray],
+        time_steps: int | Sequence[int],
+        variable_keys: Sequence[str] | None = None,
+        variable_names: Sequence[str] | None = None,
+    ) -> tuple[np.ndarray, np.ndarray, list[str]]:
+        """Select local parameters at specific zero-based time-step indices."""
+        keys = list(variable_keys) if variable_keys is not None else list(self.model.local_keys)
+        if not keys:
+            raise ValueError("No time-varying parameters found.")
+
+        missing = [key for key in keys if key not in estimates or key not in targets]
+        if missing:
+            raise ValueError(f"variable_keys not found in both estimates and targets: {missing}")
+
+        names = list(variable_names) if variable_names is not None else keys
+        if len(names) != len(keys):
+            raise ValueError(f"variable_names has {len(names)} entries but there are {len(keys)} variables.")
+
+        target_arrays = {}
+        estimate_arrays = {}
+        expected_shape = None
+        for key in keys:
+            target = np.asarray(targets[key])
+            estimate = np.asarray(estimates[key])
+            if target.ndim != 3 or target.shape[-1] != 1:
+                raise ValueError(f"Target '{key}' must have shape (num_datasets, num_steps, 1), got {target.shape}.")
+            if estimate.ndim != 4 or estimate.shape[-1] != 1:
+                raise ValueError(
+                    f"Estimate '{key}' must have shape (num_datasets, num_samples, num_steps, 1), got {estimate.shape}."
+                )
+
+            shape = (
+                target.shape[0],
+                estimate.shape[1],
+                target.shape[1],
+            )
+            if estimate.shape[0] != shape[0] or estimate.shape[2] != shape[2]:
+                raise ValueError(
+                    f"Estimate and target shapes for '{key}' are inconsistent: {estimate.shape} and {target.shape}."
+                )
+            if expected_shape is not None and shape != expected_shape:
+                raise ValueError("All selected variables must have matching dataset, sample, and time-step dimensions.")
+            expected_shape = shape
+            target_arrays[key] = target
+            estimate_arrays[key] = estimate
+
+        num_steps = expected_shape[2]
+        if isinstance(time_steps, Integral) and not isinstance(time_steps, bool):
+            selected_steps = [int(time_steps)]
+        elif isinstance(time_steps, Sequence) and not isinstance(
+            time_steps,
+            (str, bytes),
+        ):
+            selected_steps = list(time_steps)
+            if not selected_steps:
+                raise ValueError("time_steps must contain at least one index.")
+            if any(not isinstance(step, Integral) or isinstance(step, bool) for step in selected_steps):
+                raise TypeError("time_steps must be an int or a sequence of ints.")
+            selected_steps = [int(step) for step in selected_steps]
+        else:
+            raise TypeError("time_steps must be an int or a sequence of ints.")
+
+        normalized_steps = [step + num_steps if step < 0 else step for step in selected_steps]
+        invalid = [step for step in normalized_steps if step < 0 or step >= num_steps]
+        if invalid:
+            raise ValueError(f"time_steps contains out-of-range index {invalid[0]} for {num_steps} steps.")
+
+        target_columns = []
+        estimate_columns = []
+        resolved_names = []
+        show_steps = len(normalized_steps) > 1
+        for step in normalized_steps:
+            for key, name in zip(keys, names):
+                target_columns.append(target_arrays[key][:, step, 0])
+                estimate_columns.append(estimate_arrays[key][:, :, step, 0])
+                resolved_names.append(f"{name} (step {step})" if show_steps else name)
+
+        targets_arr = np.stack(target_columns, axis=-1)
+        estimates_arr = np.stack(estimate_columns, axis=-1)
+        return estimates_arr, targets_arr, resolved_names
+
+    @staticmethod
+    def _normalize_time_invariant_target(
+        name: str,
+        values: np.ndarray,
+        batch_size: int,
+        num_components: int,
+    ) -> np.ndarray:
+        """Return a time-invariant target as `(batch_size, num_components)`."""
+        arr = np.asarray(values)
+        if arr.shape[0] != batch_size:
+            raise ValueError(f"Target '{name}' has batch size {arr.shape[0]}, expected {batch_size}.")
+
+        if arr.ndim == 1:
+            if num_components != 1:
+                raise ValueError(f"Target '{name}' must have {num_components} components, got shape {arr.shape}.")
+            return arr[:, None]
+
+        if arr.ndim == 2 and arr.shape[1] == num_components:
+            return arr
+
+        if arr.ndim == 2 and num_components == 1:
+            tiled = arr[..., None]
+        elif arr.ndim == 3 and arr.shape[2] == num_components:
+            tiled = arr
+        else:
+            raise ValueError(
+                f"Target '{name}' must have shape (batch_size, {num_components}) or "
+                f"(batch_size, num_steps, {num_components}), got {arr.shape}."
+            )
+
+        if not np.allclose(tiled, tiled[:, :1, :], equal_nan=True):
+            raise ValueError(
+                f"Target '{name}' varies across steps but verify_time_invariant requires a time-invariant target."
+            )
+        return tiled[:, 0, :]

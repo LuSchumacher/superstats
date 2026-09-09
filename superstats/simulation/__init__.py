@@ -9,6 +9,7 @@ from .cognitive.cdm import sample_cdm
 from .cognitive.cpt import sample_cpt
 from .context.context_simulator import ContextSimulator
 from .context.context_mapping import ContextMapping
+from .design_matrix import DesignMatrix
 
 __all__ = [
     "Model",
@@ -20,4 +21,5 @@ __all__ = [
     "sample_cpt",
     "ContextSimulator",
     "ContextMapping",
+    "DesignMatrix",
 ]

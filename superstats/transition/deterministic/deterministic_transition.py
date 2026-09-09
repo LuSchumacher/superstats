@@ -63,6 +63,43 @@ class DeterministicTransition(ABC):
         self.hyper_specs = {}
         self.transition_name = self.__class__.__name__
 
+    @abstractmethod
+    def sample(self, batch_size: int, num_steps: int, context: Dict[str, Any] | None = None) -> Dict[str, Any]:
+        """Generate `batch_size` latent trajectories of length `num_steps`.
+
+        Parameters
+        ----------
+        batch_size : int
+            Number of independent trajectories to draw.
+        num_steps  : int
+            Number of time steps per trajectory (including initial state).
+        context : dict, optional
+            Externally generated context for context-dependent transitions.
+
+        Returns
+        -------
+        result : dict - dictionary with keys `deterministic_params`,
+            `hyper_params`, and `fixed_params`. `deterministic_params` is
+            an ndarray of shape (batch_size, steps).
+        """
+        raise NotImplementedError
+
+    def sample_from_parameters(
+        self,
+        params: Dict[str, np.ndarray | float],
+        batch_size: int,
+        num_steps: int,
+    ) -> np.ndarray:
+        """Generate trajectories from already-resolved transition parameters.
+
+        Subclasses used with posterior predictive resimulation should override
+        this method. ``params`` contains the subclass's own hyperparameter
+        names, independent of any name used by a :class:`JointPrior`.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} must implement sample_from_parameters() to support posterior resimulation."
+        )
+
     def _resolve(self, name: str, spec: ParamSpec) -> tuple[Prior | float, bool]:
         """Resolve a single hyperparameter spec to a value and sample flag.
 
@@ -177,40 +214,3 @@ class DeterministicTransition(ABC):
                 fixed_params[name] = value
 
         return hyper_params, fixed_params
-
-    @abstractmethod
-    def sample(self, batch_size: int, num_steps: int, context: Dict[str, Any] | None = None) -> Dict[str, Any]:
-        """Generate `batch_size` latent trajectories of length `num_steps`.
-
-        Parameters
-        ----------
-        batch_size : int
-            Number of independent trajectories to draw.
-        num_steps  : int
-            Number of time steps per trajectory (including initial state).
-        context : dict, optional
-            Externally generated context for context-dependent transitions.
-
-        Returns
-        -------
-        result : dict - dictionary with keys `deterministic_params`,
-            `hyper_params`, and `fixed_params`. `deterministic_params` is
-            an ndarray of shape (batch_size, steps).
-        """
-        raise NotImplementedError
-
-    def sample_from_parameters(
-        self,
-        params: Dict[str, np.ndarray | float],
-        batch_size: int,
-        num_steps: int,
-    ) -> np.ndarray:
-        """Generate trajectories from already-resolved transition parameters.
-
-        Subclasses used with posterior predictive resimulation should override
-        this method. ``params`` contains the subclass's own hyperparameter
-        names, independent of any name used by a :class:`JointPrior`.
-        """
-        raise NotImplementedError(
-            f"{type(self).__name__} must implement sample_from_parameters() to support posterior resimulation."
-        )

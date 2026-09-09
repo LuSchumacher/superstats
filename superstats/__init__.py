@@ -6,7 +6,7 @@ from . import prior, diagnostics, simulation, workflow, networks
 from .prior import JointPrior, Prior
 from .simulation import Model
 from .workflow import Workflow
-from .simulation import ContextMapping, ContextSimulator
+from .simulation import ContextMapping, ContextSimulator, DesignMatrix
 
 _logging.basicConfig(level=_logging.INFO)
 _logging.getLogger(__name__).setLevel(_logging.INFO)
@@ -23,6 +23,7 @@ __all__ = [
     "Workflow",
     "ContextMapping",
     "ContextSimulator",
+    "DesignMatrix",
 ]
 
 del _logging
