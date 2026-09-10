@@ -64,7 +64,7 @@ class DeterministicTransition(ABC):
         self.transition_name = self.__class__.__name__
 
     @abstractmethod
-    def sample(self, batch_size: int, num_steps: int, context: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
         """Generate `batch_size` latent trajectories of length `num_steps`.
 
         Parameters
@@ -73,9 +73,6 @@ class DeterministicTransition(ABC):
             Number of independent trajectories to draw.
         num_steps  : int
             Number of time steps per trajectory (including initial state).
-        context : dict, optional
-            Externally generated context for context-dependent transitions.
-
         Returns
         -------
         result : dict - dictionary with keys `deterministic_params`,

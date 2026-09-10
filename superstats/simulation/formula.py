@@ -19,7 +19,7 @@ BINARY_OPERATORS = {
 UNARY_OPERATORS = {ast.UAdd: operator.pos, ast.USub: operator.neg}
 
 
-class DesignMatrix:
+class Formula:
     """Resolve parameter-regression formulas against sampled parameters and context.
 
     A formula assigns one simulator parameter, for example
@@ -68,7 +68,7 @@ class DesignMatrix:
         such as ``v_0`` and ``b_v`` remain available for later formulas, while
         the simulator receives the resolved target ``v``.
 
-        Formulas are evaluated in the order supplied to :class:`DesignMatrix`.
+        Formulas are evaluated in the order supplied to :class:`Formula`.
         Consequently, a formula may refer to a target produced by an earlier
         formula. Parameter names and context names share one namespace; the
         same name in both mappings is rejected as ambiguous.
@@ -83,7 +83,7 @@ class DesignMatrix:
             Optional mapping of covariate names to scalars or arrays. A
             trial-level covariate normally has shape
             ``(batch_size, num_steps)``. It is commonly the
-            ``design_context`` supplied by :class:`ContextMapping`.
+            ``formula_context`` supplied by :class:`ContextMapping`.
 
         Returns
         -------
@@ -147,7 +147,7 @@ class DesignMatrix:
             raise ValueError(f"Formula target must be a single variable name in {formula!r}.")
 
         expression = assignment.value
-        DesignMatrix._validate_expression(expression, formula)
+        Formula._validate_expression(expression, formula)
         return assignment.targets[0].id, expression
 
     @staticmethod

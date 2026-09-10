@@ -5,6 +5,7 @@ from collections.abc import Mapping, Sequence
 import inspect
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 
 from superstats.prior.joint_prior import JointPrior
 from superstats.diagnostics.plots.prior_push_forward import plot_push_forward
@@ -48,13 +49,15 @@ class Model:
         `RandomChoiceContamination` configured with `infer=True` contributes
         its probability and transition parameters to this model's parameter
         categories.
-    context : ContextSimulator or None, optional, default: None
-        Generator for externally defined context variables. Generated context
-        is routed according to ``context_mapping`` on each sample.
+    context : ContextSimulator, Mapping, pandas.DataFrame, or None, optional, default: None
+        Source of externally defined context variables. A ``ContextSimulator``
+        generates new context for every sample. A mapping or DataFrame is
+        treated as fixed trial-level context and repeated across the batch;
+        DataFrame columns become context variables.
     context_mapping : ContextMapping or None, optional, default: None
-        Names of generated context variables consumed by transitions, the
-        optional design matrix, and the simulator.
-    design_matrix : callable or object with ``resolve``, optional, default: None
+        Names of context variables consumed by the optional formula and the
+        simulator.
+    formula : callable or object with ``resolve``, optional, default: None
         Parameter resolver called as ``resolve(parameters=..., context=...)``
         before the simulator runs.
 
@@ -71,18 +74,20 @@ class Model:
         simulator: Callable,
         missing: MissingProcess | Callable | Literal["random"] | None = "random",
         contamination: ContaminationProcess | Callable | Literal["random_choice"] | None = None,
-        context: ContextSimulator | None = None,
+        context: ContextSimulator | Mapping[str, Any] | pd.DataFrame | None = None,
         context_mapping: ContextMapping | None = None,
-        design_matrix: Any | None = None,
+        formula: Any | None = None,
     ):
         self.prior = prior
         self.simulator = simulator
-        self.context_simulator = context
+        self.context = context
         self.context_mapping = context_mapping or ContextMapping()
-        self.design_matrix = design_matrix
+        self.formula = formula
 
         if context_mapping is not None and context is None:
-            raise ValueError("context_mapping requires a context simulator.")
+            raise ValueError("context_mapping requires context.")
+        if context is not None and not isinstance(context, (ContextSimulator, Mapping, pd.DataFrame)):
+            raise TypeError("context must be a ContextSimulator, mapping, pandas DataFrame, or None.")
 
         self.missing = find_missing(missing)
 
@@ -98,12 +103,8 @@ class Model:
         self.param_order = [name for name in self.signature.parameters if name != "context"]
 
         # Run a pilot draw to determine key groups once
-        pilot_context, pilot_contexts = self._generate_context(batch_size=1, num_steps=1)
-        pilot = self.prior.sample(
-            batch_size=1,
-            num_steps=1,
-            context=pilot_contexts["transition_context"],
-        )
+        pilot_context, pilot_contexts = self._generate_context(batch_size=1, num_steps=1, pilot=True)
+        pilot = self.prior.sample(batch_size=1, num_steps=1)
         self.local_keys = list(pilot["local_params"].keys()) if pilot.get("local_params") else []
         self.deterministic_keys = (
             list(pilot["deterministic_params"].keys()) if pilot.get("deterministic_params") else []
@@ -178,7 +179,7 @@ class Model:
             shape (batch_size, num_steps), corrupted by
             `self.missing` if one is configured.
             - one entry per generated context variable, retaining the
-            shape returned by `self.context_simulator`.
+            leading batch and time dimensions.
             - `"time_steps"`: shape (batch_size, num_steps), each row
             equal to `1..num_steps`.
             - `"missing_mask"`: included only if `self.missing`
@@ -211,11 +212,7 @@ class Model:
         """
         # Sample parameters
         generated_context, contexts = self._generate_context(batch_size=batch_size, num_steps=num_steps)
-        prior_draws = self.prior.sample(
-            batch_size=batch_size,
-            num_steps=num_steps,
-            context=contexts["transition_context"],
-        )
+        prior_draws = self.prior.sample(batch_size=batch_size, num_steps=num_steps)
         local_params = prior_draws["local_params"]
         deterministic_params = prior_draws.get("deterministic_params", {})
         shared_params = prior_draws.get("shared_params", {})
@@ -226,11 +223,11 @@ class Model:
         combined_params.update(deterministic_params)
         combined_params.update(shared_params)
 
-        # Keep every fixed draw available to the design matrix. Parameters
+        # Keep every fixed draw available to the formula. Parameters
         # not consumed by the simulator are ignored by `_ordered_model_args`.
         combined_params.update(fixed_params)
 
-        model_params = self._resolve_design_matrix(combined_params, contexts["design_context"])
+        model_params = self._resolve_formula(combined_params, contexts["formula_context"])
         model_params, simulator_context = self._apply_simulator_context(model_params, contexts["simulator_context"])
         ordered_params = self._ordered_model_args(
             model_params,
@@ -407,6 +404,12 @@ class Model:
             Number of independent simulation batches.
         num_steps  : int
             Number of time steps per trajectory.
+        context    : Mapping or pandas.DataFrame or None, optional, default: None
+            Context for this simulation call. A mapping may contain already
+            batched arrays with shape ``(batch_size, num_steps, ...)`` or one
+            fixed trial sequence with shape ``(num_steps, ...)``. A DataFrame
+            is interpreted as one fixed sequence and repeated across batches.
+            If omitted, the model's configured context source is used.
 
         Returns
         -------
@@ -420,10 +423,12 @@ class Model:
             If a required parameter is missing from `params` and has no
             default in the simulator signature, or has an unsupported shape.
         """
-        contexts = (
-            self.context_mapping.split(context) if context is not None else self._sample_context(batch_size, num_steps)
-        )
-        combined_params = self._resolve_design_matrix(dict(params), contexts["design_context"])
+        if context is None:
+            contexts = self._sample_context(batch_size, num_steps)
+        else:
+            raw_context = self._coerce_fixed_context(context, batch_size, num_steps, allow_batched=True)
+            contexts = self.context_mapping.split(raw_context)
+        combined_params = self._resolve_formula(dict(params), contexts["formula_context"])
         combined_params, simulator_context = self._apply_simulator_context(
             combined_params, contexts["simulator_context"]
         )
@@ -438,22 +443,70 @@ class Model:
         model_output = self._call_simulator(ordered_params, simulator_context)
         return self._reshape_model_output(model_output, batch_size, num_steps, expected_data_keys=self.data_keys)
 
-    def _generate_context(self, batch_size: int, num_steps: int) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    def _generate_context(
+        self,
+        batch_size: int,
+        num_steps: int,
+        pilot: bool = False,
+    ) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
         """Generate context and split it for the model's consumers."""
-        if self.context_simulator is None:
+        if self.context is None:
             return {}, {
-                "transition_context": {},
                 "simulator_context": {},
-                "design_context": {},
+                "formula_context": {},
             }
 
-        context = self.context_simulator.sample(batch_size=batch_size, num_steps=num_steps)
+        if isinstance(self.context, ContextSimulator):
+            context = self.context.sample(batch_size=batch_size, num_steps=num_steps)
+        else:
+            context = self._coerce_fixed_context(self.context, batch_size, num_steps, pilot=pilot)
         return context, self.context_mapping.split(context)
 
     def _sample_context(self, batch_size: int, num_steps: int) -> dict[str, dict[str, Any]]:
         """Generate and split context when the raw output is not needed."""
         _, contexts = self._generate_context(batch_size, num_steps)
         return contexts
+
+    @staticmethod
+    def _coerce_fixed_context(
+        context: Mapping[str, Any] | pd.DataFrame,
+        batch_size: int,
+        num_steps: int,
+        pilot: bool = False,
+        allow_batched: bool = False,
+    ) -> dict[str, np.ndarray]:
+        """Repeat fixed trial-level context across simulation batches."""
+        if isinstance(context, pd.DataFrame):
+            if not context.columns.is_unique:
+                raise ValueError("Fixed context DataFrame columns must be unique.")
+            values = {column: context[column].to_numpy() for column in context.columns}
+        elif isinstance(context, Mapping):
+            values = dict(context)
+        else:
+            raise TypeError("Fixed context must be a mapping or pandas DataFrame.")
+
+        if any(not isinstance(name, str) for name in values):
+            raise TypeError("Context variable names must be strings.")
+
+        result = {}
+        for name, value in values.items():
+            array = np.asarray(value)
+            if array.ndim == 0:
+                result[name] = np.full((batch_size, num_steps), array.item(), dtype=array.dtype)
+                continue
+            if allow_batched and array.ndim >= 2 and array.shape[:2] == (batch_size, num_steps):
+                result[name] = array
+                continue
+            if array.shape[0] == 0:
+                raise ValueError(f"Fixed context variable {name!r} cannot be empty.")
+            if pilot:
+                array = array[:1]
+            elif array.shape[0] != num_steps:
+                raise ValueError(
+                    f"Fixed context variable {name!r} must have {num_steps} trial rows, got {array.shape[0]}."
+                )
+            result[name] = np.broadcast_to(array[None, ...], (batch_size, *array.shape))
+        return result
 
     @staticmethod
     def _accepts_context(callable_: Callable) -> bool:
@@ -463,21 +516,21 @@ class Model:
             parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in signature.parameters.values()
         )
 
-    def _resolve_design_matrix(
+    def _resolve_formula(
         self,
         parameters: Dict[str, np.ndarray],
         context: Mapping[str, Any],
     ) -> Dict[str, np.ndarray]:
-        """Resolve model parameters through the optional design matrix."""
-        if self.design_matrix is None:
+        """Resolve model parameters through the optional formula."""
+        if self.formula is None:
             return parameters
 
-        resolver = getattr(self.design_matrix, "resolve", self.design_matrix)
+        resolver = getattr(self.formula, "resolve", self.formula)
         if not callable(resolver):
-            raise TypeError("design_matrix must be callable or provide a callable resolve method.")
+            raise TypeError("formula must be callable or provide a callable resolve method.")
         resolved = resolver(parameters=parameters, context=context)
         if not isinstance(resolved, Mapping):
-            raise TypeError("design_matrix must return a mapping of simulator parameters.")
+            raise TypeError("formula must return a mapping of simulator parameters.")
         return dict(resolved)
 
     def _call_simulator(self, ordered_params: list, context: Mapping[str, Any]) -> Mapping[str, np.ndarray]:
@@ -575,7 +628,7 @@ class Model:
         combined_params.update(prior_draws.get("fixed_params", {}))
 
         contexts = contexts or self._sample_context(batch_size=1, num_steps=1)
-        model_params = self._resolve_design_matrix(combined_params, contexts["design_context"])
+        model_params = self._resolve_formula(combined_params, contexts["formula_context"])
         model_params, simulator_context = self._apply_simulator_context(model_params, contexts["simulator_context"])
         ordered_params = self._ordered_model_args(
             model_params,

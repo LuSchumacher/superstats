@@ -5,9 +5,15 @@ from typing import Any
 
 @dataclass(frozen=True)
 class ContextMapping:
-    transition_context: tuple[str, ...] = ()
+    """Route named context variables to formulas and simulators.
+
+    A variable may be listed for both consumers. Generated or fixed context
+    variables that are not listed remain in model outputs but are not passed
+    to either consumer.
+    """
+
     simulator_context: tuple[str, ...] = ()
-    design_context: tuple[str, ...] = ()
+    formula_context: tuple[str, ...] = ()
 
     def split(
         self,
@@ -16,9 +22,8 @@ class ContextMapping:
         available = set(context)
 
         requested = {
-            "transition_context": set(self.transition_context),
             "simulator_context": set(self.simulator_context),
-            "design_context": set(self.design_context),
+            "formula_context": set(self.formula_context),
         }
 
         missing = set().union(*requested.values()) - available
