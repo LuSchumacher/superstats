@@ -14,7 +14,6 @@ without losing the small-library overview.
    superstats.simulation
    superstats.simulation.cognitive
    superstats.workflow
-   superstats.networks
    superstats.diagnostics
    superstats.diagnostics.plots
    superstats.defaults
