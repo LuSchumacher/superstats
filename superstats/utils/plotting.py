@@ -16,6 +16,13 @@ UNCERTAINTY_BAND_LABELS = {
     "95hdi": "95% HDI",
 }
 
+UNCERTAINTY_BOUND_LABELS = {
+    "std": ("−1 SD", "+1 SD"),
+    "95ci": ("2.5th percentile", "97.5th percentile"),
+    "mad": ("−1.48 MAD", "+1.48 MAD"),
+    "95hdi": ("Lower 95% HDI", "Upper 95% HDI"),
+}
+
 
 def resolve_dist_alpha(
     dist_alpha: float | None,
@@ -36,6 +43,20 @@ def get_uncertainty_band_label(
 ) -> str:
     """Return the shared legend label for an uncertainty-band method."""
     return UNCERTAINTY_BAND_LABELS[uncertainty_fun] if isinstance(uncertainty_fun, str) else "Uncertainty"
+
+
+def get_uncertainty_bound_labels(
+    uncertainty_fun: str | Callable,
+) -> tuple[str, str]:
+    """Return separate legend labels for lower and upper uncertainty bounds."""
+    if isinstance(uncertainty_fun, str):
+        return UNCERTAINTY_BOUND_LABELS[uncertainty_fun]
+    return "Lower uncertainty", "Upper uncertainty"
+
+
+def get_uncertainty_band_alphas(alpha: float) -> tuple[float, float]:
+    """Return distinct lower- and upper-band opacities."""
+    return alpha, alpha * 0.5
 
 
 def smooth_trajectories(
@@ -108,21 +129,38 @@ def plot_uncertainty_band(
     color: str,
     alpha: float,
     zorder: float = 1,
+    center: np.ndarray | None = None,
 ) -> bool:
-    """Draw a non-zero-width uncertainty band and report its visibility."""
-    finite = np.isfinite(lower) & np.isfinite(upper)
-    visible = np.any(finite & ~np.isclose(lower, upper))
-    if visible:
+    """Shade lower and upper uncertainty regions with distinct opacity."""
+    if center is None:
+        center = (np.asarray(lower) + np.asarray(upper)) / 2
+
+    finite = np.isfinite(lower) & np.isfinite(center) & np.isfinite(upper)
+    lower_visible = np.any(finite & ~np.isclose(lower, center))
+    upper_visible = np.any(finite & ~np.isclose(center, upper))
+    lower_alpha, upper_alpha = get_uncertainty_band_alphas(alpha)
+
+    if lower_visible:
         ax.fill_between(
             steps,
             lower,
-            upper,
+            center,
             color=color,
-            alpha=alpha,
+            alpha=lower_alpha,
             edgecolor="none",
             zorder=zorder,
         )
-    return bool(visible)
+    if upper_visible:
+        ax.fill_between(
+            steps,
+            center,
+            upper,
+            color=color,
+            alpha=upper_alpha,
+            edgecolor="none",
+            zorder=zorder,
+        )
+    return bool(lower_visible or upper_visible)
 
 
 def get_default_num_cols(

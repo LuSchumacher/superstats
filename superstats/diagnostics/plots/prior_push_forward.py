@@ -26,16 +26,12 @@ from superstats.utils.indexing import format_dataset_label
 from superstats.utils.plotting import (
     get_default_num_cols,
     get_layout,
+    get_uncertainty_band_alphas,
+    get_uncertainty_bound_labels,
     plot_dist,
+    plot_uncertainty_band,
     resolve_dist_alpha,
 )
-
-BAND_LABELS = {
-    "std": "±1 SD",
-    "95ci": "95% CI",
-    "mad": "±1.48 MAD",
-    "95hdi": "95% HDI",
-}
 
 
 def _select_data_variable(data: Mapping[str, np.ndarray], data_dim: int | str) -> np.ndarray:
@@ -244,14 +240,15 @@ def plot_push_forward(
                 else:
                     raise ValueError("uncertainty_fun must be 'std', '95ci', 'mad', '95hdi', or callable.")
 
-                ax.fill_between(
+                plot_uncertainty_band(
+                    ax,
                     t,
                     lower,
                     upper,
-                    color=color,
+                    color,
                     alpha=0.4,
-                    edgecolor="none",
                     zorder=1,
+                    center=center,
                 )
 
             if spaghetti:
@@ -322,14 +319,13 @@ def plot_push_forward(
                 mlines.Line2D([], [], color=color, linewidth=2.5, label=aggregate_label),
             ]
             if show_uncertainty:
-                band_label = BAND_LABELS[uncertainty_fun] if isinstance(uncertainty_fun, str) else "Uncertainty"
-                handles.append(
-                    mpatches.Patch(
-                        facecolor=color,
-                        alpha=0.4,
-                        edgecolor="none",
-                        label=band_label,
-                    )
+                lower_label, upper_label = get_uncertainty_bound_labels(uncertainty_fun)
+                lower_alpha, upper_alpha = get_uncertainty_band_alphas(0.4)
+                handles.extend(
+                    [
+                        mpatches.Patch(facecolor=color, alpha=lower_alpha, edgecolor="none", label=lower_label),
+                        mpatches.Patch(facecolor=color, alpha=upper_alpha, edgecolor="none", label=upper_label),
+                    ]
                 )
             if spaghetti:
                 handles.append(

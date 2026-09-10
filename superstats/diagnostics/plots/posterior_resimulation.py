@@ -25,7 +25,8 @@ from superstats.utils.indexing import format_dataset_label, normalize_data_indic
 from superstats.utils.plotting import (
     compute_uncertainty_band,
     get_default_num_cols,
-    get_uncertainty_band_label,
+    get_uncertainty_band_alphas,
+    get_uncertainty_bound_labels,
     get_layout,
     plot_dist,
     plot_uncertainty_band,
@@ -351,6 +352,7 @@ def plot_posterior_resimulation(
                     upper,
                     color,
                     alpha=0.3,
+                    center=center,
                 )
 
             if spaghetti:
@@ -449,6 +451,7 @@ def plot_posterior_resimulation(
                         upper,
                         color,
                         alpha=0.3,
+                        center=center,
                     )
 
                 if spaghetti:
@@ -512,8 +515,14 @@ def plot_posterior_resimulation(
             mlines.Line2D([], [], color=color, linewidth=2.0, label=agg_label),
         ]
         if has_uncertainty_band:
-            band_label = get_uncertainty_band_label(uncertainty_fun)
-            handles.append(mpatches.Patch(facecolor=color, alpha=0.3, edgecolor="none", label=band_label))
+            lower_label, upper_label = get_uncertainty_bound_labels(uncertainty_fun)
+            lower_alpha, upper_alpha = get_uncertainty_band_alphas(0.3)
+            handles.extend(
+                [
+                    mpatches.Patch(facecolor=color, alpha=lower_alpha, edgecolor="none", label=lower_label),
+                    mpatches.Patch(facecolor=color, alpha=upper_alpha, edgecolor="none", label=upper_label),
+                ]
+            )
         if spaghetti:
             handles.append(mlines.Line2D([], [], color=color, linewidth=1.0, alpha=1, label="Individual"))
 
