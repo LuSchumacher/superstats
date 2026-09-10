@@ -125,15 +125,16 @@ class Workflow:
         hyper_keys = model.hyper_keys
         shared_keys = model.shared_keys
         data_keys = model.data_keys
+        summary_data_keys = getattr(model, "summary_keys", data_keys)
 
         adapter = (
             bf.Adapter()
             .convert_dtype("float64", "float32")
-            .as_time_series(["time_steps", *data_keys])
+            .as_time_series(["time_steps", *summary_data_keys])
             .concatenate(local_keys + hyper_keys + shared_keys, into="inference_variables")
         )
 
-        summary_keys = ["time_steps", *data_keys]
+        summary_keys = ["time_steps", *summary_data_keys]
         if hasattr(model, "has_mask") and model.has_mask:
             adapter = adapter.as_time_series("missing_mask")
             adapter = adapter.concatenate([*summary_keys, "missing_mask"], into="summary_variables")
@@ -189,9 +190,10 @@ class Workflow:
             return conditions
 
         data_keys = self.model.data_keys
-        missing_keys = [key for key in data_keys if key not in conditions]
+        summary_data_keys = getattr(self.model, "summary_keys", data_keys)
+        missing_keys = [key for key in summary_data_keys if key not in conditions]
         if missing_keys:
-            raise KeyError(f"Missing observed data keys {missing_keys!r}. Expected keys: {data_keys!r}.")
+            raise KeyError(f"Missing summary keys {missing_keys!r}. Expected keys: {summary_data_keys!r}.")
 
         first = conditions[data_keys[0]]
         num_datasets = first.shape[0]
@@ -206,6 +208,11 @@ class Workflow:
                 f"'time_steps' must have shape {(num_datasets, num_steps)}, got {conditions['time_steps'].shape}."
             )
 
+        for key in summary_data_keys:
+            value = np.asarray(conditions[key])
+            if value.ndim < 2 or value.shape[:2] != (num_datasets, num_steps):
+                raise ValueError(f"'{key}' must have leading shape {(num_datasets, num_steps)}, got {value.shape}.")
+
         if getattr(self.model, "has_mask", False):
             if "missing_mask" not in conditions:
                 log_warning("No missing_mask provided although model has missingness; assuming no missings.")
@@ -217,7 +224,7 @@ class Workflow:
                     f"got {conditions['missing_mask'].shape}."
                 )
 
-        remaining_keys = data_keys + ["missing_mask", "time_steps"]
+        remaining_keys = summary_data_keys + ["missing_mask", "time_steps"]
         conditions = {k: v for k, v in conditions.items() if k in remaining_keys}
 
         return conditions
