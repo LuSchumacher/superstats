@@ -50,14 +50,14 @@ class Workflow:
 
     Parameters
     ----------
-    model            : Model or None, optional, default: None
+    model                : Model or None, optional, default: None
         The model used for training and, when `adapter` is not
         provided, for building a default adapter. Required in that case.
     adapter              : Adapter or None, optional, default: None
         Data adapter for the workflow. If None, a default adapter is
         built from the stochastic `model.local_keys`, `model.hyper_keys`,
         and `model.shared_keys` (which requires `model` to be set).
-    embedding_network      : {"recurrent", "transformer"} or keras.Layer, optional, default: "recurrent".
+    embedding_network    : {"recurrent", "transformer"} or keras.Layer, optional, default: "recurrent".
         String names build a default embedding network; otherwise, an already-created Keras layer is used directly.
     inference_network    : {"coupling", "coupling_flow"} or keras.Layer, optional, default: "coupling".
         String names build a default inference network; otherwise, an already-created Keras
@@ -154,16 +154,16 @@ class Workflow:
 
         Parameters
         ----------
-        data                 : dict of np.ndarray
+        data        : dict of np.ndarray
             Observed data to condition on, keyed by the model's
             named observation variables. Each value should have shape
             (num_datasets, num_steps). If `time_steps` is omitted, it is
             generated automatically. If the model was configured with
             missingness and `missing_mask` is omitted, an all-observed
             mask is generated automatically.
-        num_samples          : int, optional, default: 500
+        num_samples : int, optional, default: 500
             Number of posterior samples per dataset.
-        batch_size : int, optional, default: 4
+        batch_size  : int, optional, default: 4
             Datasets per GPU batch, to avoid out-of-memory errors.
         **kwargs
             Forwarded to `self.approximator.sample`.
@@ -197,12 +197,12 @@ class Workflow:
             Posterior estimates returned by `self.sample`. Each array
             should have shape (batch_size, num_samples, num_steps, dim)
             or (batch_size, num_samples, num_steps).
-        num_sims          : int, optional, default: 10
+        num_sims  : int, optional, default: 10
             Number of posterior predictive trajectories to simulate
             per dataset.
-        rng               : int or np.random.Generator or None, optional, default: None
+        rng       : int or np.random.Generator or None, optional, default: None
             Random seed or generator for sampling posterior indices.
-        data_idx          : int, sequence of int, or None, optional, default: None
+        data_idx  : int, sequence of int, or None, optional, default: None
             Dataset indices to resimulate. None selects all datasets.
             A single integer still preserves the dataset axis, and a
             sequence preserves the requested order.
@@ -430,14 +430,14 @@ class Workflow:
 
         Parameters
         ----------
-        history : keras.callbacks.History
+        history        : keras.callbacks.History
             Training history, e.g. from `fit_offline`, `fit_online`, or
             `self.history`.
         title_fontsize : int, optional, default: 22
             Font size for panel titles.
         label_fontsize : int, optional, default: 18
             Font size for axis labels and the legend.
-        tick_fontsize : int, optional, default: 16
+        tick_fontsize  : int, optional, default: 16
             Font size for axis tick labels.
         **kwargs
             Additional keyword arguments forwarded to
@@ -526,9 +526,50 @@ class Workflow:
     ):
         """Plot local-parameter recovery at selected time steps.
 
-        `time_steps` contains zero-based indices and may be a single
-        integer or a sequence. Plot arguments are forwarded to
-        `plot_recovery`.
+        This converts selected slices of time-varying posterior estimates
+        into the time-invariant layout expected by `plot_recovery`. When
+        multiple steps are requested, each parameter-step pair is displayed
+        as a separate recovery panel.
+
+        Parameters
+        ----------
+        targets        : Mapping[str, np.ndarray]
+            Ground-truth local parameter trajectories keyed by parameter
+            name. Each value must have shape
+            ``(num_datasets, num_steps, 1)``.
+        estimates      : Mapping[str, np.ndarray]
+            Posterior draws keyed by parameter name. Each value must have
+            shape ``(num_datasets, num_samples, num_steps, 1)`` and match
+            the corresponding target's dataset and time dimensions.
+        time_steps     : int or sequence of int
+            Zero-based time-step indices to plot. Negative indices follow
+            standard Python indexing, so ``-1`` selects the final step. At
+            least one index is required.
+        variable_keys  : sequence of str or None, optional, default: None
+            Parameters to select and their display order. Defaults to
+            ``self.model.local_keys``.
+        variable_names : sequence of str or None, optional, default: None
+            Display names corresponding to ``variable_keys``. Defaults to
+            the selected keys. When multiple steps are requested, the
+            normalized step index is appended to every display name.
+        **kwargs
+            Additional keyword arguments forwarded to `plot_recovery`, such
+            as ``uncertainty_agg``, ``color``, ``title_fontsize``,
+            ``label_fontsize``, and ``tick_fontsize``.
+
+        Returns
+        -------
+        fig : plt.Figure
+            The recovery diagnostic figure.
+
+        Raises
+        ------
+        TypeError
+            If ``time_steps`` is not an integer or sequence of integers.
+        ValueError
+            If no variables are selected, a selected key is missing, names
+            and keys have different lengths, arrays have invalid or
+            inconsistent shapes, or a time-step index is out of range.
         """
         estimates_arr, targets_arr, names = self._prepare_time_varying_at_steps(
             targets,
@@ -555,9 +596,50 @@ class Workflow:
     ):
         """Plot local-parameter calibration at selected time steps.
 
-        `time_steps` contains zero-based indices and may be a single
-        integer or a sequence. Plot arguments are forwarded to
-        `plot_calibration`.
+        This converts selected slices of time-varying posterior estimates
+        into the time-invariant layout expected by `plot_calibration`. When
+        multiple steps are requested, each parameter-step pair is displayed
+        as a separate calibration panel.
+
+        Parameters
+        ----------
+        targets        : Mapping[str, np.ndarray]
+            Ground-truth local parameter trajectories keyed by parameter
+            name. Each value must have shape
+            ``(num_datasets, num_steps, 1)``.
+        estimates      : Mapping[str, np.ndarray]
+            Posterior draws keyed by parameter name. Each value must have
+            shape ``(num_datasets, num_samples, num_steps, 1)`` and match
+            the corresponding target's dataset and time dimensions.
+        time_steps     : int or sequence of int
+            Zero-based time-step indices to plot. Negative indices follow
+            standard Python indexing, so ``-1`` selects the final step. At
+            least one index is required.
+        variable_keys  : sequence of str or None, optional, default: None
+            Parameters to select and their display order. Defaults to
+            ``self.model.local_keys``.
+        variable_names : sequence of str or None, optional, default: None
+            Display names corresponding to ``variable_keys``. Defaults to
+            the selected keys. When multiple steps are requested, the
+            normalized step index is appended to every display name.
+        **kwargs
+            Additional keyword arguments forwarded to `plot_calibration`,
+            such as ``difference``, ``stacked``, ``color``,
+            ``title_fontsize``, ``label_fontsize``, and ``tick_fontsize``.
+
+        Returns
+        -------
+        fig : plt.Figure
+            The calibration ECDF figure.
+
+        Raises
+        ------
+        TypeError
+            If ``time_steps`` is not an integer or sequence of integers.
+        ValueError
+            If no variables are selected, a selected key is missing, names
+            and keys have different lengths, arrays have invalid or
+            inconsistent shapes, or a time-step index is out of range.
         """
         estimates_arr, targets_arr, names = self._prepare_time_varying_at_steps(
             targets,
@@ -584,9 +666,50 @@ class Workflow:
     ):
         """Plot local-parameter z-scores and contraction at selected steps.
 
-        `time_steps` contains zero-based indices and may be a single
-        integer or a sequence. Plot arguments are forwarded to
-        `plot_z_score_contraction`.
+        This converts selected slices of time-varying posterior estimates
+        into the time-invariant layout expected by
+        `plot_z_score_contraction`. When multiple steps are requested, each
+        parameter-step pair is displayed as a separate panel.
+
+        Parameters
+        ----------
+        targets        : Mapping[str, np.ndarray]
+            Ground-truth local parameter trajectories keyed by parameter
+            name. Each value must have shape
+            ``(num_datasets, num_steps, 1)``.
+        estimates      : Mapping[str, np.ndarray]
+            Posterior draws keyed by parameter name. Each value must have
+            shape ``(num_datasets, num_samples, num_steps, 1)`` and match
+            the corresponding target's dataset and time dimensions.
+        time_steps     : int or sequence of int
+            Zero-based time-step indices to plot. Negative indices follow
+            standard Python indexing, so ``-1`` selects the final step. At
+            least one index is required.
+        variable_keys  : sequence of str or None, optional, default: None
+            Parameters to select and their display order. Defaults to
+            ``self.model.local_keys``.
+        variable_names : sequence of str or None, optional, default: None
+            Display names corresponding to ``variable_keys``. Defaults to
+            the selected keys. When multiple steps are requested, the
+            normalized step index is appended to every display name.
+        **kwargs
+            Additional keyword arguments forwarded to
+            `plot_z_score_contraction`, such as ``color``, ``markersize``,
+            ``title_fontsize``, ``label_fontsize``, and ``tick_fontsize``.
+
+        Returns
+        -------
+        fig : plt.Figure
+            The z-score and posterior-contraction diagnostic figure.
+
+        Raises
+        ------
+        TypeError
+            If ``time_steps`` is not an integer or sequence of integers.
+        ValueError
+            If no variables are selected, a selected key is missing, names
+            and keys have different lengths, arrays have invalid or
+            inconsistent shapes, or a time-step index is out of range.
         """
         estimates_arr, targets_arr, names = self._prepare_time_varying_at_steps(
             targets,
@@ -1034,15 +1157,15 @@ class Workflow:
 
         Parameters
         ----------
-        df           : pd.DataFrame
+        df            : pd.DataFrame
             Long-format data with one row per (dataset, step). Must contain
             `id_col`, `time_col` (if given), and every key in
             `data_mapping`.
-        id_col       : str
+        id_col        : str
             Name of the column in `df` identifying which dataset/sequence
             each row belongs to. Rows are grouped by this column, in order
             of first appearance, to form the batch dimension.
-        data_mapping : Mapping[str, str]
+        data_mapping  : Mapping[str, str]
             Maps a column name in `df` to the corresponding key expected by
             the model, e.g. `{"rt": "response_time", "correct":
             "choice"}`. The set of values (not keys) must exactly match
@@ -1050,7 +1173,7 @@ class Workflow:
         missing_value : int or float
             Sentinel value marking a missing observation, and used to
             initialize/pad positions with no corresponding row.
-        time_col     : str or None, optional, default: None
+        time_col      : str or None, optional, default: None
             Name of the column in `df` giving each row's discrete time
             label. If None, rows are placed by order of appearance within
             their `id_col` group instead.

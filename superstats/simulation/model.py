@@ -27,14 +27,14 @@ class Model:
 
     Parameters
     ----------
-    prior : JointPrior
+    prior           : JointPrior
         The joint prior distribution over simulator parameters, which may
         include both time-varying transitions and time-invariant priors.
-    simulator : Callable
+    simulator       : Callable
         The simulation function that takes parameter values and returns
         simulated data. The function signature determines the expected
         parameter names and order.
-    missing : MissingProcess, Callable, "random", or None, optional, default: "random"
+    missing         : MissingProcess, Callable, "random", or None, optional, default: "random"
         Process applied to simulated data to introduce missingness.
         - Not provided (default) or `"random"`: uses `RandomMissingProcess()`,
           the default MCAR missingness process.
@@ -44,12 +44,12 @@ class Model:
         - Plain `Callable`: must follow the same contract as
           `MissingProcess.__call__`, i.e.
           `(data_mapping, rng=None) -> filled_mapping | {"missing_mask": mask}`.
-    contamination : ContaminationProcess, Callable, "random_choice", or None, optional, default: None
+    contamination   : ContaminationProcess, Callable, "random_choice", or None, optional, default: None
         Process applied to simulated observations before missingness. A
         `RandomChoiceContamination` configured with `infer=True` contributes
         its probability and transition parameters to this model's parameter
         categories.
-    context : ContextSimulator, Mapping, pandas.DataFrame, or None, optional, default: None
+    context         : ContextSimulator, Mapping, pandas.DataFrame, or None, optional, default: None
         Source of externally defined context variables. A ``ContextSimulator``
         generates new context for every sample. A mapping or DataFrame is
         treated as fixed trial-level context and repeated across the batch;
