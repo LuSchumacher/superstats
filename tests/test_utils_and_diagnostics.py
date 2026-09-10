@@ -38,6 +38,7 @@ from superstats.utils.plotting import (
     compute_uncertainty_band,
     get_default_num_cols,
     get_layout,
+    get_uncertainty_bound_labels,
     plot_dist,
     plot_uncertainty_band,
     prepare_plot_data,
@@ -166,8 +167,23 @@ def test_shared_uncertainty_band_computes_and_draws_visible_intervals():
     )
 
     assert visible is True
-    assert ax.collections
+    assert len(ax.collections) == 2
+    assert not ax.lines
+    assert [collection.get_alpha() for collection in ax.collections] == [0.3, 0.15]
     plt.close(fig)
+
+
+@pytest.mark.parametrize(
+    ("uncertainty_fun", "expected"),
+    [
+        ("std", ("−1 SD", "+1 SD")),
+        ("95ci", ("2.5th percentile", "97.5th percentile")),
+        ("mad", ("−1.48 MAD", "+1.48 MAD")),
+        ("95hdi", ("Lower 95% HDI", "Upper 95% HDI")),
+    ],
+)
+def test_uncertainty_bounds_have_separate_legend_labels(uncertainty_fun, expected):
+    assert get_uncertainty_bound_labels(uncertainty_fun) == expected
 
 
 @pytest.mark.parametrize("dist_type", ["hist", "kde", "both"])

@@ -49,6 +49,41 @@ def test_plot_push_forward_accepts_named_data():
     plt.close(fig)
 
 
+def test_diagnostic_uncertainty_bounds_have_separate_legend_entries():
+    rng = np.random.default_rng(12)
+    trajectories = rng.normal(size=(3, 4, 5))
+    empirical = rng.normal(size=(3, 5))
+
+    figures = [
+        plot_push_forward(
+            {"value": trajectories[:, 0]},
+            kind="time_series",
+            aggregation=np.mean,
+            uncertainty_fun="std",
+            marginal=False,
+        ),
+        plot_time_varying_posterior(
+            {"value": trajectories[..., None]},
+            uncertainty_fun="std",
+            marginal=False,
+        ),
+        plot_posterior_resimulation(
+            {"value": trajectories},
+            {"value": empirical},
+            kind="time_series",
+            uncertainty_fun="std",
+            marginal=False,
+        ),
+    ]
+
+    for fig in figures:
+        labels = [text.get_text() for text in fig.legends[0].get_texts()]
+        assert "−1 SD" in labels
+        assert "+1 SD" in labels
+        assert "±1 SD" not in labels
+        plt.close(fig)
+
+
 def test_z_score_contraction_uses_shared_data_preparation_and_defaults(monkeypatch):
     captured = {}
     sentinel = object()
