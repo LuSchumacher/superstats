@@ -2,9 +2,9 @@ import numpy as np
 import pytest
 
 from superstats.prior import Prior
-from superstats.transition.stochastic_transitions import GaussianProcess
-from superstats.transition.stochastic_transitions.gaussian_process import sample_gaussian_process
-from superstats.transition.stochastic_transitions.kernel import (
+from superstats.transition.stochastic import GaussianProcess
+from superstats.transition.stochastic.gaussian_process import sample_gaussian_process
+from superstats.transition.stochastic.kernel import (
     CompositeKernel,
     Kernel,
     LinearKernel,

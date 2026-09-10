@@ -2,6 +2,7 @@
 
 from typing import Literal, Callable
 from collections.abc import Mapping, Sequence
+from numbers import Integral
 
 import functools
 import os
@@ -11,40 +12,54 @@ import pandas as pd
 
 import bayesflow as bf
 import keras
+import logging
 
 from bayesflow.adapters import Adapter
 
-from superstats.simulation import GenerativeModel
-from superstats.utils.dispatch import find_inference_network, find_summary_network
+from superstats.defaults import (
+    BASE_COLOR,
+    LABEL_FONTSIZE,
+    TICK_FONTSIZE,
+    TITLE_FONTSIZE,
+)
+from superstats.simulation import Model
+from superstats.utils.dispatch import find_inference_network, find_embedding_network
+from superstats.utils.indexing import normalize_data_indices
 from superstats.utils.logging import warning as log_warning
 from superstats.diagnostics.plots import (
     plot_time_varying_verification,
     plot_recovery,
     plot_calibration,
+    plot_z_score_contraction,
     plot_time_varying_posterior,
     plot_time_invariant_posterior,
 )
 
 
+class _SuppressCheckpointExistsWarning(logging.Filter):
+    def filter(self, record):
+        return "Checkpoint file exists" not in record.getMessage()
+
+
 class Workflow:
     """Lightweight amortized Bayesian inference workflow wrapper.
 
-    Wraps `bf.BasicWorkflow` with sensible defaults for the summary and
+    Wraps `bf.BasicWorkflow` with sensible defaults for the embedding and
     inference networks, an auto-built adapter when one isn't supplied,
     and optional checkpoint/history restoration.
 
     Parameters
     ----------
-    simulator         : GenerativeModel or None, optional, default: None
-        The simulator used for training and, when `adapter` is not
+    model            : Model or None, optional, default: None
+        The model used for training and, when `adapter` is not
         provided, for building a default adapter. Required in that case.
-    adapter           : Adapter or None, optional, default: None
+    adapter              : Adapter or None, optional, default: None
         Data adapter for the workflow. If None, a default adapter is
-        built from the stochastic `simulator.local_keys`, `simulator.hyper_keys`,
-        and `simulator.shared_keys` (which requires `simulator` to be set).
-    summary_network   : {"recurrent", "transformer"} or keras.Layer, optional, default: "recurrent".
-        String names build a default summary network; otherwise, an already-created Keras layer is used directly.
-    inference_network : {"coupling", "coupling_flow"} or keras.Layer, optional, default: "coupling".
+        built from the stochastic `model.local_keys`, `model.hyper_keys`,
+        and `model.shared_keys` (which requires `model` to be set).
+    embedding_network      : {"recurrent", "transformer"} or keras.Layer, optional, default: "recurrent".
+        String names build a default embedding network; otherwise, an already-created Keras layer is used directly.
+    inference_network    : {"coupling", "coupling_flow"} or keras.Layer, optional, default: "coupling".
         String names build a default inference network; otherwise, an already-created Keras
         layer is used directly.
     checkpoint_filepath  : str or None, optional, default: None
@@ -64,64 +79,63 @@ class Workflow:
 
     def __init__(
         self,
-        simulator: GenerativeModel | None = None,
+        model: Model | None = None,
         adapter: Adapter | None = None,
-        summary_network: Literal["recurrent", "transformer"] | keras.Layer = "recurrent",
+        embedding_network: Literal["recurrent", "transformer"] | keras.Layer = "recurrent",
         inference_network: Literal["coupling", "coupling_flow"] | keras.Layer = "coupling",
         checkpoint_filepath: str | None = None,
         restore_approximator: bool = True,
         restore_history: bool = True,
         **kwargs,
     ):
-        self.simulator = simulator
+        self.model = model
 
-        self.summary_network = find_summary_network(summary_network)
+        self.embedding_network = find_embedding_network(embedding_network)
         self.inference_network = find_inference_network(inference_network)
 
         if adapter is not None:
             self.adapter = adapter
         else:
-            self.adapter = self.default_adapter(simulator)
+            self.adapter = self.default_adapter(model)
 
         self.checkpoint_filepath = checkpoint_filepath
 
-        if restore_approximator and self.checkpoint_filepath is not None and os.path.isdir(self.checkpoint_filepath):
-            restore = True
-        elif restore_approximator:
-            restore = False
-        else:
-            restore = False
+        logging.getLogger("bayesflow").addFilter(_SuppressCheckpointExistsWarning())
 
         self.workflow = bf.BasicWorkflow(
-            simulator=self.simulator,
+            simulator=self.model,
             adapter=self.adapter,
-            summary_network=self.summary_network,
+            summary_network=self.embedding_network,
             inference_network=self.inference_network,
             standardize="all",
             checkpoint_filepath=self.checkpoint_filepath,
-            restore=restore,
             **kwargs,
         )
+
+        if restore_approximator and self.checkpoint_filepath is not None and os.path.isdir(self.checkpoint_filepath):
+            path = os.path.join(self.checkpoint_filepath, "model.keras")
+            self.approximator = keras.saving.load_model(path)
 
         if restore_history and self.checkpoint_filepath is not None and os.path.isdir(self.checkpoint_filepath):
             self._load_history()
 
     @staticmethod
-    def default_adapter(simulator):
-        local_keys = simulator.local_keys
-        hyper_keys = simulator.hyper_keys
-        shared_keys = simulator.shared_keys
-        data_keys = simulator.data_keys
+    def default_adapter(model):
+        local_keys = model.local_keys
+        hyper_keys = model.hyper_keys
+        shared_keys = model.shared_keys
+        data_keys = model.data_keys
+        summary_data_keys = getattr(model, "summary_keys", data_keys)
 
         adapter = (
             bf.Adapter()
             .convert_dtype("float64", "float32")
-            .as_time_series(["time_steps", *data_keys])
+            .as_time_series(["time_steps", *summary_data_keys])
             .concatenate(local_keys + hyper_keys + shared_keys, into="inference_variables")
         )
 
-        summary_keys = ["time_steps", *data_keys]
-        if hasattr(simulator, "has_mask") and simulator.has_mask:
+        summary_keys = ["time_steps", *summary_data_keys]
+        if hasattr(model, "has_mask") and model.has_mask:
             adapter = adapter.as_time_series("missing_mask")
             adapter = adapter.concatenate([*summary_keys, "missing_mask"], into="summary_variables")
         else:
@@ -172,13 +186,14 @@ class Workflow:
             raise TypeError(f"data must be a mapping of named arrays, got {type(data)}.")
 
         conditions = dict(data)
-        if self.simulator is None:
+        if self.model is None:
             return conditions
 
-        data_keys = self.simulator.data_keys
-        missing_keys = [key for key in data_keys if key not in conditions]
+        data_keys = self.model.data_keys
+        summary_data_keys = getattr(self.model, "summary_keys", data_keys)
+        missing_keys = [key for key in summary_data_keys if key not in conditions]
         if missing_keys:
-            raise KeyError(f"Missing observed data keys {missing_keys!r}. Expected keys: {data_keys!r}.")
+            raise KeyError(f"Missing summary keys {missing_keys!r}. Expected keys: {summary_data_keys!r}.")
 
         first = conditions[data_keys[0]]
         num_datasets = first.shape[0]
@@ -193,9 +208,14 @@ class Workflow:
                 f"'time_steps' must have shape {(num_datasets, num_steps)}, got {conditions['time_steps'].shape}."
             )
 
-        if getattr(self.simulator, "has_mask", False):
+        for key in summary_data_keys:
+            value = np.asarray(conditions[key])
+            if value.ndim < 2 or value.shape[:2] != (num_datasets, num_steps):
+                raise ValueError(f"'{key}' must have leading shape {(num_datasets, num_steps)}, got {value.shape}.")
+
+        if getattr(self.model, "has_mask", False):
             if "missing_mask" not in conditions:
-                log_warning("No missing_mask provided although simulator has missingness; assuming no missings.")
+                log_warning("No missing_mask provided although model has missingness; assuming no missings.")
                 conditions["missing_mask"] = np.zeros((num_datasets, num_steps), dtype=bool)
 
             elif conditions["missing_mask"].shape != (num_datasets, num_steps):
@@ -204,7 +224,7 @@ class Workflow:
                     f"got {conditions['missing_mask'].shape}."
                 )
 
-        remaining_keys = data_keys + ["missing_mask", "time_steps"]
+        remaining_keys = summary_data_keys + ["missing_mask", "time_steps"]
         conditions = {k: v for k, v in conditions.items() if k in remaining_keys}
 
         return conditions
@@ -256,7 +276,7 @@ class Workflow:
     ) -> keras.callbacks.History:
         """Train the approximator by simulating data on the fly.
 
-        Temporarily binds `self.simulator.sample` to always draw
+        Temporarily binds `self.model.sample` to always draw
         trajectories of length `num_steps` with `tile_to_steps=True`,
         then restores the original method afterward (even if training
         raises).
@@ -283,14 +303,14 @@ class Workflow:
         history : keras.callbacks.History - the training history for
             this run
         """
-        original_sample = self.simulator.sample
-        self.simulator.sample = functools.partial(original_sample, num_steps=num_steps, tile_to_steps=True)
+        original_sample = self.model.sample
+        self.model.sample = functools.partial(original_sample, num_steps=num_steps, tile_to_steps=True)
         try:
             history = self.workflow.fit_online(
                 epochs=epochs, num_batches_per_epoch=num_batches_per_epoch, batch_size=batch_size, **kwargs
             )
         finally:
-            self.simulator.sample = original_sample
+            self.model.sample = original_sample
 
         if save_history:
             self._save_history(history)
@@ -304,8 +324,18 @@ class Workflow:
 
     @property
     def approximator(self):
-        """The underlying trained bf approximator object."""
+        """The underlying trained BayesFlow approximator object.
+
+        Reads through to `self.workflow.approximator` by default (kept in
+        sync automatically by `bf.BasicWorkflow` during training), but can
+        be explicitly assigned - e.g. when restoring a checkpoint from
+        disk in `__init__`.
+        """
         return self.workflow.approximator
+
+    @approximator.setter
+    def approximator(self, value):
+        self.workflow.approximator = value
 
     def sample(
         self,
@@ -319,10 +349,10 @@ class Workflow:
         Parameters
         ----------
         data                 : dict of np.ndarray
-            Observed data to condition on, keyed by the simulator's
+            Observed data to condition on, keyed by the model's
             named observation variables. Each value should have shape
             (num_datasets, num_steps). If `time_steps` is omitted, it is
-            generated automatically. If the simulator was configured with
+            generated automatically. If the model was configured with
             missingness and `missing_mask` is omitted, an all-observed
             mask is generated automatically.
         num_samples          : int, optional, default: 500
@@ -346,18 +376,19 @@ class Workflow:
         )
         return samples
 
-    def resimulate_posterior(
+    def resimulate(
         self,
-        posterior_samples: Mapping[str, np.ndarray],
+        estimates: Mapping[str, np.ndarray],
         num_sims: int = 10,
         rng=None,
+        data_idx: int | Sequence[int] | None = None,
     ) -> dict[str, np.ndarray]:
         """Generate posterior predictive simulations from posterior parameter draws.
 
         Parameters
         ----------
-        posterior_samples : dict of np.ndarray
-            Posterior samples returned by `self.sample`. Each array
+        estimates : dict of np.ndarray
+            Posterior estimates returned by `self.sample`. Each array
             should have shape (batch_size, num_samples, num_steps, dim)
             or (batch_size, num_samples, num_steps).
         num_sims          : int, optional, default: 10
@@ -365,17 +396,21 @@ class Workflow:
             per dataset.
         rng               : int or np.random.Generator or None, optional, default: None
             Random seed or generator for sampling posterior indices.
+        data_idx          : int, sequence of int, or None, optional, default: None
+            Dataset indices to resimulate. None selects all datasets.
+            A single integer still preserves the dataset axis, and a
+            sequence preserves the requested order.
 
         Returns
         -------
         sim_data : dict of np.ndarray
             Named simulated variables. Each value has shape
-            (batch_size, num_sims, num_steps).
+            (num_selected_datasets, num_sims, num_steps).
 
         Raises
         ------
         ValueError
-            If `posterior_samples` is empty, if a posterior array has
+            If `estimates` is empty, if a posterior array has
             fewer than 3 dimensions, if a parameter's batch size
             doesn't match the others, if a parameter has an unsupported
             number of dimensions, or if a parameter's shape can't be
@@ -383,29 +418,40 @@ class Workflow:
         """
         rng = np.random.default_rng(rng)
 
-        if not posterior_samples:
-            raise ValueError("posterior_samples must be a non-empty dict.")
+        if not estimates:
+            raise ValueError("estimates must be a non-empty dict.")
 
         # Infer shape from one posterior parameter
-        example = next(iter(posterior_samples.values()))
+        example = np.asarray(next(iter(estimates.values())))
         if example.ndim < 3:
             raise ValueError(
                 "Posterior sample arrays must have at least 3 dimensions: (batch_size, num_samples, num_steps, ...)."
             )
 
-        batch_size, num_draws = example.shape[:2]
-        time_varying_keys = set(self.simulator.local_keys) | set(self.simulator.deterministic_keys)
-        time_varying_arrays = [
-            np.asarray(value) for name, value in posterior_samples.items() if name in time_varying_keys
-        ]
+        original_batch_size, num_draws = example.shape[:2]
+        selected_indices = normalize_data_indices(data_idx, original_batch_size)
+        selected_estimates = {}
+        for name, value in estimates.items():
+            arr = np.asarray(value)
+            if arr.shape[0] != original_batch_size:
+                raise ValueError(
+                    f"Posterior parameter '{name}' has batch size {arr.shape[0]} but expected {original_batch_size}."
+                )
+            selected_estimates[name] = arr[selected_indices]
+
+        estimates = selected_estimates
+        example = next(iter(estimates.values()))
+        batch_size = len(selected_indices)
+        time_varying_keys = set(self.model.local_keys) | set(self.model.deterministic_keys)
+        time_varying_arrays = [np.asarray(value) for name, value in estimates.items() if name in time_varying_keys]
         num_steps = time_varying_arrays[0].shape[2] if time_varying_arrays else example.shape[2]
 
         sample_idx = rng.integers(num_draws, size=(batch_size, num_sims))
 
-        simulation_params: dict[str, np.ndarray] = {}
-        fixed_params = self.simulator.get_fixed_params()
+        simulation_params = {}
+        fixed_params = self.model.get_fixed_params()
 
-        for name, arr in posterior_samples.items():
+        for name, arr in estimates.items():
             arr = np.asarray(arr)
             if arr.shape[0] != batch_size:
                 raise ValueError(
@@ -414,9 +460,6 @@ class Workflow:
 
             if arr.ndim == 3:
                 selected = arr[np.arange(batch_size)[:, None], sample_idx, :]
-                # Posterior samples for shared/hyperparameters have a
-                # singleton trailing time axis, whereas local and
-                # deterministic trajectories have one entry per step.
                 simulation_params[name] = selected[..., 0] if name not in time_varying_keys else selected
             elif arr.ndim == 4:
                 selected = arr[
@@ -426,9 +469,6 @@ class Workflow:
                     :,
                 ]
                 if name not in time_varying_keys:
-                    # Some adapters tile shared parameters over time and/or
-                    # retain a singleton feature axis. Only one value per
-                    # posterior draw is needed for simulation.
                     while selected.ndim > 2:
                         selected = selected[..., 0]
                 simulation_params[name] = selected
@@ -439,7 +479,7 @@ class Workflow:
                 )
 
         # Collapse sample axis into batch axis for simulation
-        expanded_params: dict[str, np.ndarray] = {}
+        expanded_params = {}
         for name, arr in simulation_params.items():
             if name not in time_varying_keys:
                 expanded_params[name] = arr.reshape(batch_size * num_sims)
@@ -458,14 +498,10 @@ class Workflow:
         for name, value in fixed_params.items():
             expanded_params[name] = np.broadcast_to(np.asarray(value), (batch_size * num_sims,))
 
-        # Deterministic transitions are simulated but are intentionally not
-        # returned as inferred trajectories. Delegate reconstruction to each
-        # transition, keeping transition-specific hyperparameters out of the
-        # workflow implementation.
-        for name in self.simulator.deterministic_keys:
+        for name in self.model.deterministic_keys:
             if name in expanded_params:
                 continue
-            transition = self.simulator.prior.params[name]
+            transition = self.model.prior.params[name]
             prefix = f"{name}_"
             transition_params = {
                 key[len(prefix) :]: value for key, value in expanded_params.items() if key.startswith(prefix)
@@ -480,7 +516,7 @@ class Workflow:
                 num_steps=num_steps,
             )
 
-        raw_sim = self.simulator.simulate_from_parameters(
+        raw_sim = self.model.simulate_from_parameters(
             expanded_params,
             batch_size=batch_size * num_sims,
             num_steps=num_steps,
@@ -488,7 +524,14 @@ class Workflow:
 
         return {name: value.reshape(batch_size, num_sims, num_steps) for name, value in raw_sim.items()}
 
-    def plot_history(self, history):
+    def plot_history(
+        self,
+        history,
+        title_fontsize: int = TITLE_FONTSIZE,
+        label_fontsize: int = LABEL_FONTSIZE,
+        tick_fontsize: int = TICK_FONTSIZE,
+        **kwargs,
+    ):
         """Plot training loss curves.
 
         Parameters
@@ -496,12 +539,29 @@ class Workflow:
         history : keras.callbacks.History
             Training history, e.g. from `fit_offline`, `fit_online`, or
             `self.history`.
+        title_fontsize : int, optional, default: 22
+            Font size for panel titles.
+        label_fontsize : int, optional, default: 18
+            Font size for axis labels and the legend.
+        tick_fontsize : int, optional, default: 16
+            Font size for axis tick labels.
+        **kwargs
+            Additional keyword arguments forwarded to
+            `bf.diagnostics.plots.loss`.
 
         Returns
         -------
         fig : plt.Figure - the loss curve figure
         """
-        return bf.diagnostics.plots.loss(history, train_color="#822621")
+        kwargs.setdefault("train_color", BASE_COLOR)
+        kwargs.setdefault("title_fontsize", title_fontsize)
+        kwargs.setdefault("label_fontsize", label_fontsize)
+        kwargs.setdefault("legend_fontsize", label_fontsize)
+
+        fig = bf.diagnostics.plots.loss(history, **kwargs)
+        for ax in fig.axes:
+            ax.tick_params(labelsize=tick_fontsize)
+        return fig
 
     def verify_time_varying(
         self,
@@ -526,7 +586,7 @@ class Workflow:
             (batch_size, num_post_samples, num_steps, 1).
         variable_keys  : list of str or None, optional, default: None
             Which parameters to select and plot, and in what order.
-            Defaults to `self.simulator.local_keys` when not supplied.
+            Defaults to `self.model.local_keys` when not supplied.
         variable_names : list of str or None, optional, default: None
             Display names for the plotted columns, in the same order as
             `variable_keys`. Defaults to `variable_keys` when not
@@ -544,7 +604,7 @@ class Workflow:
         -------
         fig : plt.Figure - the figure instance for optional saving
         """
-        local_keys = self.simulator.local_keys
+        local_keys = self.model.local_keys
 
         if variable_keys is None:
             variable_keys = local_keys
@@ -561,15 +621,187 @@ class Workflow:
             **kwargs,
         )
 
+    def _prepare_time_varying_at_steps(
+        self,
+        targets: Mapping[str, np.ndarray],
+        estimates: Mapping[str, np.ndarray],
+        time_steps: int | Sequence[int],
+        variable_keys: Sequence[str] | None = None,
+        variable_names: Sequence[str] | None = None,
+    ) -> tuple[np.ndarray, np.ndarray, list[str]]:
+        """Select local parameters at specific zero-based time-step indices."""
+        keys = list(variable_keys) if variable_keys is not None else list(self.model.local_keys)
+        if not keys:
+            raise ValueError("No time-varying parameters found.")
+
+        missing = [key for key in keys if key not in estimates or key not in targets]
+        if missing:
+            raise ValueError(f"variable_keys not found in both estimates and targets: {missing}")
+
+        names = list(variable_names) if variable_names is not None else keys
+        if len(names) != len(keys):
+            raise ValueError(f"variable_names has {len(names)} entries but there are {len(keys)} variables.")
+
+        target_arrays = {}
+        estimate_arrays = {}
+        expected_shape = None
+        for key in keys:
+            target = np.asarray(targets[key])
+            estimate = np.asarray(estimates[key])
+            if target.ndim != 3 or target.shape[-1] != 1:
+                raise ValueError(f"Target '{key}' must have shape (num_datasets, num_steps, 1), got {target.shape}.")
+            if estimate.ndim != 4 or estimate.shape[-1] != 1:
+                raise ValueError(
+                    f"Estimate '{key}' must have shape (num_datasets, num_samples, num_steps, 1), got {estimate.shape}."
+                )
+
+            shape = (
+                target.shape[0],
+                estimate.shape[1],
+                target.shape[1],
+            )
+            if estimate.shape[0] != shape[0] or estimate.shape[2] != shape[2]:
+                raise ValueError(
+                    f"Estimate and target shapes for '{key}' are inconsistent: {estimate.shape} and {target.shape}."
+                )
+            if expected_shape is not None and shape != expected_shape:
+                raise ValueError("All selected variables must have matching dataset, sample, and time-step dimensions.")
+            expected_shape = shape
+            target_arrays[key] = target
+            estimate_arrays[key] = estimate
+
+        num_steps = expected_shape[2]
+        if isinstance(time_steps, Integral) and not isinstance(time_steps, bool):
+            selected_steps = [int(time_steps)]
+        elif isinstance(time_steps, Sequence) and not isinstance(
+            time_steps,
+            (str, bytes),
+        ):
+            selected_steps = list(time_steps)
+            if not selected_steps:
+                raise ValueError("time_steps must contain at least one index.")
+            if any(not isinstance(step, Integral) or isinstance(step, bool) for step in selected_steps):
+                raise TypeError("time_steps must be an int or a sequence of ints.")
+            selected_steps = [int(step) for step in selected_steps]
+        else:
+            raise TypeError("time_steps must be an int or a sequence of ints.")
+
+        normalized_steps = [step + num_steps if step < 0 else step for step in selected_steps]
+        invalid = [step for step in normalized_steps if step < 0 or step >= num_steps]
+        if invalid:
+            raise ValueError(f"time_steps contains out-of-range index {invalid[0]} for {num_steps} steps.")
+
+        target_columns = []
+        estimate_columns = []
+        resolved_names = []
+        show_steps = len(normalized_steps) > 1
+        for step in normalized_steps:
+            for key, name in zip(keys, names):
+                target_columns.append(target_arrays[key][:, step, 0])
+                estimate_columns.append(estimate_arrays[key][:, :, step, 0])
+                resolved_names.append(f"{name} (step {step})" if show_steps else name)
+
+        targets_arr = np.stack(target_columns, axis=-1)
+        estimates_arr = np.stack(estimate_columns, axis=-1)
+        return estimates_arr, targets_arr, resolved_names
+
+    def recovery_at_steps(
+        self,
+        targets: Mapping[str, np.ndarray],
+        estimates: Mapping[str, np.ndarray],
+        time_steps: int | Sequence[int],
+        variable_keys: Sequence[str] | None = None,
+        variable_names: Sequence[str] | None = None,
+        **kwargs,
+    ):
+        """Plot local-parameter recovery at selected time steps.
+
+        `time_steps` contains zero-based indices and may be a single
+        integer or a sequence. Plot arguments are forwarded to
+        `plot_recovery`.
+        """
+        estimates_arr, targets_arr, names = self._prepare_time_varying_at_steps(
+            targets,
+            estimates,
+            time_steps,
+            variable_keys,
+            variable_names,
+        )
+        return plot_recovery(
+            estimates=estimates_arr,
+            targets=targets_arr,
+            variable_names=names,
+            **kwargs,
+        )
+
+    def calibration_at_steps(
+        self,
+        targets: Mapping[str, np.ndarray],
+        estimates: Mapping[str, np.ndarray],
+        time_steps: int | Sequence[int],
+        variable_keys: Sequence[str] | None = None,
+        variable_names: Sequence[str] | None = None,
+        **kwargs,
+    ):
+        """Plot local-parameter calibration at selected time steps.
+
+        `time_steps` contains zero-based indices and may be a single
+        integer or a sequence. Plot arguments are forwarded to
+        `plot_calibration`.
+        """
+        estimates_arr, targets_arr, names = self._prepare_time_varying_at_steps(
+            targets,
+            estimates,
+            time_steps,
+            variable_keys,
+            variable_names,
+        )
+        return plot_calibration(
+            estimates=estimates_arr,
+            targets=targets_arr,
+            variable_names=names,
+            **kwargs,
+        )
+
+    def z_score_contraction_at_steps(
+        self,
+        targets: Mapping[str, np.ndarray],
+        estimates: Mapping[str, np.ndarray],
+        time_steps: int | Sequence[int],
+        variable_keys: Sequence[str] | None = None,
+        variable_names: Sequence[str] | None = None,
+        **kwargs,
+    ):
+        """Plot local-parameter z-scores and contraction at selected steps.
+
+        `time_steps` contains zero-based indices and may be a single
+        integer or a sequence. Plot arguments are forwarded to
+        `plot_z_score_contraction`.
+        """
+        estimates_arr, targets_arr, names = self._prepare_time_varying_at_steps(
+            targets,
+            estimates,
+            time_steps,
+            variable_keys,
+            variable_names,
+        )
+        return plot_z_score_contraction(
+            estimates=estimates_arr,
+            targets=targets_arr,
+            variable_names=names,
+            **kwargs,
+        )
+
     def verify_time_invariant(
         self,
         targets: Mapping[str, np.ndarray] | np.ndarray,
         estimates: Mapping[str, np.ndarray] | np.ndarray,
         variable_keys: Sequence[str] | None = None,
         variable_names: Sequence[str] | None = None,
+        uncertainty_agg: Callable | None = None,
         **kwargs,
     ):
-        """Plot time-invariant parameter recovery and calibration.
+        """Plot time-invariant recovery, calibration, and contraction.
 
         Parameters
         ----------
@@ -587,7 +819,7 @@ class Workflow:
         variable_keys  : sequence of str or None, optional, default: None
             Which time-invariant parameters to include, and in what
             order, when `targets`/`estimates` are dicts. Defaults to
-            `self.simulator.hyper_keys + self.simulator.shared_keys` when
+            `self.model.hyper_keys + self.model.shared_keys` when
             not supplied. Mixture parameters (dim > 1) are expanded into
             one column per component regardless of this selection.
             Ignored for array input.
@@ -597,30 +829,34 @@ class Workflow:
             `len(variable_keys)`) and defaults to the auto-derived
             per-component names. For array input, defaults to `param_0`,
             `param_1`, ...
+        uncertainty_agg : callable or None, optional, default: None
+            Uncertainty aggregation passed only to `plot_recovery`. Pass
+            `None` to suppress recovery uncertainty intervals.
         **kwargs
-            Forwarded to both `plot_recovery` and `plot_calibration` (e.g.
-            `label_fontsize`, `title_fontsize`, `tick_fontsize`). Note
-            `plot_recovery` takes `color` while `plot_calibration` takes
-            `rank_ecdf_color` - pass whichever applies, or both, via
-            `**kwargs`.
+            Shared options forwarded to `plot_recovery`, `plot_calibration`,
+            and `plot_z_score_contraction` (e.g. `label_fontsize`,
+            `title_fontsize`, `tick_fontsize`, or `color`).
 
         Returns
         -------
-        figs : tuple - `(fig_recovery, fig_calibration)`, the recovery
-            and calibration diagnostic figures
+        figs : tuple
+            `(fig_recovery, fig_calibration, fig_z_score_contraction)`.
 
         Raises
         ------
         ValueError
             If no time-invariant parameters are found for dict input.
         """
+        recovery_kwargs = dict(kwargs)
+        recovery_kwargs["uncertainty_agg"] = uncertainty_agg
+
         if not isinstance(estimates, Mapping):
             fig_recovery = plot_recovery(
                 estimates=estimates,
                 targets=targets,
                 variable_keys=variable_keys,
                 variable_names=variable_names,
-                **kwargs,
+                **recovery_kwargs,
             )
             fig_calibration = plot_calibration(
                 estimates=estimates,
@@ -629,10 +865,17 @@ class Workflow:
                 variable_names=variable_names,
                 **kwargs,
             )
-            return fig_recovery, fig_calibration
+            fig_z_score_contraction = plot_z_score_contraction(
+                estimates=estimates,
+                targets=targets,
+                variable_keys=variable_keys,
+                variable_names=variable_names,
+                **kwargs,
+            )
+            return fig_recovery, fig_calibration, fig_z_score_contraction
 
         if variable_keys is None:
-            variable_keys = self.simulator.hyper_keys + self.simulator.shared_keys
+            variable_keys = self.model.hyper_keys + self.model.shared_keys
         if not variable_keys:
             raise ValueError("No time-invariant parameters found.")
         missing = [k for k in variable_keys if k not in estimates or k not in targets]
@@ -644,15 +887,20 @@ class Workflow:
         expanded_names = []
 
         for k in variable_keys:
-            t_arr = targets[k]
             e_arr = estimates[k]
             B, S, T, dim = e_arr.shape
+            t_arr = self._normalize_time_invariant_target(
+                k,
+                targets[k],
+                batch_size=B,
+                num_components=dim,
+            )
 
             e_agg = e_arr.reshape(B, S * T, dim)
 
             if dim > 1:
                 param_key = k.split("_mixture_weights")[0]
-                mixture_obj = self.simulator.prior.params.get(param_key)
+                mixture_obj = self.model.prior.params.get(param_key)
                 if hasattr(mixture_obj, "names") and len(mixture_obj.names) == dim:
                     comp_names = [f"{k}_{n}" for n in mixture_obj.names]
                 else:
@@ -682,7 +930,7 @@ class Workflow:
             estimates=estimate_arr,
             targets=target_arr,
             variable_names=expanded_names,
-            **kwargs,
+            **recovery_kwargs,
         )
 
         fig_calibration = plot_calibration(
@@ -692,7 +940,14 @@ class Workflow:
             **kwargs,
         )
 
-        return fig_recovery, fig_calibration
+        fig_z_score_contraction = plot_z_score_contraction(
+            estimates=estimate_arr,
+            targets=target_arr,
+            variable_names=expanded_names,
+            **kwargs,
+        )
+
+        return fig_recovery, fig_calibration, fig_z_score_contraction
 
     def plot_time_varying_posterior(
         self,
@@ -706,6 +961,17 @@ class Workflow:
         smoothing: Literal["sma", "ema"] | None = None,
         smoothing_window: int = 5,
         marginal: bool = True,
+        dist_type: Literal["hist", "kde", "both"] = "hist",
+        num_bins: int | None = None,
+        dist_alpha: float | None = None,
+        num_cols: int | None = None,
+        alpha: float = 0.5,
+        color: str = BASE_COLOR,
+        title_fontsize: int = TITLE_FONTSIZE,
+        label_fontsize: int = LABEL_FONTSIZE,
+        tick_fontsize: int = TICK_FONTSIZE,
+        figsize: tuple[float, float] | None = None,
+        data_idx: int | Sequence[int] | None = None,
         **kwargs,
     ):
         """Plot time-varying posterior diagnostics.
@@ -730,7 +996,7 @@ class Workflow:
         variable_keys      : sequence of str or None, optional, default: None
             Which variables to select and plot, and in what order, when
             `estimates`/`targets` are dicts. Defaults to
-            `self.simulator.local_keys` when not supplied. Ignored for
+            `self.model.local_keys` when not supplied. Ignored for
             array input.
         variable_names     : sequence of str or None, optional, default: None
             Display names (used for panel labels/titles), in the same
@@ -758,20 +1024,45 @@ class Workflow:
         smoothing_window   : int, optional, default: 5
             Window size for `sma`, or span parameter for `ema`.
         marginal           : bool, optional, default: True
-            Attach a marginal KDE panel to the right of each trajectory
-            axis. The KDE is computed on the same array used for the
-            uncertainty band.
+            Attach a marginal distribution panel to the right of each
+            time-series axis.
+        dist_type          : {"hist", "kde", "both"}, optional, default: "hist"
+            Distribution type used for marginal panels.
+        num_bins           : int or None, optional, default: None
+            Number of histogram bins. If None, Seaborn selects the bins.
+        dist_alpha         : float or None, optional, default: None
+            Opacity of marginal distributions. If None, uses 1.0 for a
+            single distribution and 0.5 when targets are overlaid.
+        num_cols           : int or None, optional, default: None
+            Exact number of grid columns. If None, non-aggregated plots
+            use one column per selected dataset and aggregated plots use
+            the shared compact dynamic layout.
+        alpha              : float, optional, default: 0.5
+            Opacity of uncertainty bands.
+        color              : str, optional, default: BASE_COLOR
+            Color used for posterior centers, bands, and marginals.
+        title_fontsize     : int, optional, default: 22
+            Font size for panel titles.
+        label_fontsize     : int, optional, default: 18
+            Font size for axis labels and the figure legend.
+        tick_fontsize      : int, optional, default: 16
+            Font size for axis tick labels.
+        figsize            : tuple of two floats or None, optional, default: None
+            Explicit figure size in inches.
+        data_idx           : int, sequence of int, or None, optional, default: None
+            Dataset indices to plot. None selects all datasets. A single
+            integer preserves the dataset axis, and a sequence preserves
+            the requested order.
         **kwargs
-            Forwarded to `plot_time_varying_posterior` (e.g. `num_cols`,
-            `color`, `alpha`, `title_fontsize`, `label_fontsize`,
-            `tick_fontsize`, `figsize`).
+            Additional arguments forwarded to
+            `plot_time_varying_posterior`.
 
         Returns
         -------
         fig : plt.Figure - the figure instance for optional saving
         """
         if variable_keys is None:
-            variable_keys = self.simulator.local_keys
+            variable_keys = self.model.local_keys
 
         return plot_time_varying_posterior(
             estimates=estimates,
@@ -784,6 +1075,17 @@ class Workflow:
             smoothing=smoothing,
             smoothing_window=smoothing_window,
             marginal=marginal,
+            dist_type=dist_type,
+            num_bins=num_bins,
+            dist_alpha=dist_alpha,
+            num_cols=num_cols,
+            alpha=alpha,
+            color=color,
+            title_fontsize=title_fontsize,
+            label_fontsize=label_fontsize,
+            tick_fontsize=tick_fontsize,
+            figsize=figsize,
+            data_idx=data_idx,
             **kwargs,
         )
 
@@ -795,6 +1097,16 @@ class Workflow:
         variable_names: Sequence[str] | None = None,
         aggregation: Callable | None = None,
         mixture_names: dict | None = None,
+        dist_type: Literal["hist", "kde", "both"] = "hist",
+        num_bins: int | None = None,
+        dist_alpha: float | None = None,
+        num_cols: int | None = None,
+        color: str = BASE_COLOR,
+        title_fontsize: int = TITLE_FONTSIZE,
+        label_fontsize: int = LABEL_FONTSIZE,
+        tick_fontsize: int = TICK_FONTSIZE,
+        figsize: tuple[float, float] | None = None,
+        data_idx: int | Sequence[int] | None = None,
         **kwargs,
     ):
         """Plot time-invariant posterior diagnostics.
@@ -815,7 +1127,7 @@ class Workflow:
         variable_keys  : sequence of str or None, optional, default: None
             Which variables to select and plot, and in what order, when
             `estimates` is a dict. Defaults to
-            `self.simulator.hyper_keys + self.simulator.shared_keys` when
+            `self.model.hyper_keys + self.model.shared_keys` when
             not supplied. Ignored for array input.
         variable_names : sequence of str or None, optional, default: None
             Display names for the plotted panels. Defaults to
@@ -829,21 +1141,45 @@ class Workflow:
             panel per parameter.
         mixture_names  : dict or None, optional, default: None
             Mapping from parameter name to a list of component names.
-            Defaults to `self.simulator.prior._mixture_names()` when not
+            Defaults to `self.model.prior._mixture_names()` when not
             supplied.
+        dist_type      : {"hist", "kde", "both"}, optional, default: "hist"
+            Distribution type used for posterior distributions.
+        num_bins       : int or None, optional, default: None
+            Number of histogram bins. If None, Seaborn selects the bins.
+        dist_alpha     : float or None, optional, default: None
+            Opacity of posterior distributions. If None, uses 1.0 for one
+            distribution and 0.5 for overlaid mixture components.
+        num_cols       : int or None, optional, default: None
+            Exact number of grid columns. If None, non-aggregated plots
+            use one column per selected dataset and aggregated plots use
+            the shared compact dynamic layout.
+        color          : str, optional, default: BASE_COLOR
+            Base color used for non-mixture distributions.
+        title_fontsize : int, optional, default: 22
+            Font size for panel titles.
+        label_fontsize : int, optional, default: 18
+            Font size for axis labels and the figure legend.
+        tick_fontsize  : int, optional, default: 16
+            Font size for axis tick labels.
+        figsize        : tuple of two floats or None, optional, default: None
+            Explicit figure size in inches.
+        data_idx       : int, sequence of int, or None, optional, default: None
+            Dataset indices to plot. None selects all datasets. A single
+            integer preserves the dataset axis, and a sequence preserves
+            the requested order.
         **kwargs
-            Forwarded to `plot_time_invariant_posterior` (e.g.
-            `num_cols`, `color`, `title_fontsize`, `label_fontsize`,
-            `tick_fontsize`, `figsize`).
+            Additional arguments forwarded to
+            `plot_time_invariant_posterior`.
 
         Returns
         -------
         fig : plt.Figure - the figure instance for optional saving
         """
         if variable_keys is None:
-            variable_keys = self.simulator.hyper_keys + self.simulator.shared_keys
+            variable_keys = self.model.hyper_keys + self.model.shared_keys
         if mixture_names is None:
-            mixture_names = self.simulator.prior._mixture_names()
+            mixture_names = self.model.prior._mixture_names()
 
         return plot_time_invariant_posterior(
             estimates=estimates,
@@ -852,10 +1188,56 @@ class Workflow:
             variable_names=variable_names,
             aggregation=aggregation,
             mixture_names=mixture_names,
+            dist_type=dist_type,
+            num_bins=num_bins,
+            dist_alpha=dist_alpha,
+            num_cols=num_cols,
+            color=color,
+            title_fontsize=title_fontsize,
+            label_fontsize=label_fontsize,
+            tick_fontsize=tick_fontsize,
+            figsize=figsize,
+            data_idx=data_idx,
             **kwargs,
         )
 
-    def df_to_dict(
+    @staticmethod
+    def _normalize_time_invariant_target(
+        name: str,
+        values: np.ndarray,
+        batch_size: int,
+        num_components: int,
+    ) -> np.ndarray:
+        """Return a time-invariant target as `(batch_size, num_components)`."""
+        arr = np.asarray(values)
+        if arr.shape[0] != batch_size:
+            raise ValueError(f"Target '{name}' has batch size {arr.shape[0]}, expected {batch_size}.")
+
+        if arr.ndim == 1:
+            if num_components != 1:
+                raise ValueError(f"Target '{name}' must have {num_components} components, got shape {arr.shape}.")
+            return arr[:, None]
+
+        if arr.ndim == 2 and arr.shape[1] == num_components:
+            return arr
+
+        if arr.ndim == 2 and num_components == 1:
+            tiled = arr[..., None]
+        elif arr.ndim == 3 and arr.shape[2] == num_components:
+            tiled = arr
+        else:
+            raise ValueError(
+                f"Target '{name}' must have shape (batch_size, {num_components}) or "
+                f"(batch_size, num_steps, {num_components}), got {arr.shape}."
+            )
+
+        if not np.allclose(tiled, tiled[:, :1, :], equal_nan=True):
+            raise ValueError(
+                f"Target '{name}' varies across steps but verify_time_invariant requires a time-invariant target."
+            )
+        return tiled[:, 0, :]
+
+    def prepare_data(
         self,
         df: pd.DataFrame,
         id_col: str,
@@ -873,7 +1255,7 @@ class Workflow:
         are normalized to positions `1..num_steps` in sorted time order.
         Otherwise, rows are placed by order of appearance within each
         `id_col` group. Missing or padded positions are flagged in
-        `"missing_mask"` and filled with the simulator's missing-value
+        `"missing_mask"` and filled with the model's missing-value
         convention when one exists.
 
         Parameters
@@ -888,9 +1270,9 @@ class Workflow:
             of first appearance, to form the batch dimension.
         data_mapping : Mapping[str, str]
             Maps a column name in `df` to the corresponding key expected by
-            the generative model, e.g. `{"rt": "response_time", "correct":
+            the model, e.g. `{"rt": "response_time", "correct":
             "choice"}`. The set of values (not keys) must exactly match
-            `self.simulator.data_keys`.
+            `self.model.data_keys`.
         missing_value : int or float
             Sentinel value marking a missing observation, and used to
             initialize/pad positions with no corresponding row.
@@ -902,14 +1284,14 @@ class Workflow:
         Returns
         -------
         data : dict of np.ndarray
-            One entry per generative-model data key, each of shape
+            One entry per model data key, each of shape
             (batch_size, num_steps), plus `"missing_mask"` (1 where any
             mapped column equals `missing_value` at that step, 0 otherwise)
             and `"time_steps"` (each row equal to `1..num_steps`).
         """
-        simulator = getattr(self, "simulator", None)
-        if simulator is None:
-            raise AttributeError("df_to_dict needs a Workflow with a simulator.")
+        model = getattr(self, "model", None)
+        if model is None:
+            raise AttributeError("prepare_data needs a Workflow with a model.")
 
         required_cols = [id_col, *data_mapping]
         if time_col is not None:
@@ -919,14 +1301,13 @@ class Workflow:
         if missing_cols:
             raise KeyError(f"df is missing required column(s): {missing_cols}")
         if df.empty:
-            raise ValueError("df_to_dict requires at least one row.")
+            raise ValueError("prepare_data requires at least one row.")
 
         mapped_keys = list(data_mapping.values())
-        expected_keys = list(simulator.data_keys)
+        expected_keys = list(model.data_keys)
         if sorted(mapped_keys) != sorted(expected_keys):
             raise ValueError(
-                f"data_mapping values {sorted(mapped_keys)!r} do not match "
-                f"simulator.data_keys {sorted(expected_keys)!r}."
+                f"data_mapping values {sorted(mapped_keys)!r} do not match model.data_keys {sorted(expected_keys)!r}."
             )
 
         if missing_value is None:
@@ -978,7 +1359,7 @@ class Workflow:
             if not pd.isna(missing_value):
                 missing_mask |= data[data_key] == missing_value
 
-        model_missing_value = getattr(getattr(simulator, "missing", None), "missing_value", missing_value)
+        model_missing_value = getattr(getattr(model, "missing", None), "missing_value", missing_value)
 
         def _missing_fill(data_key: str, index: int):
             if isinstance(model_missing_value, Mapping):
@@ -988,7 +1369,7 @@ class Workflow:
                 return model_missing_value
             if value.shape == (len(expected_keys),):
                 return value[index]
-            raise ValueError(f"simulator missing_value must be scalar, mapping, or shape ({len(expected_keys)},).")
+            raise ValueError(f"model missing_value must be scalar, mapping, or shape ({len(expected_keys)},).")
 
         # A missing value in any observed variable drops the whole time step.
         for i, data_key in enumerate(expected_keys):
