@@ -26,7 +26,8 @@ from superstats.utils.indexing import format_dataset_label, normalize_data_indic
 from superstats.utils.plotting import (
     compute_uncertainty_bands,
     get_default_num_cols,
-    get_uncertainty_band_label,
+    get_uncertainty_band_alphas,
+    get_uncertainty_bound_labels,
     get_layout,
     plot_dist,
     plot_uncertainty_bands,
@@ -444,16 +445,17 @@ def plot_posterior_resimulation(
 
         handles = [mlines.Line2D([], [], color=color, linewidth=2.0, label=agg_label)]
         if has_uncertainty_band:
-            band_label = get_uncertainty_band_label(uncertainty_fun)
-            handles.append(mpatches.Patch(facecolor=color, alpha=0.3, edgecolor="none", label=band_label))
+            lower_label, upper_label = get_uncertainty_bound_labels(uncertainty_fun)
+            lower_alpha, upper_alpha = get_uncertainty_band_alphas(0.3)
+            handles.extend(
+                [
+                    mpatches.Patch(facecolor=color, alpha=lower_alpha, edgecolor="none", label=lower_label),
+                    mpatches.Patch(facecolor=color, alpha=upper_alpha, edgecolor="none", label=upper_label),
+                ]
+            )
         handles.append(mlines.Line2D([], [], color=real_color, linewidth=2.0, linestyle="--", label="Empirical"))
         if spaghetti:
-            if show_aggregate:
-                spaghetti_label = "Aggregated draw"
-            else:
-                spaghetti_label = "Individual"
-            handles.append(mlines.Line2D([], [], color=color, linewidth=1.0, alpha=1, label=spaghetti_label))
-
+            handles.append(mlines.Line2D([], [], color=color, linewidth=1.0, alpha=1, label="Aggregated draw"))
     else:
         if show_aggregate:
             plot_figsize, legend_bottom, legend_y = get_layout(
@@ -619,16 +621,19 @@ def plot_posterior_resimulation(
                 mlines.Line2D([], [], color=real_color, linewidth=2.0, label="Empirical"),
             ]
 
+    legend_kwargs = (
+        {"bbox_to_anchor": (0, legend_y, 1, 0), "mode": "expand"} if spaghetti else {"bbox_to_anchor": (0.5, legend_y)}
+    )
     fig.legend(
         handles=handles,
         loc="lower center",
-        ncol=len(handles) if len(handles) <= 3 else 2,
+        ncol=2 if spaghetti else min(3, len(handles)),
         fontsize=label_fontsize,
         framealpha=0.0,
-        bbox_to_anchor=(0.5, legend_y),
         columnspacing=0.7,
         handlelength=1.3,
         handletextpad=0.5,
+        **legend_kwargs,
     )
 
     sns.despine()

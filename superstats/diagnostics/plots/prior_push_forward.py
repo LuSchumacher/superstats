@@ -27,7 +27,8 @@ from superstats.utils.plotting import (
     compute_uncertainty_bands,
     get_default_num_cols,
     get_layout,
-    get_uncertainty_band_label,
+    get_uncertainty_band_alphas,
+    get_uncertainty_bound_labels,
     plot_dist,
     plot_uncertainty_bands,
     resolve_dist_alpha,
@@ -267,14 +268,13 @@ def plot_push_forward(
                 mlines.Line2D([], [], color=color, linewidth=2.5, label=aggregate_label),
             ]
             if show_uncertainty:
-                band_label = get_uncertainty_band_label(uncertainty_fun)
-                handles.append(
-                    mpatches.Patch(
-                        facecolor=color,
-                        alpha=0.4,
-                        edgecolor="none",
-                        label=band_label,
-                    )
+                lower_label, upper_label = get_uncertainty_bound_labels(uncertainty_fun)
+                lower_alpha, upper_alpha = get_uncertainty_band_alphas(0.4)
+                handles.extend(
+                    [
+                        mpatches.Patch(facecolor=color, alpha=lower_alpha, edgecolor="none", label=lower_label),
+                        mpatches.Patch(facecolor=color, alpha=upper_alpha, edgecolor="none", label=upper_label),
+                    ]
                 )
             if spaghetti:
                 handles.append(

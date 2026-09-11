@@ -26,7 +26,8 @@ from superstats.utils.plotting import (
     compute_uncertainty_bands,
     get_default_num_cols,
     get_layout,
-    get_uncertainty_band_label,
+    get_uncertainty_band_alphas,
+    get_uncertainty_bound_labels,
     plot_dist,
     plot_uncertainty_bands,
     resolve_dist_alpha,
@@ -282,6 +283,7 @@ def plot_time_varying_posterior(
                     uncertainty_bands[1],
                     color,
                     alpha=alpha,
+                    center=center,
                 )
             ax.plot(t, center, color=color, linewidth=1.5)
             if target_line is not None:
@@ -382,8 +384,14 @@ def plot_time_varying_posterior(
         aggregate_label = "Median"
     handles = [mlines.Line2D([], [], color=color, linewidth=1.5, label=aggregate_label)]
     if has_uncertainty_band:
-        band_label = get_uncertainty_band_label(uncertainty_fun)
-        handles.append(mpatches.Patch(color=color, alpha=alpha, label=band_label))
+        lower_label, upper_label = get_uncertainty_bound_labels(uncertainty_fun)
+        lower_alpha, upper_alpha = get_uncertainty_band_alphas(alpha)
+        handles.extend(
+            [
+                mpatches.Patch(facecolor=color, alpha=lower_alpha, edgecolor="none", label=lower_label),
+                mpatches.Patch(facecolor=color, alpha=upper_alpha, edgecolor="none", label=upper_label),
+            ]
+        )
     if local_targets is not None:
         handles.append(mlines.Line2D([], [], color="black", linewidth=1.5, linestyle="--", label="Target"))
 

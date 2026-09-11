@@ -38,20 +38,6 @@ class _DeterministicTestTransition(DeterministicTransition):
         return {"deterministic_params": trajectory, "hyper_params": {}, "fixed_params": {}}
 
 
-class _ContextTestTransition(DeterministicTransition):
-    def __init__(self):
-        super().__init__()
-        self.contexts = []
-
-    def sample(self, batch_size, num_steps, context=None):
-        self.contexts.append(context)
-        return {
-            "deterministic_params": np.asarray(context["transition_offset"]),
-            "hyper_params": {},
-            "fixed_params": {},
-        }
-
-
 def _build_model(**kwargs):
     prior = JointPrior(
         v=RandomWalk(bounds=(-3.0, 3.0), initial_prior=Prior("normal", loc=0.0, scale=0.5), sigma=0.05, delta=0.0),
@@ -100,14 +86,13 @@ def test_model_sample_shapes():
     assert np.all(np.isin(result["choice"], [-1.0, 0.0, 1.0]))
 
 
-def test_model_routes_context_to_transitions_design_and_simulator():
+def test_model_routes_context_to_design_and_simulator():
     context_calls = []
 
     def generate_context(*, batch_size, num_steps):
         context_calls.append((batch_size, num_steps))
         shape = (batch_size, num_steps)
         return {
-            "transition_offset": np.full(shape, 1.0),
             "design_offset": np.full(shape, 2.0),
             "simulator_offset": np.full(shape, 3.0),
         }
@@ -126,28 +111,24 @@ def test_model_routes_context_to_transitions_design_and_simulator():
         simulator_contexts.append(context)
         return {"observation": v + context["simulator_offset"].reshape(-1)}
 
-    transition = _ContextTestTransition()
     design_matrix = DesignMatrix()
     model = Model(
-        prior=JointPrior(v=transition),
+        prior=JointPrior(v=1.0),
         simulator=simulator,
         missing=None,
         context=ContextSimulator(generate_context),
         context_mapping=ContextMapping(
-            transition_context=("transition_offset",),
             design_context=("design_offset",),
             simulator_context=("simulator_offset",),
         ),
         design_matrix=design_matrix,
     )
 
-    transition.contexts.clear()
     design_matrix.contexts.clear()
     simulator_contexts.clear()
     result = model.sample(batch_size=2, num_steps=3)
 
     assert context_calls == [(1, 1), (2, 3)]
-    assert set(transition.contexts[0]) == {"transition_offset"}
     assert set(design_matrix.contexts[0]) == {"design_offset"}
     assert set(simulator_contexts[0]) == {"simulator_offset"}
     np.testing.assert_allclose(result["observation"], 6.0)
