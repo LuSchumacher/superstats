@@ -2,7 +2,7 @@
 
 import logging as _logging
 
-from . import prior, diagnostics, simulation, workflow, networks
+from . import prior, diagnostics, simulation, workflow
 from .prior import JointPrior, Prior
 from .simulation import Model
 from .workflow import Workflow
@@ -16,7 +16,6 @@ __all__ = [
     "prior",
     "simulation",
     "workflow",
-    "networks",
     "JointPrior",
     "Prior",
     "Model",

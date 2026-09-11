@@ -33,7 +33,6 @@ from superstats.diagnostics.plots.time_varying_prior import plot_time_varying_pr
 from superstats.diagnostics.plots.time_varying_verification import (
     plot_time_varying_verification,
 )
-from superstats.networks.utils import expand_singletons_to_common_length
 from superstats.utils.plotting import (
     compute_uncertainty_band,
     compute_uncertainty_bands,
@@ -46,18 +45,6 @@ from superstats.utils.plotting import (
     prepare_plot_data,
     smooth_trajectories,
 )
-
-
-def test_expand_singletons_broadcasts_scalars_and_singletons():
-    result = expand_singletons_to_common_length(width=16, activation=["relu", "tanh"], bias=[True])
-
-    assert result == {"width": [16, 16], "activation": ["relu", "tanh"], "bias": [True, True]}
-
-
-@pytest.mark.parametrize("kwargs", [{"a": []}, {"a": [1, 2], "b": [3, 4, 5]}])
-def test_expand_singletons_rejects_empty_or_incompatible_sequences(kwargs):
-    with pytest.raises(ValueError):
-        expand_singletons_to_common_length(**kwargs)
 
 
 def test_prepare_plot_data_selects_and_stacks_named_variables():

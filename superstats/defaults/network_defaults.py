@@ -9,6 +9,7 @@ DEFAULT_RECURRENT_NETWORK = MappingProxyType(
         "hidden_dim": (128, 128),
         "time_embed_dim": 16,
         "time_axis": 0,
+        "return_sequences": True,
     }
 )
 

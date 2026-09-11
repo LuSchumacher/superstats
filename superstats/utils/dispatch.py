@@ -10,7 +10,6 @@ from superstats.defaults import (
     DEFAULT_RECURRENT_NETWORK,
     DEFAULT_TRANSFORMER_NETWORK,
 )
-from superstats.networks import RecurrentNet
 
 
 def _merge_defaults(defaults, kwargs):
@@ -28,7 +27,7 @@ def find_embedding_network(arg, *args, **kwargs):
 def _(name: str, *args, **kwargs):
     match name.lower():
         case "recurrent":
-            return RecurrentNet(*args, **_merge_defaults(DEFAULT_RECURRENT_NETWORK, kwargs))
+            return bf.networks.RecurrentNetwork(*args, **_merge_defaults(DEFAULT_RECURRENT_NETWORK, kwargs))
         case "transformer":
             return bf.networks.TimeSeriesTransformer(
                 *args,

@@ -1,6 +1,8 @@
 from types import MappingProxyType
 
+import bayesflow as bf
 import keras
+
 import numpy as np
 import pytest
 
@@ -10,13 +12,14 @@ from superstats.defaults import (
     DEFAULT_RECURRENT_NETWORK,
     DEFAULT_TRANSFORMER_NETWORK,
 )
-from superstats.networks import RecurrentNet
+
 from superstats.simulation.augmentation import (
     ContaminationProcess,
     MissingProcess,
     RandomChoiceContamination,
     RandomMissingProcess,
 )
+
 from superstats.utils.dispatch import (
     find_contamination,
     find_inference_network,
@@ -38,7 +41,7 @@ def test_network_defaults_are_frozen():
 def test_embedding_network_dispatches_recurrent_defaults():
     network = find_embedding_network("recurrent", hidden_dim=16, summary_dim=8)
 
-    assert isinstance(network, RecurrentNet)
+    assert isinstance(network, bf.networks.RecurrentNetwork)
     assert network.recurrent_type == "gru"
     assert network.hidden_dim == 16
     assert network.time_axis == 0
@@ -73,7 +76,7 @@ def test_network_dispatch_rejects_unsupported_inputs():
     with pytest.raises(ValueError):
         find_embedding_network("lstm")
     with pytest.raises(TypeError):
-        find_embedding_network(RecurrentNet)
+        find_embedding_network(bf.networks.RecurrentNetwork)
     with pytest.raises(TypeError):
         find_embedding_network(None)
 
