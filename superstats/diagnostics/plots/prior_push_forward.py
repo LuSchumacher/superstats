@@ -1,6 +1,5 @@
 """Prior push-forward plotting helpers."""
 
-import warnings
 from collections.abc import Callable, Mapping
 from typing import Literal
 
@@ -11,6 +10,7 @@ import matplotlib.patches as mpatches
 import seaborn as sns
 
 from superstats.defaults import (
+    AGGREGATE_PLOT_WIDTH,
     BASE_COLOR,
     BASE_COL_WIDTH,
     BASE_ROW_HEIGHT,
@@ -24,40 +24,15 @@ from superstats.defaults import (
 )
 from superstats.utils.indexing import format_dataset_label
 from superstats.utils.plotting import (
+    compute_uncertainty_bands,
     get_default_num_cols,
     get_layout,
+    get_uncertainty_band_label,
     plot_dist,
+    plot_uncertainty_bands,
     resolve_dist_alpha,
+    select_data_variable,
 )
-
-BAND_LABELS = {
-    "std": "±1 SD",
-    "95ci": "95% CI",
-    "mad": "±1.48 MAD",
-    "95hdi": "95% HDI",
-}
-
-
-def _select_data_variable(data: Mapping[str, np.ndarray], data_dim: int | str) -> np.ndarray:
-    """Resolve named data to a single (batch, steps) variable."""
-    if not isinstance(data, Mapping):
-        raise TypeError(f"data must be a mapping of named arrays, got {type(data)}.")
-
-    keys = list(data)
-    if isinstance(data_dim, int):
-        try:
-            key = keys[data_dim]
-        except IndexError as exc:
-            raise ValueError(f"data_dim index {data_dim} is out of range for data keys {keys!r}.") from exc
-    else:
-        key = data_dim
-        if key not in data:
-            raise KeyError(f"data key {key!r} not found. Available keys: {keys!r}.")
-
-    x = np.asarray(data[key])
-    if x.ndim != 2:
-        raise ValueError(f"Data variable {key!r} must have shape (batch_size, steps), got {x.shape}.")
-    return x
 
 
 def plot_push_forward(
@@ -65,7 +40,7 @@ def plot_push_forward(
     data_dim: int | str = 0,
     kind: Literal["time_series", "dist"] = "dist",
     aggregation: Callable | None = None,
-    uncertainty_fun: Literal["std", "95ci", "mad", "95hdi"] | Callable | None = "95ci",
+    uncertainty_fun: Literal["std", "ci", "mad", "hdi"] | Callable | None = "hdi",
     marginal: bool = True,
     dist_type: Literal["hist", "kde", "both"] = "hist",
     num_bins: int | None = None,
@@ -98,11 +73,16 @@ def plot_push_forward(
         `aggregation(x, axis=...)` (e.g. np.mean, np.median).
         If None, individual datasets are shown in separate panels.
         If specified, all datasets are aggregated into a single panel.
-    uncertainty_fun     : {"std", "95ci", "mad", "95hdi"} or callable or None, optional, default: "95ci"
-        Uncertainty function. Only used when `aggregation` is not None
-        and `kind` is "time_series". Ignored (with a warning) otherwise.
+    uncertainty_fun     : {"std", "ci", "mad", "hdi"} or callable or None, optional, default: "hdi"
+        Uncertainty function. Named methods draw nested outer/inner ribbons:
+        ±1/±0.5 SD, 95%/65% CI, ±1.48/±0.74 MAD, or 95%/65% HDI.
+        A callable draws the single interval it returns. Only used when
+        `aggregation` is not None and `kind` is "time_series". Ignored
+        (with a warning) otherwise.
     marginal            : bool, optional, default: True
         Whether to draw marginal distributions beside time-series plots.
+        For an aggregate plot, the marginal pools the same trajectories
+        summarized by the uncertainty ribbons.
     dist_type           : {"hist", "kde", "both"}, optional, default: "hist"
         Distribution type used for continuous distributions and marginals.
     num_bins            : int or None, optional, default: None
@@ -147,25 +127,9 @@ def plot_push_forward(
         raise ValueError("dist_type must be one of 'hist', 'kde', or 'both'.")
     dist_alpha = resolve_dist_alpha(dist_alpha, 1)
 
-    x = _select_data_variable(data, data_dim)
+    x = select_data_variable(data, data_dim)
     show_aggregate = aggregation is not None
-    show_uncertainty = uncertainty_fun is not None
-
-    if show_uncertainty and not show_aggregate:
-        warnings.warn(
-            "uncertainty_fun requires aggregation to be specified; ignoring uncertainty_fun.",
-            stacklevel=2,
-        )
-        uncertainty_fun = None
-        show_uncertainty = False
-
-    if show_uncertainty and kind == "dist":
-        warnings.warn(
-            "uncertainty_fun is not supported for kind='dist'; ignoring uncertainty_fun.",
-            stacklevel=2,
-        )
-        uncertainty_fun = None
-        show_uncertainty = False
+    show_uncertainty = uncertainty_fun is not None and show_aggregate and kind == "time_series"
 
     batch_size, steps = x.shape
     if num_cols is None:
@@ -192,7 +156,7 @@ def plot_push_forward(
                 1,
                 1,
                 figsize,
-                col_width=BASE_COL_WIDTH,
+                col_width=AGGREGATE_PLOT_WIDTH,
                 row_height=BASE_ROW_HEIGHT,
             )
             fig, base_ax = plt.subplots(figsize=plot_figsize)
@@ -217,40 +181,20 @@ def plot_push_forward(
                     else:
                         raise ValueError("Custom uncertainty_fun must return (lower, upper) or (center, lower, upper).")
                     center = np.asarray(center)
-                    lower = np.asarray(lower)
-                    upper = np.asarray(upper)
-                elif uncertainty_fun == "95ci":
-                    lower = np.percentile(x, 2.5, axis=0)
-                    upper = np.percentile(x, 97.5, axis=0)
-                elif uncertainty_fun == "std":
-                    sd = x.std(axis=0)
-                    lower = center - sd
-                    upper = center + sd
-                elif uncertainty_fun == "mad":
-                    med = np.median(x, axis=0)
-                    mad = np.median(np.abs(x - med), axis=0)
-                    scaled_mad = 1.4826 * mad
-                    lower = center - scaled_mad
-                    upper = center + scaled_mad
-                elif uncertainty_fun == "95hdi":
-                    lower, upper = np.empty(steps), np.empty(steps)
-                    for i in range(steps):
-                        vals = np.sort(x[:, i])
-                        n = len(vals)
-                        window = int(np.floor(0.95 * n))
-                        widths = vals[window:] - vals[: n - window]
-                        idx = np.argmin(widths)
-                        lower[i], upper[i] = vals[idx], vals[idx + window]
+                    uncertainty_bands = (
+                        (np.asarray(lower), np.asarray(upper)),
+                        None,
+                    )
                 else:
-                    raise ValueError("uncertainty_fun must be 'std', '95ci', 'mad', '95hdi', or callable.")
+                    uncertainty_bands = compute_uncertainty_bands(x, uncertainty_fun, np.asarray(center))
 
-                ax.fill_between(
+                plot_uncertainty_bands(
+                    ax,
                     t,
-                    lower,
-                    upper,
-                    color=color,
+                    uncertainty_bands[0],
+                    uncertainty_bands[1],
+                    color,
                     alpha=0.4,
-                    edgecolor="none",
                     zorder=1,
                 )
 
@@ -294,19 +238,20 @@ def plot_push_forward(
                 ax.set_yticks(center_categories)
 
             if ax_marg is not None:
-                if center_is_discrete:
-                    counts = np.array([np.sum(center_values == category) for category in center_categories])
+                marginal_values = x.reshape(-1)
+                if discrete:
+                    counts = np.array([np.sum(marginal_values == category) for category in categories])
                     heights = counts / counts.sum()
                     ax_marg.barh(
-                        center_categories,
+                        categories,
                         heights,
                         color=color,
                         alpha=dist_alpha,
                     )
-                    ax_marg.set_yticks(center_categories)
+                    ax_marg.set_yticks(categories)
                 else:
                     plot_dist(
-                        center_values,
+                        marginal_values,
                         ax=ax_marg,
                         dist_type=dist_type,
                         color=color,
@@ -322,7 +267,7 @@ def plot_push_forward(
                 mlines.Line2D([], [], color=color, linewidth=2.5, label=aggregate_label),
             ]
             if show_uncertainty:
-                band_label = BAND_LABELS[uncertainty_fun] if isinstance(uncertainty_fun, str) else "Uncertainty"
+                band_label = get_uncertainty_band_label(uncertainty_fun)
                 handles.append(
                     mpatches.Patch(
                         facecolor=color,
@@ -352,7 +297,7 @@ def plot_push_forward(
             )
 
         elif kind == "dist":
-            default_figsize = (BASE_COL_WIDTH, BASE_ROW_HEIGHT)
+            default_figsize = (AGGREGATE_PLOT_WIDTH, BASE_ROW_HEIGHT + 1.6)
             fig, ax = plt.subplots(figsize=figsize if figsize is not None else default_figsize)
 
             if discrete:

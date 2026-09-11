@@ -23,5 +23,6 @@ DEFAULT_INITIAL_PRIOR = Prior("normal", loc=0.0, scale=1.0)
 
 DEFAULT_DETERMINISTIC_HYPER_PRIORS = {
     "intercept": Prior("normal", loc=0.0, scale=1.0),
+    "slope": Prior("normal", scale=1),
     "beta": Prior("normal", scale=1),
 }

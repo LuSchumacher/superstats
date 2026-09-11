@@ -13,6 +13,7 @@ from superstats.simulation.augmentation.contamination import ContaminationProces
 from superstats.simulation.context.context_mapping import ContextMapping
 from superstats.simulation.context.context_simulator import ContextSimulator
 from superstats.utils.dispatch import find_contamination, find_missing
+from superstats.utils.plotting import select_data_variable
 
 
 class Model:
@@ -202,6 +203,148 @@ class Model:
         passthrough_context = {name: value for name, value in context.items() if name not in self.param_order}
         return {**parameters, **parameter_context}, passthrough_context
 
+    def simulate_from_parameters(
+        self,
+        params: Dict[str, np.ndarray],
+        batch_size: int,
+        num_steps: int,
+        context: Mapping[str, Any] | None = None,
+    ) -> Dict[str, np.ndarray]:
+        """Simulate simulator outputs for given parameter values.
+
+        Parameters
+        ----------
+        params     : dict of np.ndarray
+            Parameter values to simulate from, keyed by simulator parameter
+            name. See `_prepare_flat_params` for the accepted shapes.
+        batch_size : int
+            Number of independent simulation batches.
+        num_steps  : int
+            Number of time steps per trajectory.
+        context    : mapping or None, optional, default: None
+            Generated context values to route through ``context_mapping``.
+            If omitted, context is sampled for this simulation.
+
+        Returns
+        -------
+        sim_data : dict of np.ndarray
+            Named simulated variables. Each value has shape
+            (batch_size, num_steps).
+
+        Raises
+        ------
+        ValueError
+            If a required parameter is missing from `params` and has no
+            default in the simulator signature, or has an unsupported shape.
+        """
+        contexts = (
+            self.context_mapping.split(context) if context is not None else self._sample_context(batch_size, num_steps)
+        )
+        combined_params = self._resolve_design_matrix(dict(params), contexts["design_context"])
+        combined_params, simulator_context = self._apply_simulator_context(
+            combined_params, contexts["simulator_context"]
+        )
+
+        ordered_params = self._ordered_model_args(
+            combined_params,
+            batch_size=batch_size,
+            num_steps=num_steps,
+            missing_context="params and has no default",
+        )
+
+        model_output = self._call_simulator(ordered_params, simulator_context)
+        return self._reshape_model_output(model_output, batch_size, num_steps, expected_data_keys=self.data_keys)
+
+    def plot_push_forward(
+        self,
+        batch_size: int = 20,
+        num_steps: int = 200,
+        data_dim: int | str = 0,
+        kind: Literal["time_series", "dist"] = "dist",
+        aggregation: Callable | None = None,
+        uncertainty_fun: Literal["std", "ci", "mad", "hdi"] | Callable | None = "hdi",
+        marginal: bool = True,
+        dist_type: Literal["hist", "kde", "both"] = "hist",
+        num_bins: int | None = None,
+        dist_alpha: float | None = None,
+        spaghetti: bool = False,
+        num_cols: int | None = None,
+        **kwargs,
+    ) -> plt.Figure:
+        """Render prior push-forward diagnostics for the generative simulator.
+
+        Parameters
+        ----------
+        batch_size      : int, optional, default: 20
+            Number of simulated datasets to generate.
+        num_steps       : int, optional, default: 200
+            Number of time steps per simulation.
+        data_dim        : int or str, optional, default: 0
+            Observation variable to plot. Integers index
+            `self.data_keys`; strings select a variable by name.
+        kind            : {"dist", "time_series"}, optional, default: "dist"
+            Plot type.
+        aggregation     : callable or None, optional, default: None
+            Aggregation function over the dataset dimension, called as
+            `aggregation(x, axis=...)` (e.g. np.mean, np.median).
+            If None, individual datasets are shown in separate panels.
+            If specified, all datasets are aggregated into a single panel.
+        uncertainty_fun : {"std", "ci", "mad", "hdi"} or callable or None, optional, default: "hdi"
+            Uncertainty function for aggregate time-series plots. Named
+            methods draw nested outer/inner ribbons; a callable draws the
+            single interval it returns.
+        marginal        : bool, optional, default: True
+            If True, include marginal distributions beside time-series plots.
+        dist_type       : {"hist", "kde", "both"}, optional, default: "hist"
+            Distribution type used for continuous distributions and marginals.
+        num_bins        : int or None, optional, default: None
+            Number of histogram bins. If None, Seaborn selects the bins.
+        dist_alpha      : float or None, optional, default: None
+            Opacity of distributions and marginal distributions. If None,
+            uses 1.0 for one distribution and 0.5 for overlays.
+        spaghetti       : bool, optional, default: False
+            If True, include individual time series.
+        num_cols        : int or None, optional, default: None
+            Number of panel columns. If None, uses the compact dynamic layout.
+        **kwargs
+            Forwarded to `plot_push_forward`.
+
+        Returns
+        -------
+        fig : plt.Figure - the figure containing the requested plot
+        """
+        sample = self.sample(batch_size=batch_size, num_steps=num_steps)
+        data = {"value": self._select_data_variable(sample, data_dim)}
+        return plot_push_forward(
+            data=data,
+            data_dim="value",
+            kind=kind,
+            aggregation=aggregation,
+            uncertainty_fun=uncertainty_fun,
+            spaghetti=spaghetti,
+            marginal=marginal,
+            dist_type=dist_type,
+            num_bins=num_bins,
+            dist_alpha=dist_alpha,
+            num_cols=num_cols,
+            **kwargs,
+        )
+
+    def get_fixed_params(self) -> Dict[str, np.ndarray]:
+        """Return deterministic fixed parameters from the prior for simulator simulation.
+
+        Draws a single pilot sample from `self.prior` and keeps only the
+        fixed-parameter entries that the simulator actually consumes.
+
+        Returns
+        -------
+        fixed_params : dict of np.ndarray - mapping from parameter name
+            to its fixed value, restricted to names in `self.param_order`
+        """
+        prior_draws = self.prior.sample(batch_size=1, num_steps=1)
+        fixed_params = prior_draws.get("fixed_params", {})
+        return {name: np.asarray(value) for name, value in fixed_params.items() if name in self.param_order}
+
     def _ordered_model_args(
         self,
         combined_params: Dict[str, np.ndarray],
@@ -285,6 +428,15 @@ class Model:
         )
         model_output = self._call_simulator(ordered_params, simulator_context)
         return list(self._reshape_model_output(model_output, batch_size=1, num_steps=1).keys())
+
+    def _select_data_variable(
+        self,
+        data: Mapping[str, np.ndarray],
+        data_dim: int | str,
+    ) -> np.ndarray:
+        """Select and validate one of this model's named observation variables."""
+        model_data = {key: data[key] for key in self.data_keys}
+        return select_data_variable(model_data, data_dim)
 
     def _prepare_flat_params(
         self,
@@ -381,70 +533,6 @@ class Model:
             raise ValueError(f"Unexpected shape for parameter '{name}': {p.shape}")
 
         return flat_params
-
-    def get_fixed_params(self) -> Dict[str, np.ndarray]:
-        """Return deterministic fixed parameters from the prior for simulator simulation.
-
-        Draws a single pilot sample from `self.prior` and keeps only the
-        fixed-parameter entries that the simulator actually consumes.
-
-        Returns
-        -------
-        fixed_params : dict of np.ndarray - mapping from parameter name
-            to its fixed value, restricted to names in `self.param_order`
-        """
-        prior_draws = self.prior.sample(batch_size=1, num_steps=1)
-        fixed_params = prior_draws.get("fixed_params", {})
-        return {name: np.asarray(value) for name, value in fixed_params.items() if name in self.param_order}
-
-    def simulate_from_parameters(
-        self,
-        params: Dict[str, np.ndarray],
-        batch_size: int,
-        num_steps: int,
-        context: Mapping[str, Any] | None = None,
-    ) -> Dict[str, np.ndarray]:
-        """Simulate simulator outputs for given parameter values.
-
-        Parameters
-        ----------
-        params     : dict of np.ndarray
-            Parameter values to simulate from, keyed by simulator parameter
-            name. See `_prepare_flat_params` for the accepted shapes.
-        batch_size : int
-            Number of independent simulation batches.
-        num_steps  : int
-            Number of time steps per trajectory.
-
-        Returns
-        -------
-        sim_data : dict of np.ndarray
-            Named simulated variables. Each value has shape
-            (batch_size, num_steps).
-
-        Raises
-        ------
-        ValueError
-            If a required parameter is missing from `params` and has no
-            default in the simulator signature, or has an unsupported shape.
-        """
-        contexts = (
-            self.context_mapping.split(context) if context is not None else self._sample_context(batch_size, num_steps)
-        )
-        combined_params = self._resolve_design_matrix(dict(params), contexts["design_context"])
-        combined_params, simulator_context = self._apply_simulator_context(
-            combined_params, contexts["simulator_context"]
-        )
-
-        ordered_params = self._ordered_model_args(
-            combined_params,
-            batch_size=batch_size,
-            num_steps=num_steps,
-            missing_context="params and has no default",
-        )
-
-        model_output = self._call_simulator(ordered_params, simulator_context)
-        return self._reshape_model_output(model_output, batch_size, num_steps, expected_data_keys=self.data_keys)
 
     def _normalize_local_params(
         self,
@@ -783,78 +871,3 @@ class Model:
             result.update(fixed_params)
 
         return result
-
-    def plot_push_forward(
-        self,
-        batch_size: int = 20,
-        num_steps: int = 200,
-        data_dim: int | str = 0,
-        kind: Literal["time_series", "dist"] = "dist",
-        aggregation: Callable | None = None,
-        uncertainty_fun: str | Callable | None = None,
-        marginal: bool = True,
-        dist_type: Literal["hist", "kde", "both"] = "hist",
-        num_bins: int | None = None,
-        dist_alpha: float | None = None,
-        spaghetti: bool = False,
-        num_cols: int | None = None,
-        **kwargs,
-    ) -> plt.Figure:
-        """Render prior push-forward diagnostics for the generative simulator.
-
-        Parameters
-        ----------
-        batch_size      : int, optional, default: 20
-            Number of simulated datasets to generate.
-        num_steps       : int, optional, default: 200
-            Number of time steps per simulation.
-        data_dim        : int or str, optional, default: 0
-            Observation variable to plot. Integers index
-            `self.data_keys`; strings select a variable by name.
-        kind            : {"dist", "time_series"}, optional, default: "dist"
-            Plot type.
-        aggregation     : callable or None, optional, default: None
-            Aggregation function over the dataset dimension, called as
-            `aggregation(x, axis=...)` (e.g. np.mean, np.median).
-            If None, individual datasets are shown in separate panels.
-            If specified, all datasets are aggregated into a single panel.
-        uncertainty_fun : {"std", "95ci", "mad", "95hdi"} or callable or None, optional, default: None
-            Uncertainty function for aggregate time-series plots. Forwarded
-            directly to `plot_push_forward`, so the accepted values must
-            match that function's own supported set.
-        marginal        : bool, optional, default: True
-            If True, include marginal distributions beside time-series plots.
-        dist_type       : {"hist", "kde", "both"}, optional, default: "hist"
-            Distribution type used for continuous distributions and marginals.
-        num_bins        : int or None, optional, default: None
-            Number of histogram bins. If None, Seaborn selects the bins.
-        dist_alpha      : float or None, optional, default: None
-            Opacity of distributions and marginal distributions. If None,
-            uses 1.0 for one distribution and 0.5 for overlays.
-        spaghetti       : bool, optional, default: False
-            If True, include individual time series.
-        num_cols        : int or None, optional, default: None
-            Number of panel columns. If None, uses the compact dynamic layout.
-        **kwargs
-            Forwarded to `plot_push_forward`.
-
-        Returns
-        -------
-        fig : plt.Figure - the figure containing the requested plot
-        """
-        sample = self.sample(batch_size=batch_size, num_steps=num_steps)
-        data = {key: sample[key] for key in self.data_keys}
-        return plot_push_forward(
-            data=data,
-            data_dim=data_dim,
-            kind=kind,
-            aggregation=aggregation,
-            uncertainty_fun=uncertainty_fun,
-            spaghetti=spaghetti,
-            marginal=marginal,
-            dist_type=dist_type,
-            num_bins=num_bins,
-            dist_alpha=dist_alpha,
-            num_cols=num_cols,
-            **kwargs,
-        )

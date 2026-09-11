@@ -75,7 +75,9 @@ def plot_time_varying_verification(
         nrmse, contraction, calibration. A single str is applied to
         all four rows.
     title_fontsize : int, optional, default: 22
-        The font size of the column titles (parameter names).
+        The font size of the column titles (parameter names). For a single
+        parameter, the parameter name is the figure title and metric names
+        are the panel titles.
     label_fontsize : int, optional, default: 18
         The font size of the axis label texts and row labels.
     tick_fontsize  : int, optional, default: 16
@@ -112,11 +114,19 @@ def plot_time_varying_verification(
     }
 
     metric_keys = ["correlation", "nrmse", "contraction", "calibration"]
-    num_rows = len(metric_keys)
-    num_cols = num_params
+    single_parameter = num_params == 1
+    if single_parameter:
+        num_rows = 2
+        num_cols = 2
+    else:
+        num_rows = len(metric_keys)
+        num_cols = num_params
     steps = np.arange(1, num_steps + 1)
 
-    default_figsize = (BASE_COL_WIDTH * num_cols, BASE_ROW_HEIGHT * num_rows)
+    default_figsize = (
+        BASE_COL_WIDTH * num_cols,
+        BASE_ROW_HEIGHT * num_rows + 0.75 if single_parameter else BASE_ROW_HEIGHT * num_rows,
+    )
     fig, axes = plt.subplots(
         num_rows,
         num_cols,
@@ -132,10 +142,14 @@ def plot_time_varying_verification(
         pad = (y_max - y_min) * 0.1 or 0.05
         y_lim = (y_min - pad, y_max + pad)
 
-        for col_i in range(num_cols):
-            ax = axes[row_i, col_i]
+        for param_i in range(num_params):
+            if single_parameter:
+                plot_row, plot_col = divmod(row_i, 2)
+            else:
+                plot_row, plot_col = row_i, param_i
+            ax = axes[plot_row, plot_col]
 
-            ax.plot(steps, values[:, col_i], color=color, linewidth=2.0)
+            ax.plot(steps, values[:, param_i], color=color, linewidth=2.0)
 
             ax.set_ylim(y_lim)
             ax.grid(alpha=0.3)
@@ -143,22 +157,39 @@ def plot_time_varying_verification(
             ax.set_xlabel("")
             ax.set_ylabel("")
 
-            if row_i == 0:
-                ax.set_title(param_names[col_i], fontsize=title_fontsize, pad=15)
-            if row_i == num_rows - 1:
-                ax.set_xlabel("Step", fontsize=label_fontsize, labelpad=LABEL_PAD)
-            if col_i == 0:
-                ax.set_ylabel(
-                    METRIC_LABELS[key],
+            if single_parameter:
+                ax.set_title(
+                    METRIC_LABELS[key].replace("\n", " "),
                     fontsize=label_fontsize,
-                    labelpad=Y_LABEL_PAD,
+                    pad=10,
                 )
+                if plot_col == 0:
+                    ax.set_ylabel(
+                        "Value",
+                        fontsize=label_fontsize,
+                        labelpad=Y_LABEL_PAD,
+                    )
+            else:
+                if row_i == 0:
+                    ax.set_title(param_names[param_i], fontsize=title_fontsize, pad=15)
+                if param_i == 0:
+                    ax.set_ylabel(
+                        METRIC_LABELS[key],
+                        fontsize=label_fontsize,
+                        labelpad=Y_LABEL_PAD,
+                    )
+            if plot_row == num_rows - 1:
+                ax.set_xlabel("Step", fontsize=label_fontsize, labelpad=LABEL_PAD)
 
-    fig.tight_layout()
-    fig.subplots_adjust(
-        hspace=HSPACE,
-        wspace=WSPACE,
-    )
+    if single_parameter:
+        fig.suptitle(param_names[0], fontsize=title_fontsize, y=0.94)
+
+    if single_parameter:
+        fig.tight_layout(rect=(0, 0, 1, 0.92))
+        fig.subplots_adjust(hspace=0.75, wspace=WSPACE)
+    else:
+        fig.tight_layout()
+        fig.subplots_adjust(hspace=HSPACE, wspace=WSPACE)
     sns.despine()
 
     return fig

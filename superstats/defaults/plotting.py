@@ -4,6 +4,20 @@ BASE_COLOR = "#356673"  # teal-slate
 DIST_ALPHA = 1.0
 OVERLAY_DIST_ALPHA = 0.5
 
+UNCERTAINTY_BAND_LABELS = {
+    "std": "±1 / ±0.5 SD",
+    "ci": "95% / 65% CI",
+    "mad": "±1.48 / ±0.74 MAD",
+    "hdi": "95% / 65% HDI",
+}
+
+UNCERTAINTY_INTERVAL_LABELS = {
+    "std": ("±1 SD", "±0.5 SD"),
+    "ci": ("95% CI", "65% CI"),
+    "mad": ("±1.48 MAD", "±0.74 MAD"),
+    "hdi": ("95% HDI", "65% HDI"),
+}
+
 METRIC_COLORS = [
     "#356673",  # teal-slate
     "#AE534C",  # terracotta
@@ -38,3 +52,4 @@ JOINT_HSPACE = 0.5
 WSPACE = 0.2
 BASE_COL_WIDTH = 6.0
 BASE_ROW_HEIGHT = 3.0
+AGGREGATE_PLOT_WIDTH = 7.0

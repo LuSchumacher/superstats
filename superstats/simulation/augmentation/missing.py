@@ -18,16 +18,6 @@ class MissingProcess(ABC):
     are interchangeable.
     """
 
-    @staticmethod
-    def _default_rng(rng: np.random.Generator | None) -> np.random.Generator:
-        """Single source of truth for the "no rng supplied" fallback.
-
-        Both `apply` (called directly) and `__call__` (called via the
-        instance) route through this, so there is one definition of what
-        "no rng" means, even though both are safe to call without one.
-        """
-        return np.random.default_rng() if rng is None else rng
-
     @abstractmethod
     def apply(self, data: Mapping[str, np.ndarray], rng: np.random.Generator | None = None) -> dict:
         """Apply the missingness process.
@@ -49,3 +39,13 @@ class MissingProcess(ABC):
 
     def __call__(self, data: Mapping[str, np.ndarray], rng: np.random.Generator | None = None) -> dict:
         return self.apply(data, self._default_rng(rng))
+
+    @staticmethod
+    def _default_rng(rng: np.random.Generator | None) -> np.random.Generator:
+        """Single source of truth for the "no rng supplied" fallback.
+
+        Both `apply` (called directly) and `__call__` (called via the
+        instance) route through this, so there is one definition of what
+        "no rng" means, even though both are safe to call without one.
+        """
+        return np.random.default_rng() if rng is None else rng

@@ -1,3 +1,5 @@
+import warnings
+
 import matplotlib
 
 matplotlib.use("Agg")
@@ -13,6 +15,7 @@ from superstats.diagnostics.plots import (
     plot_posterior_resimulation,
     plot_push_forward,
     plot_time_invariant_prior,
+    plot_time_varying_posterior,
     plot_time_varying_verification,
 )
 
@@ -39,13 +42,15 @@ def test_plot_push_forward_validates_inputs(data, kwargs, error, message):
         plot_push_forward(data, **kwargs)
 
 
-def test_plot_push_forward_warns_when_uncertainty_is_not_applicable():
+def test_plot_push_forward_silently_ignores_inapplicable_uncertainty():
     data = {"value": np.arange(12, dtype=float).reshape(3, 4)}
 
-    with pytest.warns(UserWarning, match="requires aggregation"):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
         time_fig = plot_push_forward(data, kind="time_series", marginal=False)
 
-    with pytest.warns(UserWarning, match="not supported"):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
         dist_fig = plot_push_forward(data, kind="dist", aggregation=np.mean)
 
     plt.close(time_fig)
@@ -62,7 +67,7 @@ def _three_bound_uncertainty(values):
 
 @pytest.mark.parametrize(
     "uncertainty_fun",
-    ["95ci", "mad", "95hdi", _two_bound_uncertainty, _three_bound_uncertainty],
+    ["ci", "mad", "hdi", _two_bound_uncertainty, _three_bound_uncertainty],
     ids=["confidence-interval", "mad", "hdi", "callable-two", "callable-three"],
 )
 def test_plot_push_forward_supports_uncertainty_modes(uncertainty_fun):
@@ -76,12 +81,38 @@ def test_plot_push_forward_supports_uncertainty_modes(uncertainty_fun):
         marginal=False,
     )
 
-    assert fig.axes[0].collections
+    expected_ribbons = 1 if callable(uncertainty_fun) else 2
+    assert len(fig.axes[0].collections) == expected_ribbons
     assert any(
         "Uncertainty" in text.get_text() or "%" in text.get_text() or "MAD" in text.get_text()
         for text in fig.legends[0].get_texts()
     )
     plt.close(fig)
+
+
+def test_all_time_series_diagnostics_draw_nested_named_uncertainty_ribbons():
+    rng = np.random.default_rng(12)
+    trajectories = rng.normal(size=(3, 20, 6))
+    targets = rng.normal(size=(3, 6))
+
+    resimulation_fig = plot_posterior_resimulation(
+        {"value": trajectories},
+        {"value": targets},
+        aggregation=np.mean,
+        uncertainty_fun="ci",
+        marginal=False,
+    )
+    posterior_fig = plot_time_varying_posterior(
+        {"value": trajectories[..., None]},
+        aggregation=np.mean,
+        uncertainty_fun="mad",
+        marginal=False,
+    )
+
+    assert len(resimulation_fig.axes[0].collections) == 2
+    assert len(posterior_fig.axes[0].collections) == 2
+    plt.close(resimulation_fig)
+    plt.close(posterior_fig)
 
 
 @pytest.mark.parametrize(
@@ -189,13 +220,6 @@ def test_plot_push_forward_individual_time_series_supports_marginals(values):
         (
             {"value": np.ones((1, 2, 3))},
             {"value": np.ones((1, 3))},
-            {"aggregation": np.mean, "aggregate_strategy": "invalid"},
-            ValueError,
-            "aggregate_strategy",
-        ),
-        (
-            {"value": np.ones((1, 2, 3))},
-            {"value": np.ones((1, 3))},
             {"num_cols": 0},
             ValueError,
             "num_cols",
@@ -210,7 +234,6 @@ def test_plot_push_forward_individual_time_series_supports_marginals(values):
         "empirical-shape",
         "shape-mismatch",
         "dist-type",
-        "aggregate-strategy",
         "columns",
     ],
 )
@@ -219,7 +242,7 @@ def test_plot_posterior_resimulation_validates_inputs(prediction, empirical, kwa
         plot_posterior_resimulation(prediction, empirical, **kwargs)
 
 
-def test_posterior_resimulation_aggregate_spaghetti_uses_smoothed_dataset_centers():
+def test_posterior_resimulation_aggregate_spaghetti_uses_per_resimulation_aggregates():
     rng = np.random.default_rng(11)
     prediction = rng.normal(size=(3, 4, 7))
     empirical = rng.normal(size=(3, 7))
@@ -229,15 +252,18 @@ def test_posterior_resimulation_aggregate_spaghetti_uses_smoothed_dataset_center
         {"value": empirical},
         kind="time_series",
         aggregation=np.mean,
-        smoothing="sma",
-        smoothing_window=3,
         uncertainty_fun=None,
         marginal=False,
         spaghetti=True,
     )
 
-    assert len(fig.axes[0].lines) == 5
-    assert "Individual" in [text.get_text() for text in fig.legends[0].get_texts()]
+    spaghetti_lines = fig.axes[0].lines[: prediction.shape[1]]
+    np.testing.assert_allclose(
+        np.stack([line.get_ydata() for line in spaghetti_lines]),
+        prediction.mean(axis=0),
+    )
+    assert len(fig.axes[0].lines) == prediction.shape[1] + 2
+    assert "Aggregated draw" in [text.get_text() for text in fig.legends[0].get_texts()]
     plt.close(fig)
 
 
@@ -261,24 +287,23 @@ def test_posterior_resimulation_individual_spaghetti_hides_unused_panel():
     plt.close(fig)
 
 
-def test_posterior_resimulation_discrete_distribution_supports_no_epistemic_strategy():
+def test_posterior_resimulation_discrete_distribution_aggregates_each_resimulation():
     prediction = np.array(
         [
             np.zeros((3, 4)),
-            np.ones((3, 4)),
+            np.full((3, 4), 2),
         ]
     )
-    empirical = np.array([[0, 0, 0, 0], [1, 1, 1, 1]])
+    empirical = np.array([[0, 0, 0, 0], [2, 2, 2, 2]])
 
     fig = plot_posterior_resimulation(
         {"choice": prediction},
         {"choice": empirical},
         kind="dist",
         aggregation=np.mean,
-        aggregate_strategy="no_epistemic",
     )
 
-    assert fig.axes[0].get_xticks().tolist() == [0, 1]
+    assert fig.axes[0].get_xticks().tolist() == [1.0]
     assert sum(patch.get_height() for patch in fig.axes[0].patches) == pytest.approx(1.0)
     plt.close(fig)
 

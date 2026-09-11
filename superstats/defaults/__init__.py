@@ -15,6 +15,7 @@ from .transition_defaults import (
 )
 
 from .plotting import (
+    AGGREGATE_PLOT_WIDTH,
     BASE_COLOR,
     BASE_COL_WIDTH,
     BASE_ROW_HEIGHT,
@@ -28,6 +29,8 @@ from .plotting import (
     OVERLAY_DIST_ALPHA,
     TICK_FONTSIZE,
     TITLE_FONTSIZE,
+    UNCERTAINTY_BAND_LABELS,
+    UNCERTAINTY_INTERVAL_LABELS,
     WSPACE,
     Y_LABEL_PAD,
     METRIC_LABELS,
@@ -44,6 +47,7 @@ __all__ = [
     "DEFAULT_DETERMINISTIC_HYPER_PRIORS",
     "DEFAULT_BOUNDS",
     "DEFAULT_INITIAL_PRIOR",
+    "AGGREGATE_PLOT_WIDTH",
     "BASE_COLOR",
     "BASE_COL_WIDTH",
     "BASE_ROW_HEIGHT",
@@ -57,6 +61,8 @@ __all__ = [
     "LABEL_PAD",
     "TICK_FONTSIZE",
     "TITLE_FONTSIZE",
+    "UNCERTAINTY_BAND_LABELS",
+    "UNCERTAINTY_INTERVAL_LABELS",
     "WSPACE",
     "Y_LABEL_PAD",
     "METRIC_LABELS",
