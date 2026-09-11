@@ -4,14 +4,7 @@ BASE_COLOR = "#356673"  # teal-slate
 DIST_ALPHA = 1.0
 OVERLAY_DIST_ALPHA = 0.5
 
-UNCERTAINTY_BAND_LABELS = {
-    "std": "±1 / ±0.5 SD",
-    "ci": "95% / 65% CI",
-    "mad": "±1.48 / ±0.74 MAD",
-    "hdi": "95% / 65% HDI",
-}
-
-UNCERTAINTY_INTERVAL_LABELS = {
+UNCERTAINTY_LABELS = {
     "std": ("±1 SD", "±0.5 SD"),
     "ci": ("95% CI", "65% CI"),
     "mad": ("±1.48 MAD", "±0.74 MAD"),

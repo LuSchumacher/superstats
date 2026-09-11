@@ -7,12 +7,7 @@ import numpy as np
 import seaborn as sns
 from matplotlib.axes import Axes
 
-from superstats.defaults import (
-    DIST_ALPHA,
-    OVERLAY_DIST_ALPHA,
-    UNCERTAINTY_BAND_LABELS,
-    UNCERTAINTY_INTERVAL_LABELS,
-)
+from superstats.defaults import DIST_ALPHA, OVERLAY_DIST_ALPHA
 
 
 def prepare_time_invariant_data(
@@ -190,16 +185,6 @@ def select_data_variable(
     return values
 
 
-UNCERTAINTY_BOUND_LABELS = {
-    "std": ("−1 SD", "+1 SD"),
-    "95ci": ("2.5th percentile", "97.5th percentile"),
-    "ci": ("95% CI", "65% CI"),
-    "mad": ("−1.48 MAD", "+1.48 MAD"),
-    "95hdi": ("Lower 95% HDI", "Upper 95% HDI"),
-    "hdi": ("Lower 95% HDI", "Upper 95% HDI"),
-}
-
-
 def resolve_dist_alpha(
     dist_alpha: float | None,
     num_distributions: int,
@@ -212,36 +197,6 @@ def resolve_dist_alpha(
     if not 0 <= dist_alpha <= 1:
         raise ValueError("dist_alpha must be between 0 and 1.")
     return dist_alpha
-
-
-def get_uncertainty_band_label(
-    uncertainty_fun: str | Callable,
-) -> str:
-    """Return the shared legend label for an uncertainty-band method."""
-    return UNCERTAINTY_BAND_LABELS[uncertainty_fun] if isinstance(uncertainty_fun, str) else "Uncertainty"
-
-
-def get_uncertainty_bound_labels(
-    uncertainty_fun: str | Callable,
-) -> tuple[str, str]:
-    """Return separate legend labels for lower and upper uncertainty bounds."""
-    if isinstance(uncertainty_fun, str):
-        return UNCERTAINTY_BOUND_LABELS[uncertainty_fun]
-    return "Lower Uncertainty", "Upper Uncertainty"
-
-
-def get_uncertainty_band_alphas(alpha: float) -> tuple[float, float]:
-    """Return distinct lower- and upper-band opacities."""
-    return alpha, alpha * 0.5
-
-
-def get_uncertainty_interval_labels(
-    uncertainty_fun: str | Callable,
-) -> tuple[str, str | None]:
-    """Return separate outer and inner labels for a forest-plot interval."""
-    if callable(uncertainty_fun):
-        return "Uncertainty", None
-    return UNCERTAINTY_INTERVAL_LABELS[uncertainty_fun]
 
 
 def smooth_trajectories(
@@ -370,7 +325,7 @@ def plot_uncertainty_band(
     finite = np.isfinite(lower) & np.isfinite(center) & np.isfinite(upper)
     lower_visible = np.any(finite & ~np.isclose(lower, center))
     upper_visible = np.any(finite & ~np.isclose(center, upper))
-    lower_alpha, upper_alpha = get_uncertainty_band_alphas(alpha)
+    lower_alpha, upper_alpha = alpha, alpha * 0.5
 
     if lower_visible:
         ax.fill_between(
@@ -407,14 +362,16 @@ def plot_uncertainty_bands(
 ) -> bool:
     """Draw a bright outer ribbon and, when available, a darker inner ribbon."""
     outer_lower, outer_upper = (np.asarray(bound) for bound in outer)
-    visible = bool(np.any(np.isfinite(outer_lower) & np.isfinite(outer_upper)))
+    visible = bool(np.any(np.isfinite(outer_lower) & np.isfinite(outer_upper) & ~np.isclose(outer_lower, outer_upper)))
     if visible:
         ax.fill_between(
             steps, outer_lower, outer_upper, color=color, alpha=alpha * 0.5, edgecolor="none", zorder=zorder
         )
     if inner is not None:
         inner_lower, inner_upper = (np.asarray(bound) for bound in inner)
-        inner_visible = bool(np.any(np.isfinite(inner_lower) & np.isfinite(inner_upper)))
+        inner_visible = bool(
+            np.any(np.isfinite(inner_lower) & np.isfinite(inner_upper) & ~np.isclose(inner_lower, inner_upper))
+        )
         if inner_visible:
             ax.fill_between(
                 steps, inner_lower, inner_upper, color=color, alpha=alpha, edgecolor="none", zorder=zorder + 0.1

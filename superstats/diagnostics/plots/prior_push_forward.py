@@ -21,14 +21,13 @@ from superstats.defaults import (
     TITLE_FONTSIZE,
     WSPACE,
     Y_LABEL_PAD,
+    UNCERTAINTY_LABELS,
 )
 from superstats.utils.indexing import format_dataset_label
 from superstats.utils.plotting import (
     compute_uncertainty_bands,
     get_default_num_cols,
     get_layout,
-    get_uncertainty_band_alphas,
-    get_uncertainty_bound_labels,
     plot_dist,
     plot_uncertainty_bands,
     resolve_dist_alpha,
@@ -268,8 +267,12 @@ def plot_push_forward(
                 mlines.Line2D([], [], color=color, linewidth=2.5, label=aggregate_label),
             ]
             if show_uncertainty:
-                lower_label, upper_label = get_uncertainty_bound_labels(uncertainty_fun)
-                lower_alpha, upper_alpha = get_uncertainty_band_alphas(0.4)
+                lower_label, upper_label = (
+                    UNCERTAINTY_LABELS[uncertainty_fun]
+                    if isinstance(uncertainty_fun, str)
+                    else ("Lower Uncertainty", "Upper Uncertainty")
+                )
+                lower_alpha, upper_alpha = 0.4, 0.2
                 handles.extend(
                     [
                         mpatches.Patch(facecolor=color, alpha=lower_alpha, edgecolor="none", label=lower_label),

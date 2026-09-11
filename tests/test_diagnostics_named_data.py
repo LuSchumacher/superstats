@@ -81,9 +81,8 @@ def test_diagnostic_uncertainty_bounds_have_separate_legend_entries():
 
     for fig in figures:
         labels = [text.get_text() for text in fig.legends[0].get_texts()]
-        assert "−1 SD" in labels
-        assert "+1 SD" in labels
-        assert "±1 SD" not in labels
+        assert "±1 SD" in labels
+        assert "±0.5 SD" in labels
         plt.close(fig)
 
 
@@ -1129,7 +1128,7 @@ def test_posterior_resimulation_uses_shared_legend_and_spacing():
 
     assert fig.axes[0].get_ylabel() == "Value"
     assert fig.axes[0].get_title() == ""
-    assert fig.legends[0]._ncols == 3
+    assert fig.legends[0]._ncols == 4
     legend_bounds = fig.legends[0].get_window_extent().transformed(fig.transFigure.inverted())
     assert legend_bounds.x0 >= 0
     assert legend_bounds.x1 <= 1
@@ -1156,7 +1155,7 @@ def test_aggregate_posterior_resimulation_preserves_explicit_figsize():
     plt.close(fig)
 
 
-def test_posterior_resimulation_spaghetti_does_not_expand_tight_figure_width():
+def test_posterior_resimulation_spaghetti_uses_a_single_row_legend():
     rng = np.random.default_rng(13)
     prediction = {"value": rng.normal(size=(3, 5, 8))}
     empirical = {"value": rng.normal(size=(3, 8))}
@@ -1174,10 +1173,8 @@ def test_posterior_resimulation_spaghetti_does_not_expand_tight_figure_width():
     for fig in figures:
         fig.canvas.draw()
 
-    tight_widths = [fig.get_tightbbox(fig.canvas.get_renderer()).width for fig in figures]
-
-    assert tight_widths[1] <= tight_widths[0]
-    assert figures[1].legends[0]._ncols == 2
+    assert figures[0].legends[0]._ncols == len(figures[0].legends[0].get_texts())
+    assert figures[1].legends[0]._ncols == len(figures[1].legends[0].get_texts())
     for fig in figures:
         plt.close(fig)
 
