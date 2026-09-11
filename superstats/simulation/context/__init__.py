@@ -1,4 +1,4 @@
-"""Context data for formulas and data simulators."""
+"""Context simulation for formulas, design matrices, and data simulators."""
 
 from .context_simulator import ContextSimulator
 from .context_mapping import ContextMapping

@@ -133,7 +133,6 @@ def plot_joint_prior(
         figsize,
         col_width=4.0,
         row_height=BASE_ROW_HEIGHT,
-        legend_offset=0.25,
     )
 
     if figsize is None:

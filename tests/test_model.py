@@ -86,24 +86,24 @@ def test_model_sample_shapes():
     assert np.all(np.isin(result["choice"], [-1.0, 0.0, 1.0]))
 
 
-def test_model_routes_context_to_formula_and_simulator():
+def test_model_routes_context_to_design_and_simulator():
     context_calls = []
 
     def generate_context(*, batch_size, num_steps):
         context_calls.append((batch_size, num_steps))
         shape = (batch_size, num_steps)
         return {
-            "formula_offset": np.full(shape, 2.0),
+            "design_offset": np.full(shape, 2.0),
             "simulator_offset": np.full(shape, 3.0),
         }
 
-    class Formula:
+    class DesignMatrix:
         def __init__(self):
             self.contexts = []
 
         def resolve(self, *, parameters, context):
             self.contexts.append(context)
-            return {**parameters, "v": parameters["v"] + context["formula_offset"]}
+            return {**parameters, "v": parameters["v"] + context["design_offset"]}
 
     simulator_contexts = []
 
@@ -111,25 +111,25 @@ def test_model_routes_context_to_formula_and_simulator():
         simulator_contexts.append(context)
         return {"observation": v + context["simulator_offset"].reshape(-1)}
 
-    formula = Formula()
+    design_matrix = DesignMatrix()
     model = Model(
         prior=JointPrior(v=1.0),
         simulator=simulator,
         missing=None,
         context=ContextSimulator(generate_context),
         context_mapping=ContextMapping(
-            formula_context=("formula_offset",),
+            design_context=("design_offset",),
             simulator_context=("simulator_offset",),
         ),
-        formula=formula,
+        design_matrix=design_matrix,
     )
 
-    formula.contexts.clear()
+    design_matrix.contexts.clear()
     simulator_contexts.clear()
     result = model.sample(batch_size=2, num_steps=3)
 
     assert context_calls == [(1, 1), (2, 3)]
-    assert set(formula.contexts[0]) == {"formula_offset"}
+    assert set(design_matrix.contexts[0]) == {"design_offset"}
     assert set(simulator_contexts[0]) == {"simulator_offset"}
     np.testing.assert_allclose(result["observation"], 6.0)
 
@@ -266,7 +266,7 @@ def test_deterministic_trajectories_are_simulated_but_not_inferred():
 def test_resimulate_reconstructs_linear_deterministic_parameter():
     prior = JointPrior(
         v=RandomWalk(bounds=(-3.0, 3.0), initial_prior=Prior("normal", loc=0.0, scale=0.5), sigma=0.0, delta=0.0),
-        a=Linear(intercept=0.5, beta=0.5),
+        a=Linear(intercept=0.5, slope=0.5),
         tau=0.2,
         bias=0.0,
     )

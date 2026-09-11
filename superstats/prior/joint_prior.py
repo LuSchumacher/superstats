@@ -98,7 +98,8 @@ class JointPrior:
             else:
                 raise TypeError(f"Unknown parameter type for '{name}': {type(param).__name__}")
 
-            samples = param.sample(batch_size=batch_size, num_steps=num_steps)
+            sample_kwargs = {"batch_size": batch_size, "num_steps": num_steps}
+            samples = param.sample(**sample_kwargs)
             target[name] = samples[sample_key]
 
             hyper_param_groups[name] = []
@@ -175,7 +176,11 @@ class JointPrior:
         local_params = {**samples["local_params"], **samples["deterministic_params"]}
         return plot_time_varying_prior(
             local_params=local_params,
-            param_bounds=self._param_bounds(),
+            param_bounds={
+                name: obj.bounds
+                for name, obj in self.params.items()
+                if hasattr(obj, "bounds") and obj.bounds is not None
+            },
             num_cols=num_cols,
             marginal=marginal,
             dist_type=dist_type,
@@ -237,7 +242,7 @@ class JointPrior:
         return plot_time_invariant_prior(
             hyper_params=samples["hyper_params"],
             shared_params=samples["shared_params"],
-            mixture_names=self._mixture_names(),
+            mixture_names={name: obj.names for name, obj in self.params.items() if hasattr(obj, "names")},
             dist_type=dist_type,
             num_bins=num_bins,
             dist_alpha=dist_alpha,
@@ -309,8 +314,12 @@ class JointPrior:
             local_params=local_params,
             hyper_params=samples["hyper_params"],
             shared_params=samples["shared_params"],
-            param_bounds=self._param_bounds(),
-            mixture_names=self._mixture_names(),
+            param_bounds={
+                name: obj.bounds
+                for name, obj in self.params.items()
+                if hasattr(obj, "bounds") and obj.bounds is not None
+            },
+            mixture_names={name: obj.names for name, obj in self.params.items() if hasattr(obj, "names")},
             hyper_param_groups=self._last_hyper_param_groups,
             marginal=marginal,
             dist_type=dist_type,

@@ -246,17 +246,12 @@ class Mixture(StochasticTransition):
             per batch element, either drawn from a Dirichlet `Prior` or
             tiled from fixed weights
         """
-        # Dirichlet prior
         if isinstance(self.mixture_weights, Prior):
-            w = self.mixture_weights.sample(batch_size)
+            return self.mixture_weights.sample(batch_size)
 
-            return w
-
-        # fixed weights
         if isinstance(self.mixture_weights, tuple):
-            w = np.asarray(self.mixture_weights, dtype=self.dtype)
-
-            return np.tile(w, (batch_size, 1))
+            weights = np.asarray(self.mixture_weights, dtype=self.dtype)
+            return np.tile(weights, (batch_size, 1))
 
         raise TypeError("mixture_weights must be a Dirichlet Prior or fixed tuple.")
 
@@ -277,10 +272,9 @@ class Mixture(StochasticTransition):
             sampled component index at each step, in [0, K)
         """
         batch_size = weights.shape[0]
-
         regimes = np.zeros((batch_size, num_steps), dtype=np.int32)
 
-        for b in range(batch_size):
-            regimes[b] = np.random.choice(self.K, size=num_steps, p=weights[b])
+        for batch_index in range(batch_size):
+            regimes[batch_index] = np.random.choice(self.K, size=num_steps, p=weights[batch_index])
 
         return regimes

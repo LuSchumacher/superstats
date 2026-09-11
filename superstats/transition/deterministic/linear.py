@@ -8,7 +8,7 @@ from .deterministic_transition import DeterministicTransition, Prior
 
 
 class Linear(DeterministicTransition):
-    """Deterministic linear transition with an intercept and beta.
+    """Deterministic linear transition with an intercept and slope.
 
     Parameters
     ----------
@@ -18,13 +18,13 @@ class Linear(DeterministicTransition):
     intercept       : float, Prior, or None, optional, default: None
         Starting value of the trajectory. A `Prior` samples one intercept
         per trajectory; `None` uses the deterministic default prior.
-    beta            : float, Prior, or None, optional, default: None
+    slope            : float, Prior, or None, optional, default: None
         Change across the trajectory when `normalize_steps=True`. A `Prior`
-        samples one beta per trajectory; `None` uses the deterministic
+        samples one slope per trajectory; `None` uses the deterministic
         default prior.
     normalize_steps : bool, optional, default: True
         If `True`, use a time axis from 0 to 1. If `False`, use integer
-        step indices, so the beta is applied at every step.
+        step indices, so the slope is applied at every step.
 
     Notes
     -----
@@ -36,7 +36,7 @@ class Linear(DeterministicTransition):
         self,
         bounds: Sequence[float, float] | None = None,
         intercept: float | Prior | None = None,
-        beta: float | Prior | None = None,
+        slope: float | Prior | None = None,
         normalize_steps: bool = True,
     ):
         super().__init__(bounds=bounds)
@@ -45,7 +45,7 @@ class Linear(DeterministicTransition):
 
         self.hyper_specs = {
             "intercept": intercept,
-            "beta": beta,
+            "slope": slope,
         }
 
         self.transition_name = "linear"
@@ -73,17 +73,17 @@ class Linear(DeterministicTransition):
             else np.full(batch_size, fixed["intercept"], dtype=self.dtype)
         )
 
-        beta = (
-            self._sample(hyper["beta"], batch_size)
-            if "beta" in hyper
-            else np.full(batch_size, fixed["beta"], dtype=self.dtype)
+        slope = (
+            self._sample(hyper["slope"], batch_size)
+            if "slope" in hyper
+            else np.full(batch_size, fixed["slope"], dtype=self.dtype)
         )
 
         if self.normalize_steps:
             index = np.linspace(0.0, 1.0, num_steps, dtype=self.dtype)
         else:
             index = np.arange(num_steps, dtype=self.dtype)
-        local = intercept[:, None] + beta[:, None] * index[None, :]
+        local = intercept[:, None] + slope[:, None] * index[None, :]
 
         return {
             "deterministic_params": self._bound(local),
@@ -98,13 +98,13 @@ class Linear(DeterministicTransition):
         num_steps: int,
     ) -> np.ndarray:
         intercept = np.broadcast_to(np.asarray(params["intercept"], dtype=self.dtype), (batch_size,))
-        beta = np.broadcast_to(np.asarray(params["beta"], dtype=self.dtype), (batch_size,))
+        slope = np.broadcast_to(np.asarray(params["slope"], dtype=self.dtype), (batch_size,))
 
         index = (
             np.linspace(0.0, 1.0, num_steps, dtype=self.dtype)
             if self.normalize_steps
             else np.arange(num_steps, dtype=self.dtype)
         )
-        trajectory = intercept[:, None] + beta[:, None] * index[None, :]
+        trajectory = intercept[:, None] + slope[:, None] * index[None, :]
 
         return self._bound(trajectory)

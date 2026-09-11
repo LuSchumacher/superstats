@@ -73,6 +73,7 @@ class DeterministicTransition(ABC):
             Number of independent trajectories to draw.
         num_steps  : int
             Number of time steps per trajectory (including initial state).
+
         Returns
         -------
         result : dict - dictionary with keys `deterministic_params`,

@@ -77,12 +77,14 @@ class Model:
         context: ContextSimulator | Mapping[str, Any] | pd.DataFrame | None = None,
         context_mapping: ContextMapping | None = None,
         formula: Any | None = None,
+        design_matrix: Any | None = None,
     ):
         self.prior = prior
         self.simulator = simulator
         self.context = context
         self.context_mapping = context_mapping or ContextMapping()
         self.formula = formula
+        self.design_matrix = design_matrix
 
         if context_mapping is not None and context is None:
             raise ValueError("context_mapping requires context.")
@@ -228,6 +230,7 @@ class Model:
         combined_params.update(fixed_params)
 
         model_params = self._resolve_formula(combined_params, contexts["formula_context"])
+        model_params = self._resolve_design_matrix(model_params, contexts["design_context"])
         model_params, simulator_context = self._apply_simulator_context(model_params, contexts["simulator_context"])
         ordered_params = self._ordered_model_args(
             model_params,
@@ -429,6 +432,7 @@ class Model:
             raw_context = self._coerce_fixed_context(context, batch_size, num_steps, allow_batched=True)
             contexts = self.context_mapping.split(raw_context)
         combined_params = self._resolve_formula(dict(params), contexts["formula_context"])
+        combined_params = self._resolve_design_matrix(combined_params, contexts["design_context"])
         combined_params, simulator_context = self._apply_simulator_context(
             combined_params, contexts["simulator_context"]
         )
@@ -454,6 +458,7 @@ class Model:
             return {}, {
                 "simulator_context": {},
                 "formula_context": {},
+                "design_context": {},
             }
 
         if isinstance(self.context, ContextSimulator):
@@ -531,6 +536,22 @@ class Model:
         resolved = resolver(parameters=parameters, context=context)
         if not isinstance(resolved, Mapping):
             raise TypeError("formula must return a mapping of simulator parameters.")
+        return dict(resolved)
+
+    def _resolve_design_matrix(
+        self,
+        parameters: Dict[str, np.ndarray],
+        context: Mapping[str, Any],
+    ) -> Dict[str, np.ndarray]:
+        """Resolve model parameters through the optional design matrix."""
+        if self.design_matrix is None:
+            return parameters
+        resolver = getattr(self.design_matrix, "resolve", self.design_matrix)
+        if not callable(resolver):
+            raise TypeError("design_matrix must be callable or provide a callable resolve method.")
+        resolved = resolver(parameters=parameters, context=context)
+        if not isinstance(resolved, Mapping):
+            raise TypeError("design_matrix must return a mapping of simulator parameters.")
         return dict(resolved)
 
     def _call_simulator(self, ordered_params: list, context: Mapping[str, Any]) -> Mapping[str, np.ndarray]:
@@ -629,6 +650,7 @@ class Model:
 
         contexts = contexts or self._sample_context(batch_size=1, num_steps=1)
         model_params = self._resolve_formula(combined_params, contexts["formula_context"])
+        model_params = self._resolve_design_matrix(model_params, contexts["design_context"])
         model_params, simulator_context = self._apply_simulator_context(model_params, contexts["simulator_context"])
         ordered_params = self._ordered_model_args(
             model_params,
