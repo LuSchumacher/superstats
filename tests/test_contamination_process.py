@@ -256,7 +256,7 @@ class TestApplyContaminationProcess:
             p_contaminated=Linear(
                 bounds=(0.0, 1.0),
                 intercept=Prior("beta", a=2, b=8),
-                beta=0.0,
+                slope=0.0,
             ),
             infer=True,
         )
@@ -267,7 +267,7 @@ class TestApplyContaminationProcess:
         assert process.parameter_groups() == {
             "deterministic_params": ["p_contaminated"],
             "hyper_params": ["p_contaminated_intercept"],
-            "fixed_params": ["p_contaminated_beta"],
+            "fixed_params": ["p_contaminated_slope"],
         }
 
 

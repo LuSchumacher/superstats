@@ -1,7 +1,6 @@
 """Joint priors over time-varying and time-invariant parameters."""
 
 from typing import Any, Dict, Literal
-import inspect
 
 import numpy as np
 from matplotlib.figure import Figure
@@ -51,7 +50,6 @@ class JointPrior:
         self,
         batch_size: int,
         num_steps: int,
-        context: Dict[str, Any] | None = None,
     ) -> Dict[str, Any]:
         """Draw a joint parameter sample.
 
@@ -61,10 +59,6 @@ class JointPrior:
             Number of independent samples to draw.
         num_steps  : int
             Number of time steps per trajectory.
-        context : dict, optional
-            Context variables forwarded to each transition model whose
-            ``sample`` method accepts a ``context`` keyword argument.
-
         Returns
         -------
         result : dict - sampled parameter groups `local_params`,
@@ -104,13 +98,7 @@ class JointPrior:
             else:
                 raise TypeError(f"Unknown parameter type for '{name}': {type(param).__name__}")
 
-            sample_signature = inspect.signature(param.sample)
-            accepts_context = "context" in sample_signature.parameters or any(
-                parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in sample_signature.parameters.values()
-            )
             sample_kwargs = {"batch_size": batch_size, "num_steps": num_steps}
-            if accepts_context:
-                sample_kwargs["context"] = context or {}
             samples = param.sample(**sample_kwargs)
             target[name] = samples[sample_key]
 
@@ -131,28 +119,6 @@ class JointPrior:
             "shared_params": shared_params,
             "fixed_params": fixed_params,
         }
-
-    def _param_bounds(self) -> dict:
-        """Collect y-axis bounds declared on the underlying parameter objects.
-
-        Returns
-        -------
-        bounds : dict - mapping from parameter name to its `bounds`
-            attribute, for parameters that define one
-        """
-        return {
-            name: obj.bounds for name, obj in self.params.items() if hasattr(obj, "bounds") and obj.bounds is not None
-        }
-
-    def _mixture_names(self) -> dict:
-        """Collect mixture component names declared on the underlying parameter objects.
-
-        Returns
-        -------
-        names : dict - mapping from parameter name to its `names`
-            attribute, for parameters that define one
-        """
-        return {name: obj.names for name, obj in self.params.items() if hasattr(obj, "names")}
 
     def plot_time_varying_prior(
         self,
@@ -210,7 +176,11 @@ class JointPrior:
         local_params = {**samples["local_params"], **samples["deterministic_params"]}
         return plot_time_varying_prior(
             local_params=local_params,
-            param_bounds=self._param_bounds(),
+            param_bounds={
+                name: obj.bounds
+                for name, obj in self.params.items()
+                if hasattr(obj, "bounds") and obj.bounds is not None
+            },
             num_cols=num_cols,
             marginal=marginal,
             dist_type=dist_type,
@@ -272,7 +242,7 @@ class JointPrior:
         return plot_time_invariant_prior(
             hyper_params=samples["hyper_params"],
             shared_params=samples["shared_params"],
-            mixture_names=self._mixture_names(),
+            mixture_names={name: obj.names for name, obj in self.params.items() if hasattr(obj, "names")},
             dist_type=dist_type,
             num_bins=num_bins,
             dist_alpha=dist_alpha,
@@ -344,8 +314,12 @@ class JointPrior:
             local_params=local_params,
             hyper_params=samples["hyper_params"],
             shared_params=samples["shared_params"],
-            param_bounds=self._param_bounds(),
-            mixture_names=self._mixture_names(),
+            param_bounds={
+                name: obj.bounds
+                for name, obj in self.params.items()
+                if hasattr(obj, "bounds") and obj.bounds is not None
+            },
+            mixture_names={name: obj.names for name, obj in self.params.items() if hasattr(obj, "names")},
             hyper_param_groups=self._last_hyper_param_groups,
             marginal=marginal,
             dist_type=dist_type,
@@ -358,3 +332,25 @@ class JointPrior:
             alpha=alpha,
             figsize=figsize,
         )
+
+    def _param_bounds(self) -> dict:
+        """Collect y-axis bounds declared on the underlying parameter objects.
+
+        Returns
+        -------
+        bounds : dict - mapping from parameter name to its `bounds`
+            attribute, for parameters that define one
+        """
+        return {
+            name: obj.bounds for name, obj in self.params.items() if hasattr(obj, "bounds") and obj.bounds is not None
+        }
+
+    def _mixture_names(self) -> dict:
+        """Collect mixture component names declared on the underlying parameter objects.
+
+        Returns
+        -------
+        names : dict - mapping from parameter name to its `names`
+            attribute, for parameters that define one
+        """
+        return {name: obj.names for name, obj in self.params.items() if hasattr(obj, "names")}

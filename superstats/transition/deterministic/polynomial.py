@@ -63,43 +63,6 @@ class Polynomial(DeterministicTransition):
 
         self.transition_name = "polynomial"
 
-    def _expand_beta_specs(
-        self,
-        betas: float | Prior | Sequence[float | Prior | None] | None,
-    ) -> Sequence[float | Prior | None]:
-        """Normalize beta input into one spec per polynomial term."""
-        if isinstance(betas, (Prior, float, int)) or betas is None:
-            return [betas] * self.degree
-
-        if isinstance(betas, Sequence) and not isinstance(betas, (str, bytes)):
-            if len(betas) != self.degree:
-                raise ValueError(f"betas must have length equal to degree ({self.degree}), got {len(betas)}")
-            return betas
-
-        raise TypeError("betas must be a scalar, Prior, None, or a sequence of scalars/Priors")
-
-    def _resolve_beta(self, spec: float | Prior | None) -> tuple[Prior | float, bool]:
-        """Resolve a beta spec using the shared default hyperprior."""
-        return self._resolve("beta", spec)
-
-    def _resolve_hyperparams(self, batch_size: int) -> tuple[Dict[str, np.ndarray], Dict[str, float]]:
-        """Resolve intercept and beta specs into sampled and fixed groups."""
-        hyper_params = {}
-        fixed_params = {}
-
-        for name, spec in self.hyper_specs.items():
-            if name == "intercept":
-                value, infer = self._resolve(name, spec)
-            else:
-                value, infer = self._resolve_beta(spec)
-
-            if infer:
-                hyper_params[name] = self._sample(value, batch_size)
-            else:
-                fixed_params[name] = value
-
-        return hyper_params, fixed_params
-
     def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
         """Draw `batch_size` polynomial trajectories of length `num_steps`."""
         hyper, fixed = self._resolve_hyperparams(batch_size)
@@ -144,3 +107,40 @@ class Polynomial(DeterministicTransition):
             trajectory += beta[:, None] * np.power(index[None, :], power)
 
         return self._bound(trajectory)
+
+    def _expand_beta_specs(
+        self,
+        betas: float | Prior | Sequence[float | Prior | None] | None,
+    ) -> Sequence[float | Prior | None]:
+        """Normalize beta input into one spec per polynomial term."""
+        if isinstance(betas, (Prior, float, int)) or betas is None:
+            return [betas] * self.degree
+
+        if isinstance(betas, Sequence) and not isinstance(betas, (str, bytes)):
+            if len(betas) != self.degree:
+                raise ValueError(f"betas must have length equal to degree ({self.degree}), got {len(betas)}")
+            return betas
+
+        raise TypeError("betas must be a scalar, Prior, None, or a sequence of scalars/Priors")
+
+    def _resolve_beta(self, spec: float | Prior | None) -> tuple[Prior | float, bool]:
+        """Resolve a beta spec using the shared default hyperprior."""
+        return self._resolve("beta", spec)
+
+    def _resolve_hyperparams(self, batch_size: int) -> tuple[Dict[str, np.ndarray], Dict[str, float]]:
+        """Resolve intercept and beta specs into sampled and fixed groups."""
+        hyper_params = {}
+        fixed_params = {}
+
+        for name, spec in self.hyper_specs.items():
+            if name == "intercept":
+                value, infer = self._resolve(name, spec)
+            else:
+                value, infer = self._resolve_beta(spec)
+
+            if infer:
+                hyper_params[name] = self._sample(value, batch_size)
+            else:
+                fixed_params[name] = value
+
+        return hyper_params, fixed_params
