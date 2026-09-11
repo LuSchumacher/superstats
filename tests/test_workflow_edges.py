@@ -83,7 +83,7 @@ def test_prepare_conditions_validates_and_filters_named_arrays():
 
     with pytest.raises(TypeError, match="must be a mapping"):
         workflow._prepare_conditions(x)
-    with pytest.raises(KeyError, match="Missing observed data"):
+    with pytest.raises(KeyError, match="Missing summary keys"):
         workflow._prepare_conditions({"other": x})
     with pytest.raises(ValueError, match="time_steps.*shape"):
         workflow._prepare_conditions({"x": x, "time_steps": np.ones((2, 2))})

@@ -128,15 +128,16 @@ class Workflow:
         hyper_keys = model.hyper_keys
         shared_keys = model.shared_keys
         data_keys = model.data_keys
+        summary_data_keys = getattr(model, "summary_keys", data_keys)
 
         adapter = (
             bf.Adapter()
             .convert_dtype("float64", "float32")
-            .as_time_series(["time_steps", *data_keys])
+            .as_time_series(["time_steps", *summary_data_keys])
             .concatenate(local_keys + hyper_keys + shared_keys, into="inference_variables")
         )
 
-        summary_keys = ["time_steps", *data_keys]
+        summary_keys = ["time_steps", *summary_data_keys]
         if hasattr(model, "has_mask") and model.has_mask:
             adapter = adapter.as_time_series("missing_mask")
             adapter = adapter.concatenate([*summary_keys, "missing_mask"], into="summary_variables")
@@ -164,6 +165,92 @@ class Workflow:
     @approximator.setter
     def approximator(self, value):
         self.workflow.approximator = value
+
+    def _load_history(self) -> None:
+        """Load persisted training history from `checkpoint_filepath`, if present.
+
+        A no-op if `checkpoint_filepath` is None or no `history.pkl`
+        file exists there.
+        """
+        if self.checkpoint_filepath is None:
+            return
+        path = os.path.join(self.checkpoint_filepath, "history.pkl")
+        if not os.path.exists(path):
+            return
+        with open(path, "rb") as f:
+            self.workflow.history = pickle.load(f)
+
+    def _save_history(self, new_history: keras.callbacks.History) -> None:
+        """Merge and persist training history to `checkpoint_filepath`, if present.
+
+        A no-op if `checkpoint_filepath` is None.
+
+        Parameters
+        ----------
+        new_history : keras.callbacks.History
+            History from the most recent training run. Merged into any
+            existing `self.workflow.history` before saving.
+        """
+        if self.checkpoint_filepath is None:
+            return
+        existing = self.workflow.history
+        if existing is not None and existing is not new_history:
+            for key, values in new_history.history.items():
+                existing.history.setdefault(key, []).extend(values)
+            new_history = existing
+        os.makedirs(self.checkpoint_filepath, exist_ok=True)
+        with open(os.path.join(self.checkpoint_filepath, "history.pkl"), "wb") as f:
+            pickle.dump(new_history, f)
+        self.workflow.history = new_history
+
+    def _prepare_conditions(self, data: Mapping[str, np.ndarray]) -> dict[str, np.ndarray]:
+        """Add adapter-required auxiliary condition keys to named observations."""
+        if not isinstance(data, Mapping):
+            raise TypeError(f"data must be a mapping of named arrays, got {type(data)}.")
+
+        conditions = dict(data)
+        if self.model is None:
+            return conditions
+
+        data_keys = self.model.data_keys
+        summary_data_keys = getattr(self.model, "summary_keys", data_keys)
+        missing_keys = [key for key in summary_data_keys if key not in conditions]
+        if missing_keys:
+            raise KeyError(f"Missing summary keys {missing_keys!r}. Expected keys: {summary_data_keys!r}.")
+
+        first = conditions[data_keys[0]]
+        num_datasets = first.shape[0]
+        num_steps = first.shape[1]
+
+        if "time_steps" not in conditions:
+            log_warning("No time_steps provided; adding contiguous default time steps.")
+            conditions["time_steps"] = np.broadcast_to(np.arange(1, num_steps + 1)[None, :], (num_datasets, num_steps))
+
+        elif conditions["time_steps"].shape != (num_datasets, num_steps):
+            raise ValueError(
+                f"'time_steps' must have shape {(num_datasets, num_steps)}, got {conditions['time_steps'].shape}."
+            )
+
+        for key in summary_data_keys:
+            value = np.asarray(conditions[key])
+            if value.ndim < 2 or value.shape[:2] != (num_datasets, num_steps):
+                raise ValueError(f"'{key}' must have leading shape {(num_datasets, num_steps)}, got {value.shape}.")
+
+        if getattr(self.model, "has_mask", False):
+            if "missing_mask" not in conditions:
+                log_warning("No missing_mask provided although model has missingness; assuming no missings.")
+                conditions["missing_mask"] = np.zeros((num_datasets, num_steps), dtype=bool)
+
+            elif conditions["missing_mask"].shape != (num_datasets, num_steps):
+                raise ValueError(
+                    f"'missing_mask' must have shape {(num_datasets, num_steps)}, "
+                    f"got {conditions['missing_mask'].shape}."
+                )
+
+        remaining_keys = summary_data_keys + ["missing_mask", "time_steps"]
+        conditions = {k: v for k, v in conditions.items() if k in remaining_keys}
+
+        return conditions
 
     def fit_offline(
         self, data, validation_data, epochs: int = 100, batch_size: int = 32, save_history: bool = True, **kwargs
@@ -1303,86 +1390,6 @@ class Workflow:
             data_idx=data_idx,
             **kwargs,
         )
-
-    def _load_history(self) -> None:
-        """Load persisted training history from `checkpoint_filepath`, if present.
-
-        A no-op if `checkpoint_filepath` is None or no `history.pkl`
-        file exists there.
-        """
-        if self.checkpoint_filepath is None:
-            return
-        path = os.path.join(self.checkpoint_filepath, "history.pkl")
-        if not os.path.exists(path):
-            return
-        with open(path, "rb") as f:
-            self.workflow.history = pickle.load(f)
-
-    def _save_history(self, new_history: keras.callbacks.History) -> None:
-        """Merge and persist training history to `checkpoint_filepath`, if present.
-
-        A no-op if `checkpoint_filepath` is None.
-
-        Parameters
-        ----------
-        new_history : keras.callbacks.History
-            History from the most recent training run. Merged into any
-            existing `self.workflow.history` before saving.
-        """
-        if self.checkpoint_filepath is None:
-            return
-        existing = self.workflow.history
-        if existing is not None and existing is not new_history:
-            for key, values in new_history.history.items():
-                existing.history.setdefault(key, []).extend(values)
-            new_history = existing
-        os.makedirs(self.checkpoint_filepath, exist_ok=True)
-        with open(os.path.join(self.checkpoint_filepath, "history.pkl"), "wb") as f:
-            pickle.dump(new_history, f)
-        self.workflow.history = new_history
-
-    def _prepare_conditions(self, data: Mapping[str, np.ndarray]) -> dict[str, np.ndarray]:
-        """Add adapter-required auxiliary condition keys to named observations."""
-        if not isinstance(data, Mapping):
-            raise TypeError(f"data must be a mapping of named arrays, got {type(data)}.")
-
-        conditions = dict(data)
-        if self.model is None:
-            return conditions
-
-        data_keys = self.model.data_keys
-        missing_keys = [key for key in data_keys if key not in conditions]
-        if missing_keys:
-            raise KeyError(f"Missing observed data keys {missing_keys!r}. Expected keys: {data_keys!r}.")
-
-        first = conditions[data_keys[0]]
-        num_datasets = first.shape[0]
-        num_steps = first.shape[1]
-
-        if "time_steps" not in conditions:
-            log_warning("No time_steps provided; adding contiguous default time steps.")
-            conditions["time_steps"] = np.broadcast_to(np.arange(1, num_steps + 1)[None, :], (num_datasets, num_steps))
-
-        elif conditions["time_steps"].shape != (num_datasets, num_steps):
-            raise ValueError(
-                f"'time_steps' must have shape {(num_datasets, num_steps)}, got {conditions['time_steps'].shape}."
-            )
-
-        if getattr(self.model, "has_mask", False):
-            if "missing_mask" not in conditions:
-                log_warning("No missing_mask provided although model has missingness; assuming no missings.")
-                conditions["missing_mask"] = np.zeros((num_datasets, num_steps), dtype=bool)
-
-            elif conditions["missing_mask"].shape != (num_datasets, num_steps):
-                raise ValueError(
-                    f"'missing_mask' must have shape {(num_datasets, num_steps)}, "
-                    f"got {conditions['missing_mask'].shape}."
-                )
-
-        remaining_keys = data_keys + ["missing_mask", "time_steps"]
-        conditions = {k: v for k, v in conditions.items() if k in remaining_keys}
-
-        return conditions
 
     def _prepare_time_varying_at_steps(
         self,
