@@ -2,7 +2,8 @@
 
 import logging as _logging
 
-from . import prior, diagnostics, simulation, workflow
+from . import prior, diagnostics, simulation, workflow, approximators
+from .approximators import CompositeApproximator, MarginalApproximator, JointApproximator
 from .prior import JointPrior, Prior
 from .simulation import Model
 from .workflow import Workflow
@@ -16,6 +17,10 @@ __all__ = [
     "prior",
     "simulation",
     "workflow",
+    "approximators",
+    "CompositeApproximator",
+    "MarginalApproximator",
+    "JointApproximator",
     "JointPrior",
     "Prior",
     "Model",

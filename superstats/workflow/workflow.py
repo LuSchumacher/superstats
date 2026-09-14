@@ -24,6 +24,7 @@ from superstats.defaults import (
     TITLE_FONTSIZE,
 )
 from superstats.simulation import Model
+from superstats.approximators import CompositeApproximator, MarginalApproximator
 from superstats.utils.dispatch import find_inference_network, find_embedding_network
 from superstats.utils.indexing import normalize_data_indices
 from superstats.utils.logging import warning as log_warning
@@ -65,6 +66,13 @@ class Workflow:
     inference_network    : {"coupling", "coupling_flow"} or keras.Layer, optional, default: "coupling".
         String names build a default inference network; otherwise, an already-created Keras
         layer is used directly.
+    invariant_inference_network : str or keras.Layer or None, optional
+        Separate invariant density network. Defaults to a new coupling flow
+        when the model has both local and invariant parameters.
+    approximator : CompositeApproximator or None, optional
+        Explicit composite, for example a JointApproximator. Its networks and
+        adapter are used directly. By default, models with both target groups
+        use MarginalApproximator in smoothing mode.
     checkpoint_filepath  : str or None, optional, default: None
         Directory for saving/restoring the approximator and training
         history.
@@ -89,17 +97,49 @@ class Workflow:
         checkpoint_filepath: str | None = None,
         restore_approximator: bool = True,
         restore_history: bool = True,
+        invariant_inference_network: str | keras.Layer | None = None,
+        approximator: CompositeApproximator | None = None,
         **kwargs,
     ):
         self.model = model
+        invariant_keys = [*getattr(model, "hyper_keys", []), *getattr(model, "shared_keys", [])]
+        embedding_kwargs = {}
+        if getattr(model, "local_keys", None) == [] and invariant_keys:
+            embedding_kwargs["return_sequences"] = False
 
-        self.embedding_network = find_embedding_network(embedding_network)
-        self.inference_network = find_inference_network(inference_network)
+        self.embedding_network = (
+            approximator.summary_network
+            if approximator is not None
+            else find_embedding_network(embedding_network, **embedding_kwargs)
+        )
+        self.inference_network = (
+            approximator.inference_network if approximator is not None else find_inference_network(inference_network)
+        )
 
         if adapter is not None:
             self.adapter = adapter
+        elif approximator is not None:
+            self.adapter = approximator.adapter
         else:
             self.adapter = self.default_adapter(model)
+
+        separate_heads = bool(getattr(model, "local_keys", []) and invariant_keys)
+        standardize = kwargs.pop("standardize", "all")
+        if approximator is None and (separate_heads or invariant_inference_network is not None):
+            approximator = MarginalApproximator(
+                summary_network=self.embedding_network,
+                inference_network=self.inference_network,
+                invariant_inference_network=find_inference_network(
+                    "coupling" if invariant_inference_network is None else invariant_inference_network
+                ),
+                adapter=self.adapter,
+                standardize=standardize,
+            )
+        elif approximator is not None and adapter is not None:
+            approximator.adapter = adapter
+        self.invariant_inference_network = (
+            approximator.invariant_inference_network if approximator is not None else None
+        )
 
         self.checkpoint_filepath = checkpoint_filepath
 
@@ -110,10 +150,14 @@ class Workflow:
             adapter=self.adapter,
             summary_network=self.embedding_network,
             inference_network=self.inference_network,
-            standardize="all",
+            standardize=standardize,
             checkpoint_filepath=self.checkpoint_filepath,
             **kwargs,
         )
+        if approximator is not None:
+            # BasicWorkflow supplies dataset, optimizer, and checkpoint handling;
+            # its training methods operate on the assigned approximator.
+            self.approximator = approximator
 
         if restore_approximator and self.checkpoint_filepath is not None and os.path.isdir(self.checkpoint_filepath):
             path = os.path.join(self.checkpoint_filepath, "model.keras")
@@ -130,12 +174,13 @@ class Workflow:
         data_keys = model.data_keys
         summary_data_keys = getattr(model, "summary_keys", data_keys)
 
-        adapter = (
-            bf.Adapter()
-            .convert_dtype("float64", "float32")
-            .as_time_series(["time_steps", *summary_data_keys])
-            .concatenate(local_keys + hyper_keys + shared_keys, into="inference_variables")
-        )
+        adapter = bf.Adapter().convert_dtype("float64", "float32").as_time_series(["time_steps", *summary_data_keys])
+        invariant_keys = hyper_keys + shared_keys
+        if local_keys and invariant_keys:
+            adapter = adapter.concatenate(local_keys, into="inference_variables")
+            adapter = adapter.concatenate(invariant_keys, into="invariant_variables")
+        else:
+            adapter = adapter.concatenate(local_keys + invariant_keys, into="inference_variables")
 
         summary_keys = ["time_steps", *summary_data_keys]
         if hasattr(model, "has_mask") and model.has_mask:
@@ -300,7 +345,7 @@ class Workflow:
         """Train the approximator by simulating data on the fly.
 
         Temporarily binds `self.model.sample` to always draw
-        trajectories of length `num_steps` with `tile_to_steps=True`,
+        trajectories of length `num_steps` with untiled invariant targets,
         then restores the original method afterward (even if training
         raises).
 
@@ -327,7 +372,7 @@ class Workflow:
             this run
         """
         original_sample = self.model.sample
-        self.model.sample = functools.partial(original_sample, num_steps=num_steps, tile_to_steps=True)
+        self.model.sample = functools.partial(original_sample, num_steps=num_steps, tile_to_steps=False)
         try:
             history = self.workflow.fit_online(
                 epochs=epochs, num_batches_per_epoch=num_batches_per_epoch, batch_size=batch_size, **kwargs
@@ -874,7 +919,9 @@ class Workflow:
             components already expanded).
         estimates      : Mapping[str, np.ndarray] or np.ndarray
             If a dict, mapping from parameter name to an np.ndarray of
-            shape (num_sims, num_samples, steps, dim). If an array, the
+            shape (num_sims, num_samples, dim). Legacy per-step estimates
+            of shape (num_sims, num_samples, steps, dim) are also accepted.
+            If an array, the
             fully-prepared estimate array of shape
             (num_sims, num_pooled_samples, num_params) directly. Must use
             the same input type (dict or array) as `targets`.
@@ -950,16 +997,21 @@ class Workflow:
         expanded_names = []
 
         for k in variable_keys:
-            e_arr = estimates[k]
-            B, S, T, dim = e_arr.shape
+            e_arr = np.asarray(estimates[k])
+            if e_arr.ndim == 3:
+                B, S, dim = e_arr.shape
+                e_agg = e_arr
+            elif e_arr.ndim == 4:
+                B, S, T, dim = e_arr.shape
+                e_agg = e_arr.reshape(B, S * T, dim)
+            else:
+                raise ValueError(f"Estimate '{k}' must have shape (B, S, D) or (B, S, T, D), got {e_arr.shape}.")
             t_arr = self._normalize_time_invariant_target(
                 k,
                 targets[k],
                 batch_size=B,
                 num_components=dim,
             )
-
-            e_agg = e_arr.reshape(B, S * T, dim)
 
             if dim > 1:
                 param_key = k.split("_mixture_weights")[0]

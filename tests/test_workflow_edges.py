@@ -263,7 +263,8 @@ def test_verify_time_invariant_forwards_array_inputs(monkeypatch):
     assert plots["z_score"].call_args.kwargs["color"] == "red"
 
 
-def test_verify_time_invariant_expands_mixture_components(monkeypatch):
+@pytest.mark.parametrize("tiled", [False, True])
+def test_verify_time_invariant_expands_mixture_components(monkeypatch, tiled):
     plots = patch_verification_plots(monkeypatch)
     mixture = SimpleNamespace(names=["fast", "slow"])
     model = SimpleNamespace(
@@ -273,8 +274,8 @@ def test_verify_time_invariant_expands_mixture_components(monkeypatch):
     )
     workflow = bare_workflow(model)
     estimates = {
-        "theta": np.ones((2, 3, 4, 1)),
-        "mix_mixture_weights": np.ones((2, 3, 4, 2)),
+        "theta": np.ones((2, 3, 4, 1) if tiled else (2, 3, 1)),
+        "mix_mixture_weights": np.ones((2, 3, 4, 2) if tiled else (2, 3, 2)),
     }
     targets = {"theta": np.array([1.0, 2.0]), "mix_mixture_weights": np.ones((2, 2))}
 
@@ -283,7 +284,7 @@ def test_verify_time_invariant_expands_mixture_components(monkeypatch):
     assert result == ("recovery", "calibration", "z-score")
     call = plots["recovery"].call_args.kwargs
     assert call["targets"].shape == (2, 3)
-    assert call["estimates"].shape == (2, 12, 3)
+    assert call["estimates"].shape == (2, 12 if tiled else 3, 3)
     assert call["variable_names"] == ["theta", "mix_mixture_weights_fast", "mix_mixture_weights_slow"]
     assert call["uncertainty_agg"] is workflow_module.credible_interval
 

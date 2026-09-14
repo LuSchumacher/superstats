@@ -105,3 +105,13 @@ def test_fit_online_restores_sampler_when_training_fails(basic_workflow):
         workflow.fit_online(num_steps=4, save_history=False)
 
     assert simulator.sample is original_sample
+
+
+def test_fit_online_requests_untiled_invariants(basic_workflow):
+    simulator = SimpleNamespace(sample=Mock(name="sample", return_value={"x": [1]}))
+    workflow = Workflow(model=simulator, adapter=object())
+    workflow.workflow.fit_online.side_effect = lambda **kwargs: simulator.sample(batch_size=4)
+
+    workflow.fit_online(num_steps=7, epochs=1, save_history=False)
+
+    simulator.sample.assert_called_once_with(batch_size=4, num_steps=7, tile_to_steps=False)
