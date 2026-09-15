@@ -1,19 +1,27 @@
 """Shared composition of a global posterior and a conditional sequence posterior."""
 
 from collections.abc import Mapping, Sequence
-from numbers import Integral
 
 import keras
 import numpy as np
 
 from bayesflow.adapters import Adapter
 from bayesflow.approximators import Approximator, AutoregressiveApproximator, ContinuousApproximator
-from bayesflow.networks import RecurrentNetwork
+from bayesflow.networks import CouplingFlow, RecurrentNetwork, TimeSeriesTransformer
 from bayesflow.networks.decoders import RecurrentDecoder, TransformerDecoder
 from bayesflow.networks.helpers import Standardization
 from bayesflow.utils import filter_kwargs, split_arrays
 from bayesflow.utils.keras_utils import resolve_seed
 from bayesflow.utils.serialization import serializable, serialize
+
+from superstats.defaults import (
+    DEFAULT_AUTOREGRESSIVE_DECODER_NETWORK,
+    DEFAULT_AUTOREGRESSIVE_ENCODER_NETWORK,
+    DEFAULT_COUPLING_FLOW,
+    DEFAULT_FILTERING_ENCODER_NETWORK,
+    DEFAULT_FILTERING_DECODER_NETWORK,
+    DEFAULT_RECURRENT_NETWORK,
+)
 
 
 @serializable("superstats.approximators")
@@ -34,22 +42,30 @@ class CompositeApproximator(Approximator):
     def __init__(
         self,
         *,
-        inference_network,
-        invariant_inference_network,
+        inference_network=None,
+        invariant_inference_network=None,
         summary_network=None,
         invariant_pooling=None,
         adapter: Adapter | None = None,
         mode: str = "smoothing",
         standardize: str | Sequence[str] | None = "all",
+        encoder_network=None,
         decoder_network=None,
         joint: bool = False,
         **kwargs,
     ):
         super().__init__(**kwargs)
+
         if mode not in {"smoothing", "filtering"}:
             raise ValueError("mode must be 'smoothing' or 'filtering'.")
+
+        if inference_network is None:
+            inference_network = CouplingFlow(**DEFAULT_COUPLING_FLOW)
+        if invariant_inference_network is None:
+            invariant_inference_network = CouplingFlow(**DEFAULT_COUPLING_FLOW)
         if inference_network is invariant_inference_network:
             raise ValueError("The two inference heads must be separate network instances.")
+
         if joint and mode == "filtering" and decoder_network is not None:
             if not isinstance(decoder_network, RecurrentDecoder) and not getattr(
                 decoder_network, "supports_filtering", False
@@ -62,11 +78,13 @@ class CompositeApproximator(Approximator):
         self.mode = mode
         self.joint = joint
         self.adapter = adapter if adapter is not None else Adapter()
-        self.summary_network = (
-            summary_network
-            if summary_network is not None
-            else RecurrentNetwork(return_sequences=True, bidirectional=mode == "smoothing")
-        )
+
+        if summary_network is None:
+            summary_kwargs = dict(DEFAULT_RECURRENT_NETWORK)
+            summary_kwargs.update(bidirectional=mode == "smoothing")
+            summary_network = RecurrentNetwork(**summary_kwargs)
+
+        self.summary_network = summary_network
         self.invariant_pooling = invariant_pooling
         self._standardize = standardize
         keys = {"inference_variables", "invariant_variables", "summary_variables", "inference_conditions"}
@@ -76,6 +94,7 @@ class CompositeApproximator(Approximator):
         if selected - keys:
             raise ValueError(f"Unknown standardization variables: {sorted(selected - keys)}.")
         self.standardizer = Standardization(sorted(selected & {"summary_variables", "inference_conditions"}))
+
         self.invariant_approximator = ContinuousApproximator(
             inference_network=invariant_inference_network,
             standardize="inference_variables" if "invariant_variables" in selected else None,
@@ -83,13 +102,20 @@ class CompositeApproximator(Approximator):
         sequence_standardize = "inference_variables" if "inference_variables" in selected else None
         if joint:
             if decoder_network is None:
-                decoder_network = RecurrentDecoder() if mode == "filtering" else TransformerDecoder()
-            # The observation encoder belongs to the composite, not to either
-            # child. The child encoder only passes through precomputed summaries
-            # and the broadcast invariant conditions.
+                if mode == "filtering":
+                    decoder_network = RecurrentDecoder(**DEFAULT_FILTERING_DECODER_NETWORK)
+                else:
+                    decoder_network = TransformerDecoder(**DEFAULT_AUTOREGRESSIVE_DECODER_NETWORK)
+            if encoder_network is None:
+                if mode == "smoothing" and isinstance(decoder_network, TransformerDecoder):
+                    encoder_network = TimeSeriesTransformer(**DEFAULT_AUTOREGRESSIVE_ENCODER_NETWORK)
+                elif mode == "filtering":
+                    encoder_network = RecurrentNetwork(**DEFAULT_FILTERING_ENCODER_NETWORK)
+                else:
+                    encoder_network = keras.layers.Identity()
             self.sequence_approximator = AutoregressiveApproximator(
                 inference_network=inference_network,
-                encoder_network=keras.layers.Identity(),
+                encoder_network=encoder_network,
                 decoder_network=decoder_network,
                 standardize=sequence_standardize,
             )
@@ -117,7 +143,6 @@ class CompositeApproximator(Approximator):
         summary_variables: str | Sequence[str],
         inference_conditions: str | Sequence[str] | None = None,
         sample_weight: str | None = None,
-        invariant_sample_weight: str | None = None,
         summary_mask: str | None = None,
         summary_attention_mask: str | None = None,
         inference_mask: str | None = None,
@@ -128,6 +153,7 @@ class CompositeApproximator(Approximator):
         Varying targets and observations may be (B, T) or (B, T, D).
         Invariant targets must be (B, D), including D=1. Known conditions
         must be either (B, C) or (B, T, C). Target groups must not overlap.
+        Sample weights must have shape (B,).
         Inverse adaptation preserves the named variables' usual dimensions.
         """
         varying = [inference_variables] if isinstance(inference_variables, str) else list(inference_variables)
@@ -149,7 +175,6 @@ class CompositeApproximator(Approximator):
             keep.append("inference_conditions")
         for key, name in {
             "sample_weight": sample_weight,
-            "invariant_sample_weight": invariant_sample_weight,
             "summary_mask": summary_mask,
             "summary_attention_mask": summary_attention_mask,
             "inference_mask": inference_mask,
@@ -193,27 +218,38 @@ class CompositeApproximator(Approximator):
         self.standardizer.build(data_shapes)
         summary_shape = tuple(data_shapes["summary_variables"])
         known_shape = data_shapes.get("inference_conditions")
+
         if known_shape is not None:
             summary_shape = (*summary_shape[:-1], summary_shape[-1] + known_shape[-1])
         if not self.summary_network.built:
             self.summary_network.build(summary_shape)
         feature_shape = tuple(self.summary_network.compute_output_shape(summary_shape))
+
         if len(feature_shape) != 3 or feature_shape[:2] != summary_shape[:2]:
             raise ValueError("summary_network must return one feature vector per observation: (B, T, H).")
         pooled_shape = (feature_shape[0], feature_shape[-1] + 1)
+
         if self.invariant_pooling is not None:
             if not self.invariant_pooling.built:
                 self.invariant_pooling.build(feature_shape)
             pooled_shape = tuple(self.invariant_pooling.compute_output_shape(feature_shape))
+
         if len(pooled_shape) != 2 or pooled_shape[0] != summary_shape[0]:
             raise ValueError("invariant_pooling must map (B, T, H) to (B, G).")
+
         invariant_shape = tuple(data_shapes["invariant_variables"])
         self.invariant_approximator.build(
             {"inference_variables": invariant_shape, "inference_conditions": pooled_shape}
         )
+
         sequence_shapes = {"inference_variables": tuple(data_shapes["inference_variables"])}
         if self.joint:
-            sequence_shapes.update(summary_variables=feature_shape, inference_conditions=invariant_shape)
+            sequence_summary_shape = (
+                feature_shape
+                if isinstance(self.sequence_approximator.encoder_network, keras.layers.Identity)
+                else summary_shape
+            )
+            sequence_shapes.update(summary_variables=sequence_summary_shape, inference_conditions=invariant_shape)
         else:
             sequence_shapes["inference_conditions"] = (*feature_shape[:-1], feature_shape[-1] + invariant_shape[-1])
         self.sequence_approximator.build(sequence_shapes)
@@ -222,12 +258,6 @@ class CompositeApproximator(Approximator):
     @staticmethod
     def _tensorize(data):
         return keras.tree.map_structure(keras.ops.convert_to_tensor, data)
-
-    def _ensure_built(self, data):
-        shapes = keras.tree.map_structure(keras.ops.shape, data)
-        self._validate_shapes(shapes)
-        if not self.built:
-            self.build(shapes)
 
     def _call_summary(self, inputs, *, mask=None, attention_mask=None, training=False):
         kwargs = {"training": training}
@@ -269,55 +299,38 @@ class CompositeApproximator(Approximator):
             if data.get("inference_conditions") is not None and len(data["inference_conditions"].shape) == 3
             else None,
         )
+
         if known is not None:
             if len(known.shape) == 2:
                 known = keras.ops.broadcast_to(known[:, None, :], (*keras.ops.shape(inputs)[:2], known.shape[-1]))
             inputs = keras.ops.concatenate([inputs, known], axis=-1)
-        attention_mask = data.get("summary_attention_mask")
-        full_features = self._call_summary(
-            inputs, mask=mask, attention_mask=attention_mask, training=stage == "training"
-        )
-        pooled = self.pool_invariants(full_features, mask=mask, training=stage == "training")
-        features = full_features
-        # A known unidirectional BayesFlow RNN already produces prefix features.
-        # For arbitrary encoders (including bidirectional RNNs/transformers),
-        # evaluate prefixes so future observations cannot enter a filtering head.
-        bidirectional = getattr(self.summary_network, "bidirectional", True)
-        causal_rnn = isinstance(self.summary_network, RecurrentNetwork) and not any(
-            [bidirectional] if isinstance(bidirectional, bool) else bidirectional
-        )
-        if self.mode == "filtering" and not causal_rnn:
-            prefixes = []
-            for stop in range(1, keras.ops.shape(inputs)[1] + 1):
-                prefix_attention = attention_mask
-                if prefix_attention is not None:
-                    prefix_attention = prefix_attention[:, :stop]
-                    if len(prefix_attention.shape) == 3:
-                        prefix_attention = prefix_attention[..., :stop]
-                encoded = self._call_summary(
-                    inputs[:, :stop],
-                    mask=None if mask is None else mask[:, :stop],
-                    attention_mask=prefix_attention,
-                    training=stage == "training",
-                )
-                prefixes.append(encoded[:, -1:])
-            features = keras.ops.concatenate(prefixes, axis=1)
-        return features, pooled
 
-    def _sequence_data(self, data, features, invariant):
+        attention_mask = data.get("summary_attention_mask")
+        features = self._call_summary(inputs, mask=mask, attention_mask=attention_mask, training=stage == "training")
+        pooled = self.pool_invariants(features, mask=mask, training=stage == "training")
+
+        return features, pooled, inputs
+
+    def _sequence_data(self, data, features, invariant, summary_inputs=None):
         result = {
             key: data[key]
             for key in ("inference_variables", "inference_mask", "inference_attention_mask", "summary_mask")
             if key in data
         }
         if self.joint:
-            result.update(summary_variables=features, inference_conditions=invariant)
+            summary = (
+                features
+                if isinstance(self.sequence_approximator.encoder_network, keras.layers.Identity)
+                else summary_inputs
+            )
+            result.update(summary_variables=summary, inference_conditions=invariant)
         else:
             broadcast = keras.ops.broadcast_to(
                 invariant[:, None, :], (*keras.ops.shape(features)[:2], invariant.shape[-1])
             )
             result["inference_conditions"] = keras.ops.concatenate([features, broadcast], axis=-1)
             result.pop("summary_mask", None)
+
         return result
 
     def compute_metrics(
@@ -327,7 +340,6 @@ class CompositeApproximator(Approximator):
         summary_variables,
         inference_conditions=None,
         sample_weight=None,
-        invariant_sample_weight=None,
         summary_mask=None,
         summary_attention_mask=None,
         inference_mask=None,
@@ -335,9 +347,6 @@ class CompositeApproximator(Approximator):
         stage="training",
     ):
         """Route adapted tensors to both children and sum their native objectives.
-
-        ``sample_weight`` weights sequence targets: (B,) or (B, T).
-        ``invariant_sample_weight`` independently weights datasets: (B,).
         ``inference_mask`` excludes padded sequence targets from the objective.
         Metrics are prefixed with ``varying/`` and ``invariant/``. Native head
         losses retain BayesFlow's reductions; the sequence objective is usually
@@ -359,42 +368,39 @@ class CompositeApproximator(Approximator):
                 if value is not None
             }
         )
-        self._ensure_built(data)
-        features, pooled = self._encode(data, stage=stage)
-        batch_size, steps = keras.ops.shape(data["inference_variables"])[:2]
-        if invariant_sample_weight is not None:
-            invariant_sample_weight = keras.ops.convert_to_tensor(invariant_sample_weight)
-            if tuple(invariant_sample_weight.shape) != (batch_size,):
-                raise ValueError("invariant_sample_weight must have shape (B,).")
+        if not self.built:
+            self.build(keras.tree.map_structure(keras.ops.shape, data))
+
+        features, pooled, summary_inputs = self._encode(data, stage=stage)
+
+        if sample_weight is not None:
+            sample_weight = keras.ops.convert_to_tensor(sample_weight)
+
         invariant_metrics = self.invariant_approximator.compute_metrics(
             inference_variables=data["invariant_variables"],
             inference_conditions=pooled,
-            sample_weight=invariant_sample_weight,
+            sample_weight=sample_weight,
             stage=stage,
         )
-        weights = sample_weight
-        if weights is not None:
-            weights = keras.ops.convert_to_tensor(weights)
-            if tuple(weights.shape) not in {(batch_size,), (batch_size, steps)}:
-                raise ValueError("sample_weight must have shape (B,) or (B, T).")
-            if len(weights.shape) == 1:
-                weights = weights[:, None]
-            weights = keras.ops.broadcast_to(weights, keras.ops.shape(data["inference_variables"])[:2])
+
+        sequence_weight = None if sample_weight is None else sample_weight[:, None]
+
         if inference_mask is not None:
-            target_weights = keras.ops.cast(data["inference_mask"], features.dtype)
-            weights = target_weights if weights is None else weights * target_weights
+            mask = keras.ops.cast(data["inference_mask"], features.dtype)
+            sequence_weight = mask if sequence_weight is None else sequence_weight * mask
+
         sequence_metrics = self.sequence_approximator.compute_metrics(
-            **self._sequence_data(data, features, data["invariant_variables"]),
-            sample_weight=weights,
+            **self._sequence_data(data, features, data["invariant_variables"], summary_inputs),
+            sample_weight=sequence_weight,
             stage=stage,
         )
+
         metrics = {
             f"{name}/{key}": value
             for name, head in (("invariant", invariant_metrics), ("varying", sequence_metrics))
             for key, value in head.items()
         }
-        # Child metrics already include their layer penalties. Add all tracked
-        # penalties once, including the shared encoder and pooling penalties.
+
         loss = sum(head["loss"] - head.get("layer_loss", 0.0) for head in (invariant_metrics, sequence_metrics))
         return metrics | self._with_layer_losses(loss)
 
@@ -430,23 +436,19 @@ class CompositeApproximator(Approximator):
         parameter keys. ``batch_size`` bounds the number of datasets encoded and
         expanded at once. Child sampling options use separate kwargs mappings.
         """
-        if not self.built:
-            raise ValueError("Build from a training batch or fit the approximator before sampling.")
-        if not isinstance(num_samples, Integral) or isinstance(num_samples, bool) or num_samples < 1:
-            raise ValueError("num_samples must be a positive integer.")
+
         adapted = self.adapter(conditions, strict=False, stage="inference")
         self._validate_shapes(keras.tree.map_structure(np.shape, adapted), targets=False)
         size = adapted["summary_variables"].shape[0]
-        if not size:
-            raise ValueError("At least one dataset is required for sampling.")
+
         batch_size = size if batch_size is None else batch_size
-        if not isinstance(batch_size, Integral) or isinstance(batch_size, bool) or batch_size < 1:
-            raise ValueError("batch_size must be a positive integer.")
+
         seed = resolve_seed(seed, self.seed_generator)
+
         batches = []
         for start in range(0, size, batch_size):
             batch = self._tensorize({key: value[start : start + batch_size] for key, value in adapted.items()})
-            features, pooled = self._encode(batch)
+            features, pooled, summary_inputs = self._encode(batch)
             count, steps = keras.ops.shape(features)[:2]
             invariant = self.invariant_approximator.sample(
                 num_samples=num_samples,
@@ -455,6 +457,7 @@ class CompositeApproximator(Approximator):
                 seed=seed,
                 **(invariant_kwargs or {}),
             )["inference_variables"]
+
             # Expand only this batch. The native ancestral_sample implementation
             # uses generic continuous condition resolution even for its AR
             # subclass, so call each child's actual sample method explicitly.
@@ -464,14 +467,21 @@ class CompositeApproximator(Approximator):
                 if key not in {"inference_variables", "invariant_variables"}
             }
             expanded_features = keras.ops.repeat(features, num_samples, axis=0)
+            expanded_summary_inputs = keras.ops.repeat(summary_inputs, num_samples, axis=0)
             flat_invariant = invariant.reshape(count * num_samples, -1)
             sequence = self.sequence_approximator.sample(
                 num_samples=1,
-                conditions=self._sequence_data(expanded, expanded_features, self._tensorize(flat_invariant)),
+                conditions=self._sequence_data(
+                    expanded,
+                    expanded_features,
+                    self._tensorize(flat_invariant),
+                    expanded_summary_inputs,
+                ),
                 sample_shape=(steps,),
                 seed=seed,
                 **(sequence_kwargs or {}),
             )["inference_variables"][:, 0]
+
             # Invert on (B*S, T, D), so time-series adapter transforms see their
             # training axes, before introducing the posterior sample axis.
             varying_samples = self.adapter(
@@ -489,10 +499,12 @@ class CompositeApproximator(Approximator):
                 invariant_samples = split_arrays(invariant_samples, axis=-1)
             samples = varying_samples | invariant_samples
             samples = {key: value.reshape(count, num_samples, *value.shape[1:]) for key, value in samples.items()}
+
             if return_summaries:
                 samples["_summaries"] = keras.ops.convert_to_numpy(features)
                 samples["_invariant_summaries"] = keras.ops.convert_to_numpy(pooled)
             batches.append(samples)
+
         return keras.tree.map_structure(lambda *values: np.concatenate(values, axis=0), *batches)
 
     def log_prob(self, data: Mapping[str, np.ndarray], *, return_components=False, **kwargs):
@@ -511,7 +523,7 @@ class CompositeApproximator(Approximator):
         """
         adapted, jacobian = self.adapter(data, strict=False, log_det_jac=True, stage="inference")
         adapted = self._tensorize(adapted)
-        self._ensure_built(adapted)
+
         if adapted.get("inference_mask") is not None:
             valid = keras.ops.convert_to_numpy(adapted["inference_mask"])
             if not np.all(valid) and np.any(np.asarray(jacobian.get("inference_variables", 0.0)) != 0):
@@ -519,12 +531,12 @@ class CompositeApproximator(Approximator):
                     "Masked sequence log_prob requires zero varying-target adapter Jacobians. "
                     "BayesFlow's dataset-level Jacobian cannot be split over valid time points."
                 )
-        features, pooled = self._encode(adapted)
+        features, pooled, summary_inputs = self._encode(adapted)
         invariant = self.invariant_approximator.log_prob(
             {"inference_variables": adapted["invariant_variables"], "inference_conditions": pooled}, **kwargs
         )
         sequence = self.sequence_approximator.log_prob(
-            self._sequence_data(adapted, features, adapted["invariant_variables"]), **kwargs
+            self._sequence_data(adapted, features, adapted["invariant_variables"], summary_inputs), **kwargs
         )
         if not self.joint:
             if adapted.get("inference_mask") is not None:
@@ -537,7 +549,7 @@ class CompositeApproximator(Approximator):
 
     def summarize(self, conditions, **kwargs):
         adapted = self.adapter(conditions, strict=False, stage="inference")
-        features, _ = self._encode(self._tensorize(adapted))
+        features, _, _ = self._encode(self._tensorize(adapted))
         return keras.ops.convert_to_numpy(features)
 
     def compile(self, *args, invariant_inference_metrics=None, **kwargs):
@@ -563,6 +575,7 @@ class CompositeApproximator(Approximator):
             "standardize": self._standardize,
         }
         if self.joint:
+            config["encoder_network"] = self.sequence_approximator.encoder_network
             config["decoder_network"] = self.sequence_approximator.decoder_network
         if type(self) is CompositeApproximator:
             config["joint"] = self.joint

@@ -6,9 +6,14 @@ import keras
 import numpy as np
 import pytest
 
+from superstats.approximators import JointApproximator, MarginalApproximator
 from superstats.defaults import (
+    DEFAULT_AUTOREGRESSIVE_DECODER_NETWORK,
+    DEFAULT_AUTOREGRESSIVE_ENCODER_NETWORK,
     DEFAULT_COUPLING_FLOW,
     DEFAULT_CONSISTENCY_MODEL,
+    DEFAULT_FILTERING_ENCODER_NETWORK,
+    DEFAULT_FILTERING_DECODER_NETWORK,
     DEFAULT_RECURRENT_NETWORK,
     DEFAULT_TRANSFORMER_NETWORK,
 )
@@ -21,6 +26,7 @@ from superstats.simulation.augmentation import (
 )
 
 from superstats.utils.dispatch import (
+    find_approximator,
     find_contamination,
     find_inference_network,
     find_missing,
@@ -32,10 +38,39 @@ def test_network_defaults_are_frozen():
     assert isinstance(DEFAULT_RECURRENT_NETWORK, MappingProxyType)
     assert isinstance(DEFAULT_TRANSFORMER_NETWORK, MappingProxyType)
     assert isinstance(DEFAULT_COUPLING_FLOW, MappingProxyType)
+    assert isinstance(DEFAULT_AUTOREGRESSIVE_ENCODER_NETWORK, MappingProxyType)
+    assert isinstance(DEFAULT_AUTOREGRESSIVE_DECODER_NETWORK, MappingProxyType)
+    assert isinstance(DEFAULT_FILTERING_ENCODER_NETWORK, MappingProxyType)
+    assert isinstance(DEFAULT_FILTERING_DECODER_NETWORK, MappingProxyType)
     assert isinstance(DEFAULT_CONSISTENCY_MODEL, MappingProxyType)
 
     with pytest.raises(TypeError):
         DEFAULT_RECURRENT_NETWORK["hidden_dim"] = 64
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [("marginal", MarginalApproximator), ("joint", JointApproximator)],
+)
+def test_approximator_dispatches_names(name, expected):
+    approximator = find_approximator(name, mode="filtering")
+
+    assert isinstance(approximator, expected)
+    assert approximator.mode == "filtering"
+
+
+def test_approximator_dispatch_passes_instances_and_none_through():
+    approximator = MarginalApproximator()
+
+    assert find_approximator(approximator, mode="filtering") is approximator
+    assert find_approximator(None) is None
+
+
+def test_approximator_dispatch_rejects_unknown_inputs():
+    with pytest.raises(ValueError, match="Unknown approximator"):
+        find_approximator("mixture")
+    with pytest.raises(TypeError, match="approximator"):
+        find_approximator(object())
 
 
 def test_embedding_network_dispatches_recurrent_defaults():
@@ -61,6 +96,8 @@ def test_inference_network_dispatches_coupling_defaults():
     network = find_inference_network("coupling")
 
     assert network.__class__.__name__ == "CouplingFlow"
+    assert network.get_config()["depth"] == 2
+    assert network.get_config()["transform"] == "spline"
 
 
 def test_network_dispatch_passes_existing_layers_through():

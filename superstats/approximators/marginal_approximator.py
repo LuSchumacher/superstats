@@ -18,7 +18,6 @@ class MarginalApproximator(CompositeApproximator):
     summary_network : keras.Layer, optional
         Observation encoder returning (B, T, H). Defaults to a BayesFlow
         RecurrentNetwork, bidirectional for smoothing and causal for filtering.
-        In filtering mode, arbitrary encoders are evaluated on prefixes.
     invariant_pooling : keras.Layer, optional
         Maps complete encoded observations (B, T, H) to (B, G). Defaults to
         masked mean pooling with log(1 + valid sequence length) appended.
@@ -46,8 +45,8 @@ class MarginalApproximator(CompositeApproximator):
     def __init__(
         self,
         *,
-        inference_network,
-        invariant_inference_network,
+        inference_network=None,
+        invariant_inference_network=None,
         summary_network=None,
         invariant_pooling=None,
         adapter=None,

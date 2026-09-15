@@ -46,27 +46,83 @@ def test_default_workflow_trains_samples_and_scores_separate_targets():
     density = workflow.approximator.log_prob(data)
     assert density.shape == (8,)
     assert np.isfinite(density).all()
-    # Previously tiled targets fail with a clear explanation at the head boundary.
-    with pytest.raises(ValueError, match="tiled invariant"):
-        workflow.approximator.compute_metrics(
-            **workflow.adapter(simulator.sample(batch_size=8, num_steps=3, tile_to_steps=True))
-        )
 
 
-def test_explicit_joint_workflow_uses_the_composites_networks_and_adapter():
-    simulator = model()
-    approximator = JointApproximator(
-        summary_network=keras.layers.Dense(4),
-        inference_network=flow(),
-        invariant_inference_network=flow(),
-        adapter=Workflow.default_adapter(simulator),
-        decoder_network=bf.networks.decoders.RecurrentDecoder(hidden_size=4),
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [("marginal", MarginalApproximator), ("joint", JointApproximator)],
+)
+@pytest.mark.parametrize("mode", ["smoothing", "filtering"])
+def test_workflow_selects_composite_and_mode_by_name(name, expected, mode):
+    workflow = Workflow(model=model(), approximator=name, mode=mode)
+
+    assert isinstance(workflow.approximator, expected)
+    assert workflow.mode == mode
+    assert workflow.approximator.mode == mode
+    for network in (workflow.inference_network, workflow.invariant_inference_network):
+        assert network.get_config()["depth"] == 2
+        assert network.get_config()["transform"] == "spline"
+
+    summary = workflow.approximator.summary_network
+    assert isinstance(summary, bf.networks.RecurrentNetwork)
+    assert summary.bidirectional is (mode == "smoothing")
+
+    if name == "joint" and mode == "smoothing":
+        encoder = workflow.approximator.sequence_approximator.encoder_network
+        assert isinstance(encoder, bf.networks.TimeSeriesTransformer)
+        assert isinstance(workflow.approximator.decoder_network, bf.networks.decoders.TransformerDecoder)
+    elif name == "joint":
+        encoder = workflow.approximator.sequence_approximator.encoder_network
+        assert isinstance(encoder, bf.networks.RecurrentNetwork)
+        assert encoder.bidirectional is False
+        assert isinstance(workflow.approximator.decoder_network, bf.networks.decoders.RecurrentDecoder)
+
+
+@pytest.mark.parametrize("cls", [MarginalApproximator, JointApproximator])
+@pytest.mark.parametrize("mode", ["smoothing", "filtering"])
+def test_external_custom_approximator_takes_precedence(cls, mode):
+    external_model = model()
+    summary_network = keras.layers.Dense(4)
+    inference_network = flow()
+    invariant_inference_network = flow()
+    kwargs = {}
+    if cls is JointApproximator:
+        kwargs = {
+            "encoder_network": bf.networks.RecurrentNetwork(
+                summary_dim=4,
+                hidden_dim=4,
+                bidirectional=False,
+                return_sequences=True,
+            ),
+            "decoder_network": bf.networks.decoders.RecurrentDecoder(hidden_size=4),
+        }
+
+    approximator = cls(
+        summary_network=summary_network,
+        inference_network=inference_network,
+        invariant_inference_network=invariant_inference_network,
+        mode=mode,
+        adapter=Workflow.default_adapter(external_model),
+        **kwargs,
     )
-    workflow = Workflow(model=simulator, approximator=approximator)
+    approximator.model = external_model
+    ignored_mode = "filtering" if mode == "smoothing" else "smoothing"
+    workflow = Workflow(model=model(), adapter=object(), approximator=approximator, mode=ignored_mode)
+
     assert workflow.approximator is approximator
+    assert workflow.mode == mode
+    assert workflow.model is external_model
     assert workflow.adapter is approximator.adapter
-    assert workflow.embedding_network is approximator.summary_network
-    assert workflow.inference_network is approximator.inference_network
+    assert workflow.embedding_network is summary_network
+    assert workflow.inference_network is inference_network
+    assert workflow.invariant_inference_network is invariant_inference_network
+
+
+def test_workflow_rejects_unknown_composite_names_and_modes():
+    with pytest.raises(ValueError, match="approximator"):
+        Workflow(model=model(), approximator="mixture")
+    with pytest.raises(ValueError, match="mode"):
+        Workflow(model=model(), approximator="marginal", mode="prediction")
 
 
 def test_invariant_only_model_defaults_to_one_global_summary():

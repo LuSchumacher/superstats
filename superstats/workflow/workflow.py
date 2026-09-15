@@ -24,8 +24,8 @@ from superstats.defaults import (
     TITLE_FONTSIZE,
 )
 from superstats.simulation import Model
-from superstats.approximators import CompositeApproximator, MarginalApproximator
-from superstats.utils.dispatch import find_inference_network, find_embedding_network
+from superstats.approximators import CompositeApproximator
+from superstats.utils.dispatch import find_approximator, find_inference_network, find_embedding_network
 from superstats.utils.indexing import normalize_data_indices
 from superstats.utils.logging import warning as log_warning
 from superstats.diagnostics.plots import (
@@ -61,18 +61,22 @@ class Workflow:
         Data adapter for the workflow. If None, a default adapter is
         built from the stochastic `model.local_keys`, `model.hyper_keys`,
         and `model.shared_keys` (which requires `model` to be set).
-    embedding_network      : {"recurrent", "transformer"} or keras.Layer, optional, default: "recurrent".
-        String names build a default embedding network; otherwise, an already-created Keras layer is used directly.
-    inference_network    : {"coupling", "coupling_flow"} or keras.Layer, optional, default: "coupling".
+    embedding_network      : {"recurrent", "transformer"}, keras.Layer, or None, optional
+        String names build the corresponding Superstats network; a layer is used directly.
+        None selects the approximator's default recurrent encoder.
+    inference_network    : {"coupling", "coupling_flow"}, keras.Layer, or None, optional
         String names build a default inference network; otherwise, an already-created Keras
-        layer is used directly.
+        layer is used directly. None selects a depth-2 spline coupling flow.
     invariant_inference_network : str or keras.Layer or None, optional
         Separate invariant density network. Defaults to a new coupling flow
         when the model has both local and invariant parameters.
-    approximator : CompositeApproximator or None, optional
-        Explicit composite, for example a JointApproximator. Its networks and
-        adapter are used directly. By default, models with both target groups
-        use MarginalApproximator in smoothing mode.
+    approximator : {"marginal", "joint"}, CompositeApproximator, or None, optional
+        Select a built-in composite by name or pass an already constructed
+        approximator. An external approximator's own mode takes precedence.
+        None selects marginal inference for models with both target groups.
+    mode : {"filtering", "smoothing"}, optional, default: "smoothing"
+        Observation availability for a string-selected composite. Ignored when
+        an externally constructed approximator is passed.
     checkpoint_filepath  : str or None, optional, default: None
         Directory for saving/restoring the approximator and training
         history.
@@ -92,53 +96,57 @@ class Workflow:
         self,
         model: Model | None = None,
         adapter: Adapter | None = None,
-        embedding_network: Literal["recurrent", "transformer"] | keras.Layer = "recurrent",
-        inference_network: Literal["coupling", "coupling_flow"] | keras.Layer = "coupling",
+        embedding_network: Literal["recurrent", "transformer"] | keras.Layer | None = None,
+        inference_network: Literal["coupling", "coupling_flow"] | keras.Layer | None = None,
         checkpoint_filepath: str | None = None,
         restore_approximator: bool = True,
         restore_history: bool = True,
         invariant_inference_network: str | keras.Layer | None = None,
-        approximator: CompositeApproximator | None = None,
+        approximator: Literal["marginal", "joint"] | bf.approximators.Approximator | None = None,
+        mode: Literal["filtering", "smoothing"] = "smoothing",
         **kwargs,
     ):
         self.model = model
         invariant_keys = [*getattr(model, "hyper_keys", []), *getattr(model, "shared_keys", [])]
-        embedding_kwargs = {}
-        if getattr(model, "local_keys", None) == [] and invariant_keys:
-            embedding_kwargs["return_sequences"] = False
-
-        self.embedding_network = (
-            approximator.summary_network
-            if approximator is not None
-            else find_embedding_network(embedding_network, **embedding_kwargs)
-        )
-        self.inference_network = (
-            approximator.inference_network if approximator is not None else find_inference_network(inference_network)
-        )
-
-        if adapter is not None:
-            self.adapter = adapter
-        elif approximator is not None:
-            self.adapter = approximator.adapter
-        else:
-            self.adapter = self.default_adapter(model)
-
         separate_heads = bool(getattr(model, "local_keys", []) and invariant_keys)
         standardize = kwargs.pop("standardize", "all")
-        if approximator is None and (separate_heads or invariant_inference_network is not None):
-            approximator = MarginalApproximator(
-                summary_network=self.embedding_network,
-                inference_network=self.inference_network,
-                invariant_inference_network=find_inference_network(
-                    "coupling" if invariant_inference_network is None else invariant_inference_network
-                ),
-                adapter=self.adapter,
-                standardize=standardize,
+
+        approximator = approximator or (
+            "marginal" if separate_heads or invariant_inference_network is not None else None
+        )
+        self.model = getattr(approximator, "model", None) or self.model
+        self.adapter = getattr(approximator, "adapter", None) or adapter or self.default_adapter(self.model)
+
+        approximator = find_approximator(
+            approximator,
+            summary_network=embedding_network,
+            inference_network=inference_network,
+            invariant_inference_network=invariant_inference_network,
+            adapter=self.adapter,
+            mode=mode,
+            standardize=standardize,
+        )
+
+        if approximator is None:
+            embedding_kwargs = {}
+            if getattr(model, "local_keys", None) == [] and invariant_keys:
+                embedding_kwargs["return_sequences"] = False
+
+            self.embedding_network = find_embedding_network(
+                "recurrent" if embedding_network is None else embedding_network,
+                **embedding_kwargs,
             )
-        elif approximator is not None and adapter is not None:
-            approximator.adapter = adapter
+            self.inference_network = find_inference_network(
+                "coupling" if inference_network is None else inference_network
+            )
+        else:
+            self.embedding_network = getattr(approximator, "summary_network", None)
+            self.inference_network = approximator.inference_network
+
+        self.mode = getattr(approximator, "mode", mode)
+
         self.invariant_inference_network = (
-            approximator.invariant_inference_network if approximator is not None else None
+            approximator.invariant_inference_network if isinstance(approximator, CompositeApproximator) else None
         )
 
         self.checkpoint_filepath = checkpoint_filepath

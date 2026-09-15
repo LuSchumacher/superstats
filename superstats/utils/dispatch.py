@@ -17,6 +17,48 @@ def _merge_defaults(defaults, kwargs):
 
 
 @singledispatch
+def find_approximator(arg, *args, **kwargs):
+    raise TypeError(f"approximator must be 'marginal', 'joint', an approximator instance, or None, not {arg!r}.")
+
+
+@find_approximator.register
+def _(arg: None, *args, **kwargs):
+    return None
+
+
+@find_approximator.register
+def _(name: str, *args, summary_network=None, inference_network=None, invariant_inference_network=None, **kwargs):
+    from superstats.approximators import JointApproximator, MarginalApproximator
+
+    match name.lower():
+        case "marginal":
+            constructor = MarginalApproximator
+        case "joint":
+            constructor = JointApproximator
+        case unknown_approximator:
+            raise ValueError(f"Unknown approximator: {unknown_approximator!r}.")
+
+    summary_network = None if summary_network is None else find_embedding_network(summary_network)
+    inference_network = None if inference_network is None else find_inference_network(inference_network)
+    invariant_inference_network = (
+        None if invariant_inference_network is None else find_inference_network(invariant_inference_network)
+    )
+
+    return constructor(
+        *args,
+        summary_network=summary_network,
+        inference_network=inference_network,
+        invariant_inference_network=invariant_inference_network,
+        **kwargs,
+    )
+
+
+@find_approximator.register
+def _(approximator: bf.approximators.Approximator, *args, **kwargs):
+    return approximator
+
+
+@singledispatch
 def find_embedding_network(arg, *args, **kwargs):
     raise TypeError(
         f"embedding network must be one of 'recurrent', 'transformer', or a keras.Layer instance, not {arg!r}."

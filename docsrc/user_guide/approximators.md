@@ -1,9 +1,9 @@
 # Posterior approximators
 
 Superstats provides two BayesFlow approximators sharing the public
-`CompositeApproximator` base for unknown varying
-and invariant parameters. Both own a shared observation encoder and construct
-two posterior components internally:
+`CompositeApproximator` base for unknown varying and invariant parameters. Both
+own an observation encoder for the invariant head and construct two posterior
+components internally:
 
 | Class | Sequence component | Invariant component |
 |---|---|---|
@@ -37,6 +37,9 @@ inference networks must be separate instances. Omitting `summary_network`
 constructs a bidirectional recurrent encoder for smoothing or a unidirectional
 recurrent encoder for filtering. Omitting the joint decoder constructs a
 `TransformerDecoder` for smoothing or a `RecurrentDecoder` for filtering.
+The joint sequence component also owns its BayesFlow encoder: a
+`TimeSeriesTransformer` for smoothing and a unidirectional `RecurrentNetwork`
+for filtering.
 
 `summary_network` must preserve the time dimension: `(B, T, Dx) -> (B, T, H)`.
 Known `inference_conditions`, if provided, are broadcast when necessary and
@@ -49,15 +52,15 @@ For example, with `.log("invariant_variables")` for positive invariants,
 training and ancestral sampling condition the sequence head on log parameters.
 Returned samples are transformed back to physical coordinates, and `log_prob`
 includes the invariant transformation Jacobian once per dataset.
-
 By default, the invariant head receives the masked mean of the full observation
 encoding, with `log(1 + valid sequence length)` appended. This is a simple
 `CompositeApproximator.pool_invariants` call, with no parameterless Keras layer.
 To use learned pooling,
 pass `invariant_pooling`, a Keras layer mapping `(B, T, H) -> (B, G)`. It should
 accept `mask` when using padded sequences. The encoder and pooling layer are
-owned once by the composite, so they are shared by both objectives and saved
-once in Keras checkpoints.
+owned by the composite and saved in Keras checkpoints. The marginal head reuses
+the per-time encoding. The joint head uses the separate encoder inside its
+autoregressive component.
 
 ## Shapes and adapters
 
@@ -73,6 +76,7 @@ time points, and `S` the number of posterior samples.
 | `inference_conditions` | `(B, C)` or `(B, T, C)` | Same | Omitted |
 | `summary_mask` | `(B, T)` | Same | Omitted |
 | `inference_mask` | `(B, T)` | Same | Omitted |
+| `sample_weight` | `(B,)` | Omitted | Omitted |
 
 These shapes apply with the default identity adapter. To work with simulator
 parameter names, use the class's `build_adapter`:
@@ -112,12 +116,18 @@ workflow = sup.Workflow(
 )
 ```
 
-For joint smoothing or filtering, construct a `JointApproximator` with
-`Workflow.default_adapter(model)` and pass it as
-`Workflow(model=model, approximator=approximator)`. The workflow uses its networks
-and adapter directly. Models without both target groups retain the ordinary
-continuous approximator. For an invariant-only model, the default recurrent
-encoder returns one global summary, so its targets also remain untiled.
+Select the built-in family and mode directly on the workflow:
+
+```python
+marginal_smoother = sup.Workflow(model=model, approximator="marginal", mode="smoothing")
+joint_filter = sup.Workflow(model=model, approximator="joint", mode="filtering")
+```
+
+You can instead pass a constructed `MarginalApproximator` or
+`JointApproximator`; its own `mode`, networks, and adapter are retained. Models
+without both target groups retain the ordinary continuous approximator when no
+family is requested. For an invariant-only model, the default recurrent encoder
+returns one global summary, so its targets also remain untiled.
 
 ## Metrics, sampling, and density evaluation
 
@@ -145,11 +155,10 @@ to the conditional sequence head, and returns native head metrics prefixed with
 `invariant/` and `varying/`, plus the combined `loss`. It sums the children's
 native objectives and adds layer regularizers once. BayesFlow flow objectives
 typically average sequence losses over time; density evaluation sums them.
-`sample_weight` weights sequence targets and accepts `(B,)` or `(B, T)`.
-`invariant_sample_weight` independently weights the global objective and accepts
-`(B,)`. `inference_mask` also excludes invalid sequence targets from the loss and
-sequence log density. Masks use `True` for valid points; an augmentation mask
-where `True` means missing must be converted to the desired validity mask.
+`sample_weight` weights datasets in both objectives and accepts `(B,)`.
+`inference_mask` also excludes invalid sequence targets from the sequence loss
+and log density. Masks use `True` for valid points; an augmentation mask where
+`True` means missing must be converted to the desired validity mask.
 
 Sampling first draws `S` invariant vectors, then draws one sequence conditional
 on each vector. The resulting sample axes remain paired; never independently
