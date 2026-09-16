@@ -234,7 +234,6 @@ class TestApplyContaminationProcess:
 
         out = process.apply(sim_data, rng=np.random.default_rng(0))
 
-        assert process.parameter_groups() == {"shared_params": ["p_contaminated"]}
         assert out["p_contaminated"].shape == (1,)
 
     def test_stochastic_probability_can_vary_over_steps(self, sim_data):
@@ -246,10 +245,6 @@ class TestApplyContaminationProcess:
         out = process.apply(sim_data, rng=np.random.default_rng(0))
 
         assert out["p_contaminated"].shape == sim_data["response_time"].shape
-        assert process.parameter_groups() == {
-            "local_params": ["p_contaminated"],
-            "fixed_params": ["p_contaminated_sigma", "p_contaminated_delta"],
-        }
 
     def test_deterministic_probability_exposes_transition_hyperparameters(self, sim_data):
         process = RandomChoiceContamination(
@@ -264,11 +259,6 @@ class TestApplyContaminationProcess:
         out = process.apply(sim_data, rng=np.random.default_rng(0))
 
         assert out["p_contaminated"].shape == sim_data["response_time"].shape
-        assert process.parameter_groups() == {
-            "deterministic_params": ["p_contaminated"],
-            "hyper_params": ["p_contaminated_intercept"],
-            "fixed_params": ["p_contaminated_slope"],
-        }
 
 
 class TestContaminationParameterValidation:

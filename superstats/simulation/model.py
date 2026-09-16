@@ -116,8 +116,13 @@ class Model:
         self.fixed_keys = list(pilot["fixed_params"].keys()) if pilot.get("fixed_params") else []
 
         self._contamination_parameter_groups = {}
-        if self.contamination is not None and hasattr(self.contamination, "parameter_groups"):
-            self._contamination_parameter_groups = self.contamination.parameter_groups()
+        if getattr(self.contamination, "infer", False) and hasattr(self.contamination, "draw_parameter_groups"):
+            parameter_groups = self.contamination.draw_parameter_groups(batch_size=1, num_steps=1)
+            self._contamination_parameter_groups = {
+                group: list(values) for group, values in parameter_groups.items() if values
+            }
+
+        if self._contamination_parameter_groups:
             model_groups = {
                 "local_params": self.local_keys,
                 "deterministic_params": self.deterministic_keys,

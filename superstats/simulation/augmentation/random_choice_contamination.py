@@ -37,7 +37,7 @@ class RandomChoiceContamination(ContaminationProcess):
 
     Parameters
     ----------
-    p_contaminated : float, Prior, StochasticTransition,
+    p_contaminated     : float, Prior, StochasticTransition,
         DeterministicTransition, or None, default: None
         Probability that a time step is contaminated.
         - None (default): drawn from `DEFAULT_P_CONTAMINATED_PRIOR`.
@@ -47,7 +47,7 @@ class RandomChoiceContamination(ContaminationProcess):
         - StochasticTransition: sampled once per dataset and time step.
         - DeterministicTransition: constructs one probability trajectory
           per dataset.
-    infer : bool, default: False
+    infer             : bool, default: False
         Whether `Model` should register contamination parameters as model
         parameters. The parameter type determines its category in the same
         way as `JointPrior`: scalars are fixed, `Prior` values are shared,
@@ -55,7 +55,7 @@ class RandomChoiceContamination(ContaminationProcess):
         are deterministic. Transition hyperparameters are registered as
         hyper or fixed parameters as appropriate. A scalar remains fixed
         even when `infer=True`, because it has no uncertainty to infer.
-    student_t_df : float, default: 5
+    student_t_df      : float, default: 5
         Degrees of freedom for the Student's t distribution used to
         generate contaminant response times. Must be greater than 2.
     response_time_key : str, default: "response_time"
@@ -102,13 +102,8 @@ class RandomChoiceContamination(ContaminationProcess):
         }
         self.required_keys = set(self.key_map.values())
 
-    def _draw_parameter_groups(self, batch_size: int, num_steps: int) -> dict[str, dict]:
-        """Draw contamination probabilities and group them like `JointPrior`.
-
-        Note: `Prior.sample` draws from the global `np.random` state, not
-        from the `rng` passed into `apply`, so draws from a `Prior` are not
-        controlled by the seed threaded through `Model.sample`.
-        """
+    def draw_parameter_groups(self, batch_size: int, num_steps: int) -> dict[str, dict]:
+        """Draw the contamination probability and its associated parameters."""
         p = self.p_contaminated
 
         if isinstance(p, Prior):
@@ -133,42 +128,7 @@ class RandomChoiceContamination(ContaminationProcess):
         values = next(values["p_contaminated"] for values in groups.values() if "p_contaminated" in values)
         if np.any((np.asarray(values) < 0.0) | (np.asarray(values) > 1.0)):
             raise ValueError("Sampled p_contaminated values must be between 0 and 1.")
-
         return groups
-
-    def parameter_groups(self) -> dict[str, list[str]]:
-        """Return parameter names grouped for registration on `Model`."""
-        if not self.infer:
-            return {}
-
-        groups = self._draw_parameter_groups(batch_size=1, num_steps=1)
-        return {group: list(values) for group, values in groups.items() if values}
-
-    @staticmethod
-    def _choice_is_discrete(choice: np.ndarray) -> bool:
-        """Return whether numeric choices are integer-valued."""
-        if np.issubdtype(choice.dtype, np.integer) or np.issubdtype(choice.dtype, np.bool_):
-            return True
-        return bool(np.all(choice == np.floor(choice)))
-
-    @staticmethod
-    def _log_rt_stats(response_time: np.ndarray, mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """Compute per-dataset log-RT mean/std over valid, positive RTs."""
-        stats_mask = mask & (response_time > 0)
-        counts = stats_mask.sum(axis=1, keepdims=True)
-
-        log_rt = np.zeros(response_time.shape)
-        np.log(response_time, out=log_rt, where=stats_mask)
-
-        sums = np.sum(log_rt, axis=1, keepdims=True)
-        mean_rt = np.divide(sums, counts, out=np.zeros_like(sums), where=counts > 0)
-
-        centered = np.where(stats_mask, log_rt - mean_rt, 0.0)
-        squared_sums = np.sum(centered**2, axis=1, keepdims=True)
-        var_rt = np.divide(squared_sums, counts, out=np.zeros_like(squared_sums), where=counts > 0)
-        std_rt = np.sqrt(var_rt)
-
-        return mean_rt, std_rt
 
     def apply(
         self,
@@ -179,10 +139,10 @@ class RandomChoiceContamination(ContaminationProcess):
 
         Parameters
         ----------
-        data          : dict with at least the configured response-time and
+        data : dict with at least the configured response-time and
             choice keys, each an np.ndarray of shape (batch_size, num_steps).
             Any additional keys are passed through unchanged.
-        rng           : np.random.Generator or None, optional, default: None
+        rng  : np.random.Generator or None, optional, default: None
             Random generator to use. If None, a fresh, unseeded generator
             is created via `_default_rng`, so calling `apply` directly is
             safe but not reproducible unless a seeded `rng` is supplied.
@@ -216,7 +176,7 @@ class RandomChoiceContamination(ContaminationProcess):
         choice = data[choice_key]
 
         batch_size, num_steps = response_time.shape
-        parameter_groups = self._draw_parameter_groups(batch_size, num_steps)
+        parameter_groups = self.draw_parameter_groups(batch_size, num_steps)
         p = next(values["p_contaminated"] for values in parameter_groups.values() if "p_contaminated" in values)
         p = np.asarray(p)
         if p.ndim == 0:
@@ -228,7 +188,24 @@ class RandomChoiceContamination(ContaminationProcess):
         n_contaminated = mask.sum()
 
         # contaminant response times
-        mean_rt, std_rt = self._log_rt_stats(response_time, valid_rt)
+        counts = valid_rt.sum(axis=1, keepdims=True)
+        log_rt = np.zeros(response_time.shape)
+        np.log(response_time, out=log_rt, where=valid_rt)
+        mean_rt = np.divide(
+            log_rt.sum(axis=1, keepdims=True),
+            counts,
+            out=np.zeros_like(counts, dtype=float),
+            where=counts > 0,
+        )
+        centered = np.where(valid_rt, log_rt - mean_rt, 0.0)
+        std_rt = np.sqrt(
+            np.divide(
+                (centered**2).sum(axis=1, keepdims=True),
+                counts,
+                out=np.zeros_like(counts, dtype=float),
+                where=counts > 0,
+            )
+        )
 
         student_samples = rng.standard_t(df=self.student_t_df, size=(batch_size, num_steps))
         contaminant_log_rt = mean_rt + student_samples * std_rt * np.sqrt((self.student_t_df - 2) / self.student_t_df)
@@ -238,9 +215,11 @@ class RandomChoiceContamination(ContaminationProcess):
         contaminated_choices = choice.copy()
         if n_contaminated > 0:
             valid_choices = choice[valid_rt]
-            is_discrete = self._choice_is_discrete(valid_choices)
-
-            if is_discrete:
+            if (
+                np.issubdtype(choice.dtype, np.integer)
+                or np.issubdtype(choice.dtype, np.bool_)
+                or np.all(valid_choices == np.floor(valid_choices))
+            ):
                 unique_choices = np.unique(valid_choices)
                 contaminant_choices = rng.choice(unique_choices, size=n_contaminated)
             else:
@@ -258,63 +237,3 @@ class RandomChoiceContamination(ContaminationProcess):
                 out.update(values)
 
         return out
-
-    def _draw_parameter_groups(self, batch_size: int, num_steps: int) -> dict[str, dict]:
-        """Draw contamination probabilities and group them like `JointPrior`.
-
-        Note: `Prior.sample` draws from the global `np.random` state, not
-        from the `rng` passed into `apply`, so draws from a `Prior` are not
-        controlled by the seed threaded through `Model.sample`.
-        """
-        p = self.p_contaminated
-
-        if isinstance(p, Prior):
-            groups = {"shared_params": {"p_contaminated": p.sample(batch_size)}}
-        elif isinstance(p, StochasticTransition):
-            samples = p.sample(batch_size=batch_size, num_steps=num_steps)
-            groups = {
-                "local_params": {"p_contaminated": samples["local_params"]},
-                "hyper_params": {f"p_contaminated_{key}": value for key, value in samples["hyper_params"].items()},
-                "fixed_params": {f"p_contaminated_{key}": value for key, value in samples["fixed_params"].items()},
-            }
-        elif isinstance(p, DeterministicTransition):
-            samples = p.sample(batch_size=batch_size, num_steps=num_steps)
-            groups = {
-                "deterministic_params": {"p_contaminated": samples["deterministic_params"]},
-                "hyper_params": {f"p_contaminated_{key}": value for key, value in samples["hyper_params"].items()},
-                "fixed_params": {f"p_contaminated_{key}": value for key, value in samples["fixed_params"].items()},
-            }
-        else:
-            groups = {"fixed_params": {"p_contaminated": p}}
-
-        values = next(values["p_contaminated"] for values in groups.values() if "p_contaminated" in values)
-        if np.any((np.asarray(values) < 0.0) | (np.asarray(values) > 1.0)):
-            raise ValueError("Sampled p_contaminated values must be between 0 and 1.")
-
-        return groups
-
-    @staticmethod
-    def _choice_is_discrete(choice: np.ndarray) -> bool:
-        """Return whether numeric choices are integer-valued."""
-        if np.issubdtype(choice.dtype, np.integer) or np.issubdtype(choice.dtype, np.bool_):
-            return True
-        return bool(np.all(choice == np.floor(choice)))
-
-    @staticmethod
-    def _log_rt_stats(response_time: np.ndarray, mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """Compute per-dataset log-RT mean/std over valid, positive RTs."""
-        stats_mask = mask & (response_time > 0)
-        counts = stats_mask.sum(axis=1, keepdims=True)
-
-        log_rt = np.zeros(response_time.shape)
-        np.log(response_time, out=log_rt, where=stats_mask)
-
-        sums = np.sum(log_rt, axis=1, keepdims=True)
-        mean_rt = np.divide(sums, counts, out=np.zeros_like(sums), where=counts > 0)
-
-        centered = np.where(stats_mask, log_rt - mean_rt, 0.0)
-        squared_sums = np.sum(centered**2, axis=1, keepdims=True)
-        var_rt = np.divide(squared_sums, counts, out=np.zeros_like(squared_sums), where=counts > 0)
-        std_rt = np.sqrt(var_rt)
-
-        return mean_rt, std_rt
