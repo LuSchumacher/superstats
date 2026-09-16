@@ -37,9 +37,9 @@ inference networks must be separate instances. Omitting `summary_network`
 constructs a bidirectional recurrent encoder for smoothing or a unidirectional
 recurrent encoder for filtering. Omitting the joint decoder constructs a
 `TransformerDecoder` for smoothing or a `RecurrentDecoder` for filtering.
-The joint sequence component also owns its BayesFlow encoder: a
-`TimeSeriesTransformer` for smoothing and a unidirectional `RecurrentNetwork`
-for filtering.
+The composite owns this single encoder. Both heads consume its ready-made
+features; the joint sequence component passes them directly to its
+autoregressive decoder.
 
 `summary_network` must preserve the time dimension: `(B, T, Dx) -> (B, T, H)`.
 Known `inference_conditions`, if provided, are broadcast when necessary and
@@ -59,8 +59,7 @@ To use learned pooling,
 pass `invariant_pooling`, a Keras layer mapping `(B, T, H) -> (B, G)`. It should
 accept `mask` when using padded sequences. The encoder and pooling layer are
 owned by the composite and saved in Keras checkpoints. The marginal head reuses
-the per-time encoding. The joint head uses the separate encoder inside its
-autoregressive component.
+the per-time encoding, and the joint head uses the same encoding.
 
 ## Shapes and adapters
 

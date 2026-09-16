@@ -7,7 +7,7 @@ import numpy as np
 
 from bayesflow.adapters import Adapter
 from bayesflow.approximators import Approximator, AutoregressiveApproximator, ContinuousApproximator
-from bayesflow.networks import CouplingFlow, RecurrentNetwork, TimeSeriesTransformer
+from bayesflow.networks import CouplingFlow, RecurrentNetwork
 from bayesflow.networks.decoders import RecurrentDecoder, TransformerDecoder
 from bayesflow.networks.helpers import Standardization
 from bayesflow.utils import filter_kwargs, split_arrays
@@ -16,9 +16,7 @@ from bayesflow.utils.serialization import serializable, serialize
 
 from superstats.defaults import (
     DEFAULT_AUTOREGRESSIVE_DECODER_NETWORK,
-    DEFAULT_AUTOREGRESSIVE_ENCODER_NETWORK,
     DEFAULT_COUPLING_FLOW,
-    DEFAULT_FILTERING_ENCODER_NETWORK,
     DEFAULT_FILTERING_DECODER_NETWORK,
     DEFAULT_RECURRENT_NETWORK,
 )
@@ -49,7 +47,6 @@ class CompositeApproximator(Approximator):
         adapter: Adapter | None = None,
         mode: str = "smoothing",
         standardize: str | Sequence[str] | None = "all",
-        encoder_network=None,
         decoder_network=None,
         joint: bool = False,
         **kwargs,
@@ -106,16 +103,9 @@ class CompositeApproximator(Approximator):
                     decoder_network = RecurrentDecoder(**DEFAULT_FILTERING_DECODER_NETWORK)
                 else:
                     decoder_network = TransformerDecoder(**DEFAULT_AUTOREGRESSIVE_DECODER_NETWORK)
-            if encoder_network is None:
-                if mode == "smoothing" and isinstance(decoder_network, TransformerDecoder):
-                    encoder_network = TimeSeriesTransformer(**DEFAULT_AUTOREGRESSIVE_ENCODER_NETWORK)
-                elif mode == "filtering":
-                    encoder_network = RecurrentNetwork(**DEFAULT_FILTERING_ENCODER_NETWORK)
-                else:
-                    encoder_network = keras.layers.Identity()
             self.sequence_approximator = AutoregressiveApproximator(
                 inference_network=inference_network,
-                encoder_network=encoder_network,
+                encoder_network=keras.layers.Identity(),
                 decoder_network=decoder_network,
                 standardize=sequence_standardize,
             )
@@ -244,12 +234,7 @@ class CompositeApproximator(Approximator):
 
         sequence_shapes = {"inference_variables": tuple(data_shapes["inference_variables"])}
         if self.joint:
-            sequence_summary_shape = (
-                feature_shape
-                if isinstance(self.sequence_approximator.encoder_network, keras.layers.Identity)
-                else summary_shape
-            )
-            sequence_shapes.update(summary_variables=sequence_summary_shape, inference_conditions=invariant_shape)
+            sequence_shapes.update(summary_variables=feature_shape, inference_conditions=invariant_shape)
         else:
             sequence_shapes["inference_conditions"] = (*feature_shape[:-1], feature_shape[-1] + invariant_shape[-1])
         self.sequence_approximator.build(sequence_shapes)
@@ -309,21 +294,16 @@ class CompositeApproximator(Approximator):
         features = self._call_summary(inputs, mask=mask, attention_mask=attention_mask, training=stage == "training")
         pooled = self.pool_invariants(features, mask=mask, training=stage == "training")
 
-        return features, pooled, inputs
+        return features, pooled
 
-    def _sequence_data(self, data, features, invariant, summary_inputs=None):
+    def _sequence_data(self, data, features, invariant):
         result = {
             key: data[key]
             for key in ("inference_variables", "inference_mask", "inference_attention_mask", "summary_mask")
             if key in data
         }
         if self.joint:
-            summary = (
-                features
-                if isinstance(self.sequence_approximator.encoder_network, keras.layers.Identity)
-                else summary_inputs
-            )
-            result.update(summary_variables=summary, inference_conditions=invariant)
+            result.update(summary_variables=features, inference_conditions=invariant)
         else:
             broadcast = keras.ops.broadcast_to(
                 invariant[:, None, :], (*keras.ops.shape(features)[:2], invariant.shape[-1])
@@ -371,7 +351,7 @@ class CompositeApproximator(Approximator):
         if not self.built:
             self.build(keras.tree.map_structure(keras.ops.shape, data))
 
-        features, pooled, summary_inputs = self._encode(data, stage=stage)
+        features, pooled = self._encode(data, stage=stage)
 
         if sample_weight is not None:
             sample_weight = keras.ops.convert_to_tensor(sample_weight)
@@ -390,7 +370,7 @@ class CompositeApproximator(Approximator):
             sequence_weight = mask if sequence_weight is None else sequence_weight * mask
 
         sequence_metrics = self.sequence_approximator.compute_metrics(
-            **self._sequence_data(data, features, data["invariant_variables"], summary_inputs),
+            **self._sequence_data(data, features, data["invariant_variables"]),
             sample_weight=sequence_weight,
             stage=stage,
         )
@@ -448,7 +428,7 @@ class CompositeApproximator(Approximator):
         batches = []
         for start in range(0, size, batch_size):
             batch = self._tensorize({key: value[start : start + batch_size] for key, value in adapted.items()})
-            features, pooled, summary_inputs = self._encode(batch)
+            features, pooled = self._encode(batch)
             count, steps = keras.ops.shape(features)[:2]
             invariant = self.invariant_approximator.sample(
                 num_samples=num_samples,
@@ -467,7 +447,6 @@ class CompositeApproximator(Approximator):
                 if key not in {"inference_variables", "invariant_variables"}
             }
             expanded_features = keras.ops.repeat(features, num_samples, axis=0)
-            expanded_summary_inputs = keras.ops.repeat(summary_inputs, num_samples, axis=0)
             flat_invariant = invariant.reshape(count * num_samples, -1)
             sequence = self.sequence_approximator.sample(
                 num_samples=1,
@@ -475,7 +454,6 @@ class CompositeApproximator(Approximator):
                     expanded,
                     expanded_features,
                     self._tensorize(flat_invariant),
-                    expanded_summary_inputs,
                 ),
                 sample_shape=(steps,),
                 seed=seed,
@@ -531,12 +509,12 @@ class CompositeApproximator(Approximator):
                     "Masked sequence log_prob requires zero varying-target adapter Jacobians. "
                     "BayesFlow's dataset-level Jacobian cannot be split over valid time points."
                 )
-        features, pooled, summary_inputs = self._encode(adapted)
+        features, pooled = self._encode(adapted)
         invariant = self.invariant_approximator.log_prob(
             {"inference_variables": adapted["invariant_variables"], "inference_conditions": pooled}, **kwargs
         )
         sequence = self.sequence_approximator.log_prob(
-            self._sequence_data(adapted, features, adapted["invariant_variables"], summary_inputs), **kwargs
+            self._sequence_data(adapted, features, adapted["invariant_variables"]), **kwargs
         )
         if not self.joint:
             if adapted.get("inference_mask") is not None:
@@ -549,7 +527,7 @@ class CompositeApproximator(Approximator):
 
     def summarize(self, conditions, **kwargs):
         adapted = self.adapter(conditions, strict=False, stage="inference")
-        features, _, _ = self._encode(self._tensorize(adapted))
+        features, _ = self._encode(self._tensorize(adapted))
         return keras.ops.convert_to_numpy(features)
 
     def compile(self, *args, invariant_inference_metrics=None, **kwargs):
@@ -575,7 +553,6 @@ class CompositeApproximator(Approximator):
             "standardize": self._standardize,
         }
         if self.joint:
-            config["encoder_network"] = self.sequence_approximator.encoder_network
             config["decoder_network"] = self.sequence_approximator.decoder_network
         if type(self) is CompositeApproximator:
             config["joint"] = self.joint

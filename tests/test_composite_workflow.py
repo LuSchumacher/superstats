@@ -67,15 +67,13 @@ def test_workflow_selects_composite_and_mode_by_name(name, expected, mode):
     assert isinstance(summary, bf.networks.RecurrentNetwork)
     assert summary.bidirectional is (mode == "smoothing")
 
-    if name == "joint" and mode == "smoothing":
+    if name == "joint":
         encoder = workflow.approximator.sequence_approximator.encoder_network
-        assert isinstance(encoder, bf.networks.TimeSeriesTransformer)
-        assert isinstance(workflow.approximator.decoder_network, bf.networks.decoders.TransformerDecoder)
-    elif name == "joint":
-        encoder = workflow.approximator.sequence_approximator.encoder_network
-        assert isinstance(encoder, bf.networks.RecurrentNetwork)
-        assert encoder.bidirectional is False
-        assert isinstance(workflow.approximator.decoder_network, bf.networks.decoders.RecurrentDecoder)
+        assert isinstance(encoder, keras.layers.Identity)
+        decoder_type = (
+            bf.networks.decoders.TransformerDecoder if mode == "smoothing" else bf.networks.decoders.RecurrentDecoder
+        )
+        assert isinstance(workflow.approximator.decoder_network, decoder_type)
 
 
 @pytest.mark.parametrize("cls", [MarginalApproximator, JointApproximator])
@@ -88,12 +86,6 @@ def test_external_custom_approximator_takes_precedence(cls, mode):
     kwargs = {}
     if cls is JointApproximator:
         kwargs = {
-            "encoder_network": bf.networks.RecurrentNetwork(
-                summary_dim=4,
-                hidden_dim=4,
-                bidirectional=False,
-                return_sequences=True,
-            ),
             "decoder_network": bf.networks.decoders.RecurrentDecoder(hidden_size=4),
         }
 

@@ -9,10 +9,8 @@ import pytest
 from superstats.approximators import JointApproximator, MarginalApproximator
 from superstats.defaults import (
     DEFAULT_AUTOREGRESSIVE_DECODER_NETWORK,
-    DEFAULT_AUTOREGRESSIVE_ENCODER_NETWORK,
     DEFAULT_COUPLING_FLOW,
     DEFAULT_CONSISTENCY_MODEL,
-    DEFAULT_FILTERING_ENCODER_NETWORK,
     DEFAULT_FILTERING_DECODER_NETWORK,
     DEFAULT_RECURRENT_NETWORK,
     DEFAULT_TRANSFORMER_NETWORK,
@@ -38,9 +36,7 @@ def test_network_defaults_are_frozen():
     assert isinstance(DEFAULT_RECURRENT_NETWORK, MappingProxyType)
     assert isinstance(DEFAULT_TRANSFORMER_NETWORK, MappingProxyType)
     assert isinstance(DEFAULT_COUPLING_FLOW, MappingProxyType)
-    assert isinstance(DEFAULT_AUTOREGRESSIVE_ENCODER_NETWORK, MappingProxyType)
     assert isinstance(DEFAULT_AUTOREGRESSIVE_DECODER_NETWORK, MappingProxyType)
-    assert isinstance(DEFAULT_FILTERING_ENCODER_NETWORK, MappingProxyType)
     assert isinstance(DEFAULT_FILTERING_DECODER_NETWORK, MappingProxyType)
     assert isinstance(DEFAULT_CONSISTENCY_MODEL, MappingProxyType)
 

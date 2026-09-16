@@ -112,7 +112,6 @@ def batch(batch_size=2, steps=3, varying_dim=1, invariant_dim=1):
 def analytic_approximator(cls, mode="smoothing", **kwargs):
     if cls is JointApproximator:
         kwargs.setdefault("decoder_network", ShiftDecoder())
-        kwargs.setdefault("encoder_network", keras.layers.Identity())
     return cls(
         inference_network=NormalHead(sum_conditions=True),
         invariant_inference_network=NormalHead(),
@@ -304,10 +303,7 @@ def test_native_component_configuration_round_trip(cls, mode):
     assert isinstance(restored, cls)
     assert restored.mode == mode
     if cls is JointApproximator:
-        assert isinstance(
-            restored.sequence_approximator.encoder_network,
-            type(approximator.sequence_approximator.encoder_network),
-        )
+        assert isinstance(restored.sequence_approximator.encoder_network, keras.layers.Identity)
         assert isinstance(restored.decoder_network, type(approximator.decoder_network))
 
 

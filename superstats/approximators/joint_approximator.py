@@ -12,8 +12,8 @@ class JointApproximator(CompositeApproximator):
     Accepts the same arguments as MarginalApproximator, plus decoder_network.
     The internal sequence component is BayesFlow's AutoregressiveApproximator;
     the invariant component is a ContinuousApproximator. The global summary
-    encoder and the autoregressive encoder are both owned by this composite,
-    keeping checkpoints serializable.
+    network encodes observations once for both components. Its ready-made
+    features are passed directly to the autoregressive decoder.
 
     Parameters
     ----------
@@ -22,13 +22,9 @@ class JointApproximator(CompositeApproximator):
     invariant_inference_network : bayesflow.networks.InferenceNetwork
         Separate density network for the invariant parameter vector.
     summary_network : keras.Layer, optional
-        Observation encoder returning (B, T, H). See MarginalApproximator for
-        its defaults and prefix evaluation in filtering mode.
-    encoder_network : keras.Layer, optional
-        Encoder owned by the internal BayesFlow autoregressive approximator.
-        Smoothing defaults to BayesFlow's TimeSeriesTransformer configuration.
-        Filtering defaults to a unidirectional RecurrentNetwork, so each
-        encoded position only depends on the corresponding observation prefix.
+        Observation encoder returning (B, T, H). Defaults to a bidirectional
+        RecurrentNetwork for smoothing or a unidirectional RecurrentNetwork
+        for filtering.
     decoder_network : keras.Layer, optional
         BayesFlow-compatible decoder implementing call, compute_output_shape,
         initialize_cache, and decode_step. Defaults to TransformerDecoder for
@@ -62,7 +58,6 @@ class JointApproximator(CompositeApproximator):
         inference_network=None,
         invariant_inference_network=None,
         summary_network=None,
-        encoder_network=None,
         decoder_network=None,
         invariant_pooling=None,
         adapter=None,
@@ -74,7 +69,6 @@ class JointApproximator(CompositeApproximator):
             inference_network=inference_network,
             invariant_inference_network=invariant_inference_network,
             summary_network=summary_network,
-            encoder_network=encoder_network,
             decoder_network=decoder_network,
             invariant_pooling=invariant_pooling,
             adapter=adapter,
