@@ -38,13 +38,13 @@ def test_init_builds_underlying_workflow_with_embedding_network(basic_workflow):
     workflow = Workflow(
         adapter=adapter,
         embedding_network=embedding,
-        inference_network=inference,
+        varying_inference_network=inference,
         checkpoint_filepath=None,
     )
 
     assert workflow.adapter is adapter
     assert workflow.embedding_network is embedding
-    assert workflow.inference_network is inference
+    assert workflow.varying_inference_network is inference
     assert workflow.workflow.adapter is adapter
     assert workflow.workflow.summary_network is embedding
     assert workflow.workflow.inference_network is inference

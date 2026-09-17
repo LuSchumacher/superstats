@@ -24,8 +24,7 @@ from superstats.defaults import (
     TITLE_FONTSIZE,
 )
 from superstats.simulation import Model
-from superstats.approximators import CompositeApproximator
-from superstats.utils.dispatch import find_approximator, find_inference_network, find_embedding_network
+from superstats.utils.dispatch import find_approximator
 from superstats.utils.indexing import normalize_data_indices
 from superstats.utils.logging import warning as log_warning
 from superstats.diagnostics.plots import (
@@ -54,40 +53,38 @@ class Workflow:
 
     Parameters
     ----------
-    model            : Model or None, optional, default: None
-        The model used for training and, when `adapter` is not
+    model                       : Model or None, optional, default: None
+        The model used for online training and, when `adapter` is not
         provided, for building a default adapter. Required in that case.
-    adapter              : Adapter or None, optional, default: None
+    adapter                     : Adapter or None, optional, default: None
         Data adapter for the workflow. If None, a default adapter is
-        built from the stochastic `model.local_keys`, `model.hyper_keys`,
+        built from the `model.local_keys`, `model.hyper_keys`,
         and `model.shared_keys` (which requires `model` to be set).
-    embedding_network      : {"recurrent", "transformer"}, keras.Layer, or None, optional
-        String names build the corresponding Superstats network; a layer is used directly.
-        None selects the approximator's default recurrent encoder.
-    inference_network    : {"coupling", "coupling_flow"}, keras.Layer, or None, optional
-        String names build a default inference network; otherwise, an already-created Keras
-        layer is used directly. None selects a depth-2 spline coupling flow.
-    invariant_inference_network : str or keras.Layer or None, optional
-        Separate invariant density network. Defaults to a new coupling flow
-        when the model has both local and invariant parameters.
-    approximator : {"marginal", "joint"}, CompositeApproximator, or None, optional
+    embedding_network           : {"recurrent", "transformer"} or keras.Layer, default: "recurrent"
+        Observation encoder. String-selected recurrent encoders are configured for mode.
+    varying_inference_network   : {"coupling", "coupling_flow"} or keras.Layer, default: "coupling"
+        Density network for time-varying targets. The default builds a spline
+        coupling flow when varying targets exist. A custom network requires them.
+    invariant_inference_network : {"coupling", "coupling_flow"} or keras.Layer, default: "coupling"
+        Density network for time-invariant targets. The default builds a separate
+        spline coupling flow when invariant targets exist. A custom network requires them.
+    approximator                : {"marginal", "joint"} or Approximator, default: "marginal"
         Select a built-in composite by name or pass an already constructed
         approximator. An external approximator's own mode takes precedence.
-        None selects marginal inference for models with both target groups.
-    mode : {"filtering", "smoothing"}, optional, default: "smoothing"
+        Only available target groups are modeled. With invariant targets only,
+        both choices estimate the same invariant vector density.
+    mode                        : {"filtering", "smoothing"}, optional, default: "smoothing"
         Observation availability for a string-selected composite. Ignored when
         an externally constructed approximator is passed.
-    checkpoint_filepath  : str or None, optional, default: None
-        Directory for saving/restoring the approximator and training
-        history.
-    restore_approximator : bool, optional, default: True
+    checkpoint_filepath         : str or None, optional, default: None
+        Directory for saving/restoring the approximator and training history.
+    restore_approximator        : bool, optional, default: True
         If True and a checkpoint directory exists at
         `checkpoint_filepath`, restore the approximator from it.
         Otherwise, a warning is issued and training starts from scratch.
-    restore_history      : bool, optional, default: True
+    restore_history             : bool, optional, default: True
         If True and a `history.pkl` file exists at
-        `checkpoint_filepath`, restore `self.history` from it.
-        Otherwise, a warning is issued.
+        `checkpoint_filepath`, restore `self.history` from it. Otherwise, a warning is issued.
     **kwargs
         Forwarded to `bf.BasicWorkflow`.
     """
@@ -96,57 +93,38 @@ class Workflow:
         self,
         model: Model | None = None,
         adapter: Adapter | None = None,
-        embedding_network: Literal["recurrent", "transformer"] | keras.Layer | None = None,
-        inference_network: Literal["coupling", "coupling_flow"] | keras.Layer | None = None,
+        embedding_network: Literal["recurrent", "transformer"] | keras.Layer = "recurrent",
+        varying_inference_network: Literal["coupling", "coupling_flow"] | keras.Layer = "coupling",
+        invariant_inference_network: Literal["coupling", "coupling_flow"] | keras.Layer = "coupling",
+        approximator: Literal["marginal", "joint"] | bf.approximators.Approximator = "marginal",
+        mode: Literal["filtering", "smoothing"] = "smoothing",
         checkpoint_filepath: str | None = None,
         restore_approximator: bool = True,
         restore_history: bool = True,
-        invariant_inference_network: str | keras.Layer | None = None,
-        approximator: Literal["marginal", "joint"] | bf.approximators.Approximator | None = None,
-        mode: Literal["filtering", "smoothing"] = "smoothing",
         **kwargs,
     ):
-        self.model = model
-        invariant_keys = [*getattr(model, "hyper_keys", []), *getattr(model, "shared_keys", [])]
-        separate_heads = bool(getattr(model, "local_keys", []) and invariant_keys)
+        self.model = getattr(approximator, "model", None) or model
+        self.adapter = getattr(approximator, "adapter", None) or adapter
+        if self.adapter is None:
+            if self.model is None:
+                raise ValueError("Provide a model or an adapter.")
+            self.adapter = self.default_adapter(self.model)
         standardize = kwargs.pop("standardize", "all")
-
-        approximator = approximator or (
-            "marginal" if separate_heads or invariant_inference_network is not None else None
-        )
-        self.model = getattr(approximator, "model", None) or self.model
-        self.adapter = getattr(approximator, "adapter", None) or adapter or self.default_adapter(self.model)
-
+        target_kwargs = {}
+        if isinstance(approximator, str) and hasattr(self.model, "local_keys"):
+            target_kwargs = {
+                "has_varying": bool(self.model.local_keys),
+                "has_invariant": bool(self.model.hyper_keys or self.model.shared_keys),
+            }
         approximator = find_approximator(
             approximator,
             summary_network=embedding_network,
-            inference_network=inference_network,
+            varying_inference_network=varying_inference_network,
             invariant_inference_network=invariant_inference_network,
             adapter=self.adapter,
             mode=mode,
             standardize=standardize,
-        )
-
-        if approximator is None:
-            embedding_kwargs = {}
-            if getattr(model, "local_keys", None) == [] and invariant_keys:
-                embedding_kwargs["return_sequences"] = False
-
-            self.embedding_network = find_embedding_network(
-                "recurrent" if embedding_network is None else embedding_network,
-                **embedding_kwargs,
-            )
-            self.inference_network = find_inference_network(
-                "coupling" if inference_network is None else inference_network
-            )
-        else:
-            self.embedding_network = getattr(approximator, "summary_network", None)
-            self.inference_network = approximator.inference_network
-
-        self.mode = getattr(approximator, "mode", mode)
-
-        self.invariant_inference_network = (
-            approximator.invariant_inference_network if isinstance(approximator, CompositeApproximator) else None
+            **target_kwargs,
         )
 
         self.checkpoint_filepath = checkpoint_filepath
@@ -156,16 +134,15 @@ class Workflow:
         self.workflow = bf.BasicWorkflow(
             simulator=self.model,
             adapter=self.adapter,
-            summary_network=self.embedding_network,
-            inference_network=self.inference_network,
+            summary_network=getattr(approximator, "summary_network", None),
+            inference_network=getattr(approximator, "varying_inference_network", None)
+            or getattr(approximator, "invariant_inference_network", None)
+            or getattr(approximator, "inference_network", None),
             standardize=standardize,
             checkpoint_filepath=self.checkpoint_filepath,
             **kwargs,
         )
-        if approximator is not None:
-            # BasicWorkflow supplies dataset, optimizer, and checkpoint handling;
-            # its training methods operate on the assigned approximator.
-            self.approximator = approximator
+        self.approximator = approximator
 
         if restore_approximator and self.checkpoint_filepath is not None and os.path.isdir(self.checkpoint_filepath):
             path = os.path.join(self.checkpoint_filepath, "model.keras")
@@ -184,11 +161,10 @@ class Workflow:
 
         adapter = bf.Adapter().convert_dtype("float64", "float32").as_time_series(["time_steps", *summary_data_keys])
         invariant_keys = hyper_keys + shared_keys
-        if local_keys and invariant_keys:
+        if local_keys:
             adapter = adapter.concatenate(local_keys, into="inference_variables")
+        if invariant_keys:
             adapter = adapter.concatenate(invariant_keys, into="invariant_variables")
-        else:
-            adapter = adapter.concatenate(local_keys + invariant_keys, into="inference_variables")
 
         summary_keys = ["time_steps", *summary_data_keys]
         if hasattr(model, "has_mask") and model.has_mask:
@@ -218,92 +194,11 @@ class Workflow:
     @approximator.setter
     def approximator(self, value):
         self.workflow.approximator = value
-
-    def _load_history(self) -> None:
-        """Load persisted training history from `checkpoint_filepath`, if present.
-
-        A no-op if `checkpoint_filepath` is None or no `history.pkl`
-        file exists there.
-        """
-        if self.checkpoint_filepath is None:
-            return
-        path = os.path.join(self.checkpoint_filepath, "history.pkl")
-        if not os.path.exists(path):
-            return
-        with open(path, "rb") as f:
-            self.workflow.history = pickle.load(f)
-
-    def _save_history(self, new_history: keras.callbacks.History) -> None:
-        """Merge and persist training history to `checkpoint_filepath`, if present.
-
-        A no-op if `checkpoint_filepath` is None.
-
-        Parameters
-        ----------
-        new_history : keras.callbacks.History
-            History from the most recent training run. Merged into any
-            existing `self.workflow.history` before saving.
-        """
-        if self.checkpoint_filepath is None:
-            return
-        existing = self.workflow.history
-        if existing is not None and existing is not new_history:
-            for key, values in new_history.history.items():
-                existing.history.setdefault(key, []).extend(values)
-            new_history = existing
-        os.makedirs(self.checkpoint_filepath, exist_ok=True)
-        with open(os.path.join(self.checkpoint_filepath, "history.pkl"), "wb") as f:
-            pickle.dump(new_history, f)
-        self.workflow.history = new_history
-
-    def _prepare_conditions(self, data: Mapping[str, np.ndarray]) -> dict[str, np.ndarray]:
-        """Add adapter-required auxiliary condition keys to named observations."""
-        if not isinstance(data, Mapping):
-            raise TypeError(f"data must be a mapping of named arrays, got {type(data)}.")
-
-        conditions = dict(data)
-        if self.model is None:
-            return conditions
-
-        data_keys = self.model.data_keys
-        summary_data_keys = getattr(self.model, "summary_keys", data_keys)
-        missing_keys = [key for key in summary_data_keys if key not in conditions]
-        if missing_keys:
-            raise KeyError(f"Missing summary keys {missing_keys!r}. Expected keys: {summary_data_keys!r}.")
-
-        first = conditions[data_keys[0]]
-        num_datasets = first.shape[0]
-        num_steps = first.shape[1]
-
-        if "time_steps" not in conditions:
-            log_warning("No time_steps provided; adding contiguous default time steps.")
-            conditions["time_steps"] = np.broadcast_to(np.arange(1, num_steps + 1)[None, :], (num_datasets, num_steps))
-
-        elif conditions["time_steps"].shape != (num_datasets, num_steps):
-            raise ValueError(
-                f"'time_steps' must have shape {(num_datasets, num_steps)}, got {conditions['time_steps'].shape}."
-            )
-
-        for key in summary_data_keys:
-            value = np.asarray(conditions[key])
-            if value.ndim < 2 or value.shape[:2] != (num_datasets, num_steps):
-                raise ValueError(f"'{key}' must have leading shape {(num_datasets, num_steps)}, got {value.shape}.")
-
-        if getattr(self.model, "has_mask", False):
-            if "missing_mask" not in conditions:
-                log_warning("No missing_mask provided although model has missingness; assuming no missings.")
-                conditions["missing_mask"] = np.zeros((num_datasets, num_steps), dtype=bool)
-
-            elif conditions["missing_mask"].shape != (num_datasets, num_steps):
-                raise ValueError(
-                    f"'missing_mask' must have shape {(num_datasets, num_steps)}, "
-                    f"got {conditions['missing_mask'].shape}."
-                )
-
-        remaining_keys = summary_data_keys + ["missing_mask", "time_steps"]
-        conditions = {k: v for k, v in conditions.items() if k in remaining_keys}
-
-        return conditions
+        self.adapter = getattr(value, "adapter", self.adapter)
+        self.embedding_network = getattr(value, "summary_network", None)
+        self.varying_inference_network = getattr(value, "varying_inference_network", None)
+        self.invariant_inference_network = getattr(value, "invariant_inference_network", None)
+        self.mode = getattr(value, "mode", None)
 
     def fit_offline(
         self, data, validation_data, epochs: int = 100, batch_size: int = 32, save_history: bool = True, **kwargs
@@ -1450,6 +1345,92 @@ class Workflow:
             data_idx=data_idx,
             **kwargs,
         )
+
+    def _load_history(self) -> None:
+        """Load persisted training history from `checkpoint_filepath`, if present.
+
+        A no-op if `checkpoint_filepath` is None or no `history.pkl`
+        file exists there.
+        """
+        if self.checkpoint_filepath is None:
+            return
+        path = os.path.join(self.checkpoint_filepath, "history.pkl")
+        if not os.path.exists(path):
+            return
+        with open(path, "rb") as f:
+            self.workflow.history = pickle.load(f)
+
+    def _save_history(self, new_history: keras.callbacks.History) -> None:
+        """Merge and persist training history to `checkpoint_filepath`, if present.
+
+        A no-op if `checkpoint_filepath` is None.
+
+        Parameters
+        ----------
+        new_history : keras.callbacks.History
+            History from the most recent training run. Merged into any
+            existing `self.workflow.history` before saving.
+        """
+        if self.checkpoint_filepath is None:
+            return
+        existing = self.workflow.history
+        if existing is not None and existing is not new_history:
+            for key, values in new_history.history.items():
+                existing.history.setdefault(key, []).extend(values)
+            new_history = existing
+        os.makedirs(self.checkpoint_filepath, exist_ok=True)
+        with open(os.path.join(self.checkpoint_filepath, "history.pkl"), "wb") as f:
+            pickle.dump(new_history, f)
+        self.workflow.history = new_history
+
+    def _prepare_conditions(self, data: Mapping[str, np.ndarray]) -> dict[str, np.ndarray]:
+        """Add adapter-required auxiliary condition keys to named observations."""
+        if not isinstance(data, Mapping):
+            raise TypeError(f"data must be a mapping of named arrays, got {type(data)}.")
+
+        conditions = dict(data)
+        if self.model is None:
+            return conditions
+
+        data_keys = self.model.data_keys
+        summary_data_keys = getattr(self.model, "summary_keys", data_keys)
+        missing_keys = [key for key in summary_data_keys if key not in conditions]
+        if missing_keys:
+            raise KeyError(f"Missing summary keys {missing_keys!r}. Expected keys: {summary_data_keys!r}.")
+
+        first = conditions[data_keys[0]]
+        num_datasets = first.shape[0]
+        num_steps = first.shape[1]
+
+        if "time_steps" not in conditions:
+            log_warning("No time_steps provided; adding contiguous default time steps.")
+            conditions["time_steps"] = np.broadcast_to(np.arange(1, num_steps + 1)[None, :], (num_datasets, num_steps))
+
+        elif conditions["time_steps"].shape != (num_datasets, num_steps):
+            raise ValueError(
+                f"'time_steps' must have shape {(num_datasets, num_steps)}, got {conditions['time_steps'].shape}."
+            )
+
+        for key in summary_data_keys:
+            value = np.asarray(conditions[key])
+            if value.ndim < 2 or value.shape[:2] != (num_datasets, num_steps):
+                raise ValueError(f"'{key}' must have leading shape {(num_datasets, num_steps)}, got {value.shape}.")
+
+        if getattr(self.model, "has_mask", False):
+            if "missing_mask" not in conditions:
+                log_warning("No missing_mask provided although model has missingness; assuming no missings.")
+                conditions["missing_mask"] = np.zeros((num_datasets, num_steps), dtype=bool)
+
+            elif conditions["missing_mask"].shape != (num_datasets, num_steps):
+                raise ValueError(
+                    f"'missing_mask' must have shape {(num_datasets, num_steps)}, "
+                    f"got {conditions['missing_mask'].shape}."
+                )
+
+        remaining_keys = summary_data_keys + ["missing_mask", "time_steps"]
+        conditions = {k: v for k, v in conditions.items() if k in remaining_keys}
+
+        return conditions
 
     def _prepare_time_varying_at_steps(
         self,

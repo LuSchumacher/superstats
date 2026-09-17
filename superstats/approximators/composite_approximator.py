@@ -7,7 +7,7 @@ import numpy as np
 
 from bayesflow.adapters import Adapter
 from bayesflow.approximators import Approximator, AutoregressiveApproximator, ContinuousApproximator
-from bayesflow.networks import CouplingFlow, RecurrentNetwork
+from bayesflow.networks import RecurrentNetwork
 from bayesflow.networks.decoders import RecurrentDecoder, TransformerDecoder
 from bayesflow.networks.helpers import Standardization
 from bayesflow.utils import filter_kwargs, split_arrays
@@ -16,9 +16,7 @@ from bayesflow.utils.serialization import serializable, serialize
 
 from superstats.defaults import (
     DEFAULT_AUTOREGRESSIVE_DECODER_NETWORK,
-    DEFAULT_COUPLING_FLOW,
     DEFAULT_FILTERING_DECODER_NETWORK,
-    DEFAULT_RECURRENT_NETWORK,
 )
 
 
@@ -26,9 +24,10 @@ from superstats.defaults import (
 class CompositeApproximator(Approximator):
     """Implementation shared by the marginal and autoregressive public APIs.
 
-    Targets use two canonical keys: ``inference_variables`` (B, T, Dv) and
+    Enabled targets use two canonical keys: ``inference_variables`` (B, T, Dv) and
     ``invariant_variables`` (B, Di). Observations use ``summary_variables``
     (B, T, Dx). Invariants are broadcast only as sequence-head conditions.
+    Either target group can be disabled with has_varying/has_invariant.
 
     Filtering is conditional on the invariant parameters. The global head
     always sees the complete observation sequence, including in filtering mode.
@@ -40,27 +39,48 @@ class CompositeApproximator(Approximator):
     def __init__(
         self,
         *,
-        inference_network=None,
-        invariant_inference_network=None,
-        summary_network=None,
+        varying_inference_network="coupling",
+        invariant_inference_network="coupling",
+        summary_network="recurrent",
         invariant_pooling=None,
         adapter: Adapter | None = None,
         mode: str = "smoothing",
         standardize: str | Sequence[str] | None = "all",
         decoder_network=None,
         joint: bool = False,
+        has_varying: bool = True,
+        has_invariant: bool = True,
         **kwargs,
     ):
+        if "inference_network" in kwargs:
+            raise TypeError("Use varying_inference_network instead of inference_network.")
         super().__init__(**kwargs)
 
         if mode not in {"smoothing", "filtering"}:
             raise ValueError("mode must be 'smoothing' or 'filtering'.")
 
-        if inference_network is None:
-            inference_network = CouplingFlow(**DEFAULT_COUPLING_FLOW)
-        if invariant_inference_network is None:
-            invariant_inference_network = CouplingFlow(**DEFAULT_COUPLING_FLOW)
-        if inference_network is invariant_inference_network:
+        if not has_varying and not has_invariant:
+            raise ValueError("At least one target group is required.")
+        if not has_varying and not (
+            isinstance(varying_inference_network, str) and varying_inference_network == "coupling"
+        ):
+            raise ValueError("varying_inference_network requires varying targets.")
+        if not has_invariant and not (
+            isinstance(invariant_inference_network, str) and invariant_inference_network == "coupling"
+        ):
+            raise ValueError("invariant_inference_network requires invariant targets.")
+        if not has_varying and decoder_network is not None:
+            raise ValueError("decoder_network requires varying targets.")
+        if not has_invariant and invariant_pooling is not None:
+            raise ValueError("invariant_pooling requires invariant targets.")
+        self.has_varying = has_varying
+        self.has_invariant = has_invariant
+
+        from superstats.utils.dispatch import find_embedding_network, find_inference_network
+
+        varying_inference_network = find_inference_network(varying_inference_network) if has_varying else None
+        invariant_inference_network = find_inference_network(invariant_inference_network) if has_invariant else None
+        if has_varying and has_invariant and varying_inference_network is invariant_inference_network:
             raise ValueError("The two inference heads must be separate network instances.")
 
         if joint and mode == "filtering" and decoder_network is not None:
@@ -76,10 +96,10 @@ class CompositeApproximator(Approximator):
         self.joint = joint
         self.adapter = adapter if adapter is not None else Adapter()
 
-        if summary_network is None:
-            summary_kwargs = dict(DEFAULT_RECURRENT_NETWORK)
-            summary_kwargs.update(bidirectional=mode == "smoothing")
-            summary_network = RecurrentNetwork(**summary_kwargs)
+        if isinstance(summary_network, str) and summary_network.lower() == "recurrent":
+            summary_network = find_embedding_network(summary_network, bidirectional=mode == "smoothing")
+        else:
+            summary_network = find_embedding_network(summary_network)
 
         self.summary_network = summary_network
         self.invariant_pooling = invariant_pooling
@@ -92,26 +112,32 @@ class CompositeApproximator(Approximator):
             raise ValueError(f"Unknown standardization variables: {sorted(selected - keys)}.")
         self.standardizer = Standardization(sorted(selected & {"summary_variables", "inference_conditions"}))
 
-        self.invariant_approximator = ContinuousApproximator(
-            inference_network=invariant_inference_network,
-            standardize="inference_variables" if "invariant_variables" in selected else None,
+        self.invariant_approximator = (
+            ContinuousApproximator(
+                inference_network=invariant_inference_network,
+                standardize="inference_variables" if "invariant_variables" in selected else None,
+            )
+            if has_invariant
+            else None
         )
         sequence_standardize = "inference_variables" if "inference_variables" in selected else None
-        if joint:
+        if not has_varying:
+            self.sequence_approximator = None
+        elif joint:
             if decoder_network is None:
                 if mode == "filtering":
                     decoder_network = RecurrentDecoder(**DEFAULT_FILTERING_DECODER_NETWORK)
                 else:
                     decoder_network = TransformerDecoder(**DEFAULT_AUTOREGRESSIVE_DECODER_NETWORK)
             self.sequence_approximator = AutoregressiveApproximator(
-                inference_network=inference_network,
+                inference_network=varying_inference_network,
                 encoder_network=keras.layers.Identity(),
                 decoder_network=decoder_network,
                 standardize=sequence_standardize,
             )
         else:
             self.sequence_approximator = ContinuousApproximator(
-                inference_network=inference_network, standardize=sequence_standardize
+                inference_network=varying_inference_network, standardize=sequence_standardize
             )
         self.has_distribution = True
         self.seed_generator = keras.random.SeedGenerator()
@@ -119,17 +145,22 @@ class CompositeApproximator(Approximator):
 
     @property
     def inference_network(self):
-        return self.sequence_approximator.inference_network
+        """Primary density network required by BayesFlow's workflow interface."""
+        return self.varying_inference_network or self.invariant_inference_network
+
+    @property
+    def varying_inference_network(self):
+        return self.sequence_approximator.inference_network if self.has_varying else None
 
     @property
     def invariant_inference_network(self):
-        return self.invariant_approximator.inference_network
+        return self.invariant_approximator.inference_network if self.has_invariant else None
 
     @classmethod
     def build_adapter(
         cls,
-        inference_variables: str | Sequence[str],
-        invariant_variables: str | Sequence[str],
+        inference_variables: str | Sequence[str] | None,
+        invariant_variables: str | Sequence[str] | None,
         summary_variables: str | Sequence[str],
         inference_conditions: str | Sequence[str] | None = None,
         sample_weight: str | None = None,
@@ -140,25 +171,32 @@ class CompositeApproximator(Approximator):
     ) -> Adapter:
         """Build an adapter from named, separate varying and invariant targets.
 
+        Pass None for an absent target group and disable that head in the constructor.
         Varying targets and observations may be (B, T) or (B, T, D).
         Invariant targets must be (B, D), including D=1. Known conditions
         must be either (B, C) or (B, T, C). Target groups must not overlap.
         Sample weights must have shape (B,).
         Inverse adaptation preserves the named variables' usual dimensions.
         """
-        varying = [inference_variables] if isinstance(inference_variables, str) else list(inference_variables)
-        invariant = [invariant_variables] if isinstance(invariant_variables, str) else list(invariant_variables)
+        varying = [inference_variables] if isinstance(inference_variables, str) else list(inference_variables or [])
+        invariant = [invariant_variables] if isinstance(invariant_variables, str) else list(invariant_variables or [])
         observations = [summary_variables] if isinstance(summary_variables, str) else list(summary_variables)
-        if not varying or not invariant or not observations:
-            raise ValueError("Varying targets, invariant targets, and observations must all be nonempty.")
+        if not (varying or invariant) or not observations:
+            raise ValueError("At least one target group and observations must be nonempty.")
         if set(varying) & set(invariant):
             raise ValueError("Varying and invariant target names must not overlap.")
         adapter = Adapter().to_array().convert_dtype("float64", "float32")
         adapter.as_time_series(varying + observations)
-        adapter.concatenate(varying, into="inference_variables")
-        adapter.concatenate(invariant, into="invariant_variables")
+        if varying:
+            adapter.concatenate(varying, into="inference_variables")
+        if invariant:
+            adapter.concatenate(invariant, into="invariant_variables")
         adapter.concatenate(observations, into="summary_variables")
-        keep = ["inference_variables", "invariant_variables", "summary_variables"]
+        keep = ["summary_variables"]
+        if varying:
+            keep.append("inference_variables")
+        if invariant:
+            keep.append("invariant_variables")
         if inference_conditions is not None:
             conditions = [inference_conditions] if isinstance(inference_conditions, str) else list(inference_conditions)
             adapter.concatenate(conditions, into="inference_conditions")
@@ -175,8 +213,7 @@ class CompositeApproximator(Approximator):
                 keep.append(key)
         return adapter.keep(keep)
 
-    @staticmethod
-    def _validate_shapes(data_shapes, targets=True):
+    def _validate_shapes(self, data_shapes, targets=True):
         summary = data_shapes.get("summary_variables")
         if summary is None or len(summary) != 3:
             raise ValueError("summary_variables must have shape (B, T, Dx).")
@@ -195,9 +232,9 @@ class CompositeApproximator(Approximator):
         if targets:
             varying = data_shapes.get("inference_variables")
             invariant = data_shapes.get("invariant_variables")
-            if varying is None or len(varying) != 3 or tuple(varying[:2]) != tuple(summary[:2]):
+            if self.has_varying and (varying is None or len(varying) != 3 or tuple(varying[:2]) != tuple(summary[:2])):
                 raise ValueError("inference_variables must have shape (B, T, Dv), aligned with observations.")
-            if invariant is None or len(invariant) != 2 or invariant[0] != summary[0]:
+            if self.has_invariant and (invariant is None or len(invariant) != 2 or invariant[0] != summary[0]):
                 raise ValueError(
                     "invariant_variables must have shape (B, Di); tiled invariant targets are not supported."
                 )
@@ -227,17 +264,23 @@ class CompositeApproximator(Approximator):
         if len(pooled_shape) != 2 or pooled_shape[0] != summary_shape[0]:
             raise ValueError("invariant_pooling must map (B, T, H) to (B, G).")
 
-        invariant_shape = tuple(data_shapes["invariant_variables"])
-        self.invariant_approximator.build(
-            {"inference_variables": invariant_shape, "inference_conditions": pooled_shape}
-        )
-
-        sequence_shapes = {"inference_variables": tuple(data_shapes["inference_variables"])}
-        if self.joint:
-            sequence_shapes.update(summary_variables=feature_shape, inference_conditions=invariant_shape)
-        else:
-            sequence_shapes["inference_conditions"] = (*feature_shape[:-1], feature_shape[-1] + invariant_shape[-1])
-        self.sequence_approximator.build(sequence_shapes)
+        invariant_shape = tuple(data_shapes["invariant_variables"]) if self.has_invariant else None
+        if self.has_invariant:
+            self.invariant_approximator.build(
+                {"inference_variables": invariant_shape, "inference_conditions": pooled_shape}
+            )
+        if self.has_varying:
+            sequence_shapes = {"inference_variables": tuple(data_shapes["inference_variables"])}
+            if self.joint:
+                sequence_shapes["summary_variables"] = feature_shape
+                if self.has_invariant:
+                    sequence_shapes["inference_conditions"] = invariant_shape
+            else:
+                sequence_shapes["inference_conditions"] = (
+                    *feature_shape[:-1],
+                    feature_shape[-1] + (invariant_shape[-1] if self.has_invariant else 0),
+                )
+            self.sequence_approximator.build(sequence_shapes)
         self.built = True
 
     @staticmethod
@@ -292,7 +335,24 @@ class CompositeApproximator(Approximator):
 
         attention_mask = data.get("summary_attention_mask")
         features = self._call_summary(inputs, mask=mask, attention_mask=attention_mask, training=stage == "training")
-        pooled = self.pool_invariants(features, mask=mask, training=stage == "training")
+        pooled = self.pool_invariants(features, mask=mask, training=stage == "training") if self.has_invariant else None
+
+        # A causal encoder can process the sequence once. Other encoders must
+        # see each prefix separately so varying factors cannot use future data.
+        causal = (
+            isinstance(self.summary_network, RecurrentNetwork) and not self.summary_network.bidirectional
+        ) or getattr(self.summary_network, "supports_filtering", False)
+        if self.mode == "filtering" and self.has_varying and not causal:
+            prefix_features = []
+            for stop in range(1, inputs.shape[1]):
+                prefix = self._call_summary(
+                    inputs[:, :stop],
+                    mask=mask[:, :stop] if mask is not None else None,
+                    attention_mask=attention_mask[:, :stop] if attention_mask is not None else None,
+                    training=stage == "training",
+                )
+                prefix_features.append(prefix[:, -1:])
+            features = keras.ops.concatenate([*prefix_features, features[:, -1:]], axis=1)
 
         return features, pooled
 
@@ -303,21 +363,26 @@ class CompositeApproximator(Approximator):
             if key in data
         }
         if self.joint:
-            result.update(summary_variables=features, inference_conditions=invariant)
-        else:
+            result["summary_variables"] = features
+            if invariant is not None:
+                result["inference_conditions"] = invariant
+        elif invariant is not None:
             broadcast = keras.ops.broadcast_to(
                 invariant[:, None, :], (*keras.ops.shape(features)[:2], invariant.shape[-1])
             )
             result["inference_conditions"] = keras.ops.concatenate([features, broadcast], axis=-1)
+            result.pop("summary_mask", None)
+        else:
+            result["inference_conditions"] = features
             result.pop("summary_mask", None)
 
         return result
 
     def compute_metrics(
         self,
-        inference_variables,
-        invariant_variables,
         summary_variables,
+        inference_variables=None,
+        invariant_variables=None,
         inference_conditions=None,
         sample_weight=None,
         summary_mask=None,
@@ -356,11 +421,15 @@ class CompositeApproximator(Approximator):
         if sample_weight is not None:
             sample_weight = keras.ops.convert_to_tensor(sample_weight)
 
-        invariant_metrics = self.invariant_approximator.compute_metrics(
-            inference_variables=data["invariant_variables"],
-            inference_conditions=pooled,
-            sample_weight=sample_weight,
-            stage=stage,
+        invariant_metrics = (
+            self.invariant_approximator.compute_metrics(
+                inference_variables=data["invariant_variables"],
+                inference_conditions=pooled,
+                sample_weight=sample_weight,
+                stage=stage,
+            )
+            if self.has_invariant
+            else {}
         )
 
         sequence_weight = None if sample_weight is None else sample_weight[:, None]
@@ -369,10 +438,14 @@ class CompositeApproximator(Approximator):
             mask = keras.ops.cast(data["inference_mask"], features.dtype)
             sequence_weight = mask if sequence_weight is None else sequence_weight * mask
 
-        sequence_metrics = self.sequence_approximator.compute_metrics(
-            **self._sequence_data(data, features, data["invariant_variables"]),
-            sample_weight=sequence_weight,
-            stage=stage,
+        sequence_metrics = (
+            self.sequence_approximator.compute_metrics(
+                **self._sequence_data(data, features, data.get("invariant_variables")),
+                sample_weight=sequence_weight,
+                stage=stage,
+            )
+            if self.has_varying
+            else {}
         )
 
         metrics = {
@@ -381,8 +454,12 @@ class CompositeApproximator(Approximator):
             for key, value in head.items()
         }
 
-        loss = sum(head["loss"] - head.get("layer_loss", 0.0) for head in (invariant_metrics, sequence_metrics))
+        loss = sum(head["loss"] - head.get("layer_loss", 0.0) for head in (invariant_metrics, sequence_metrics) if head)
         return metrics | self._with_layer_losses(loss)
+
+    def _batch_size_from_data(self, data):
+        """Both target configurations have an observation batch axis."""
+        return keras.ops.shape(data["summary_variables"])[0]
 
     def fit(self, *args, **kwargs):
         return super().fit(*args, **(kwargs | {"adapter": self.adapter}))
@@ -430,14 +507,17 @@ class CompositeApproximator(Approximator):
             batch = self._tensorize({key: value[start : start + batch_size] for key, value in adapted.items()})
             features, pooled = self._encode(batch)
             count, steps = keras.ops.shape(features)[:2]
-            invariant = self.invariant_approximator.sample(
-                num_samples=num_samples,
-                conditions={"inference_conditions": pooled},
-                sample_shape=(),
-                seed=seed,
-                **(invariant_kwargs or {}),
-            )["inference_variables"]
-
+            invariant = (
+                self.invariant_approximator.sample(
+                    num_samples=num_samples,
+                    conditions={"inference_conditions": pooled},
+                    sample_shape=(),
+                    seed=seed,
+                    **(invariant_kwargs or {}),
+                )["inference_variables"]
+                if self.has_invariant
+                else None
+            )
             # Expand only this batch. The native ancestral_sample implementation
             # uses generic continuous condition resolution even for its AR
             # subclass, so call each child's actual sample method explicitly.
@@ -447,26 +527,34 @@ class CompositeApproximator(Approximator):
                 if key not in {"inference_variables", "invariant_variables"}
             }
             expanded_features = keras.ops.repeat(features, num_samples, axis=0)
-            flat_invariant = invariant.reshape(count * num_samples, -1)
-            sequence = self.sequence_approximator.sample(
-                num_samples=1,
-                conditions=self._sequence_data(
-                    expanded,
-                    expanded_features,
-                    self._tensorize(flat_invariant),
-                ),
-                sample_shape=(steps,),
-                seed=seed,
-                **(sequence_kwargs or {}),
-            )["inference_variables"][:, 0]
+            flat_invariant = invariant.reshape(count * num_samples, -1) if invariant is not None else None
+            sequence = (
+                self.sequence_approximator.sample(
+                    num_samples=1,
+                    conditions=self._sequence_data(
+                        expanded,
+                        expanded_features,
+                        self._tensorize(flat_invariant) if flat_invariant is not None else None,
+                    ),
+                    sample_shape=(steps,),
+                    seed=seed,
+                    **(sequence_kwargs or {}),
+                )["inference_variables"][:, 0]
+                if self.has_varying
+                else None
+            )
 
             # Invert on (B*S, T, D), so time-series adapter transforms see their
             # training axes, before introducing the posterior sample axis.
-            varying_samples = self.adapter(
-                {"inference_variables": sequence}, inverse=True, strict=False, stage="inference"
+            varying_samples = (
+                self.adapter({"inference_variables": sequence}, inverse=True, strict=False, stage="inference")
+                if self.has_varying
+                else {}
             )
-            invariant_samples = self.adapter(
-                {"invariant_variables": flat_invariant}, inverse=True, strict=False, stage="inference"
+            invariant_samples = (
+                self.adapter({"invariant_variables": flat_invariant}, inverse=True, strict=False, stage="inference")
+                if self.has_invariant
+                else {}
             )
             if split:
                 # Named scalar time series may already be (B*S, T). Their last
@@ -480,7 +568,8 @@ class CompositeApproximator(Approximator):
 
             if return_summaries:
                 samples["_summaries"] = keras.ops.convert_to_numpy(features)
-                samples["_invariant_summaries"] = keras.ops.convert_to_numpy(pooled)
+                if pooled is not None:
+                    samples["_invariant_summaries"] = keras.ops.convert_to_numpy(pooled)
             batches.append(samples)
 
         return keras.tree.map_structure(lambda *values: np.concatenate(values, axis=0), *batches)
@@ -510,13 +599,21 @@ class CompositeApproximator(Approximator):
                     "BayesFlow's dataset-level Jacobian cannot be split over valid time points."
                 )
         features, pooled = self._encode(adapted)
-        invariant = self.invariant_approximator.log_prob(
-            {"inference_variables": adapted["invariant_variables"], "inference_conditions": pooled}, **kwargs
+        invariant = (
+            self.invariant_approximator.log_prob(
+                {"inference_variables": adapted["invariant_variables"], "inference_conditions": pooled}, **kwargs
+            )
+            if self.has_invariant
+            else np.zeros(features.shape[0])
         )
-        sequence = self.sequence_approximator.log_prob(
-            self._sequence_data(adapted, features, adapted["invariant_variables"]), **kwargs
+        sequence = (
+            self.sequence_approximator.log_prob(
+                self._sequence_data(adapted, features, adapted.get("invariant_variables")), **kwargs
+            )
+            if self.has_varying
+            else np.zeros(features.shape[0])
         )
-        if not self.joint:
+        if self.has_varying and not self.joint:
             if adapted.get("inference_mask") is not None:
                 sequence = np.where(keras.ops.convert_to_numpy(adapted["inference_mask"]), sequence, 0.0)
             sequence = np.sum(sequence, axis=-1)
@@ -531,32 +628,44 @@ class CompositeApproximator(Approximator):
         return keras.ops.convert_to_numpy(features)
 
     def compile(self, *args, invariant_inference_metrics=None, **kwargs):
-        if invariant_inference_metrics is not None:
+        if invariant_inference_metrics is not None and self.has_invariant:
             self.invariant_inference_network._metrics = invariant_inference_metrics
         return super().compile(*args, **kwargs)
 
     def get_compile_config(self):
         if not self.compiled:
             return {}
+        if not self.has_invariant:
+            return super().get_compile_config()
         return super().get_compile_config() | serialize(
             {"invariant_inference_metrics": self.invariant_inference_network._metrics}
         )
 
     def get_config(self):
         config = {
-            "inference_network": self.inference_network,
-            "invariant_inference_network": self.invariant_inference_network,
+            "varying_inference_network": self.varying_inference_network if self.has_varying else "coupling",
+            "invariant_inference_network": self.invariant_inference_network if self.has_invariant else "coupling",
             "summary_network": self.summary_network,
             "invariant_pooling": self.invariant_pooling,
             "adapter": self.adapter,
             "mode": self.mode,
+            "has_varying": self.has_varying,
+            "has_invariant": self.has_invariant,
             "standardize": self._standardize,
         }
-        if self.joint:
+        if self.joint and self.has_varying:
             config["decoder_network"] = self.sequence_approximator.decoder_network
         if type(self) is CompositeApproximator:
             config["joint"] = self.joint
         return super().get_config() | serialize(config)
+
+    @classmethod
+    def from_config(cls, config, custom_objects=None):
+        # Previously saved composite checkpoints used the asymmetric name.
+        config = dict(config)
+        if "inference_network" in config:
+            config["varying_inference_network"] = config.pop("inference_network")
+        return super().from_config(config, custom_objects=custom_objects)
 
     def get_build_config(self):
         return {"data_shapes": self._data_shapes} if self._data_shapes is not None else {}

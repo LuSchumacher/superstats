@@ -18,16 +18,18 @@ def _merge_defaults(defaults, kwargs):
 
 @singledispatch
 def find_approximator(arg, *args, **kwargs):
-    raise TypeError(f"approximator must be 'marginal', 'joint', an approximator instance, or None, not {arg!r}.")
+    raise TypeError(f"approximator must be 'marginal', 'joint', an approximator instance, not {arg!r}.")
 
 
 @find_approximator.register
-def _(arg: None, *args, **kwargs):
-    return None
-
-
-@find_approximator.register
-def _(name: str, *args, summary_network=None, inference_network=None, invariant_inference_network=None, **kwargs):
+def _(
+    name: str,
+    *args,
+    summary_network="recurrent",
+    varying_inference_network="coupling",
+    invariant_inference_network="coupling",
+    **kwargs,
+):
     from superstats.approximators import JointApproximator, MarginalApproximator
 
     match name.lower():
@@ -38,16 +40,10 @@ def _(name: str, *args, summary_network=None, inference_network=None, invariant_
         case unknown_approximator:
             raise ValueError(f"Unknown approximator: {unknown_approximator!r}.")
 
-    summary_network = None if summary_network is None else find_embedding_network(summary_network)
-    inference_network = None if inference_network is None else find_inference_network(inference_network)
-    invariant_inference_network = (
-        None if invariant_inference_network is None else find_inference_network(invariant_inference_network)
-    )
-
     return constructor(
         *args,
         summary_network=summary_network,
-        inference_network=inference_network,
+        varying_inference_network=varying_inference_network,
         invariant_inference_network=invariant_inference_network,
         **kwargs,
     )
@@ -87,7 +83,7 @@ def _(network: keras.Layer, *args, **kwargs):
 @singledispatch
 def find_inference_network(arg, *args, **kwargs):
     raise TypeError(
-        f"inference_network must be one of 'coupling', 'coupling_flow' or a keras.Layer instance, not {arg!r}."
+        f"inference network must be one of 'coupling', 'coupling_flow' or a keras.Layer instance, not {arg!r}."
     )
 
 

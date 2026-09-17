@@ -55,11 +55,12 @@ def test_approximator_dispatches_names(name, expected):
     assert approximator.mode == "filtering"
 
 
-def test_approximator_dispatch_passes_instances_and_none_through():
+def test_approximator_dispatch_passes_instances_through():
     approximator = MarginalApproximator()
 
     assert find_approximator(approximator, mode="filtering") is approximator
-    assert find_approximator(None) is None
+    with pytest.raises(TypeError, match="approximator"):
+        find_approximator(None)
 
 
 def test_approximator_dispatch_rejects_unknown_inputs():

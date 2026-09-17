@@ -11,11 +11,11 @@ class MarginalApproximator(CompositeApproximator):
 
     Parameters
     ----------
-    inference_network : bayesflow.networks.InferenceNetwork
+    varying_inference_network : str or bayesflow.networks.InferenceNetwork, default: "coupling"
         Conditional per-time density network for varying parameters.
-    invariant_inference_network : bayesflow.networks.InferenceNetwork
+    invariant_inference_network : str or bayesflow.networks.InferenceNetwork, default: "coupling"
         Separate density network for the invariant parameter vector.
-    summary_network : keras.Layer, optional
+    summary_network : str or keras.Layer, default: "recurrent"
         Observation encoder returning (B, T, H). Defaults to a BayesFlow
         RecurrentNetwork, bidirectional for smoothing and causal for filtering.
     invariant_pooling : keras.Layer, optional
@@ -31,6 +31,9 @@ class MarginalApproximator(CompositeApproximator):
         "all" (default), or a subset of inference_variables, invariant_variables,
         summary_variables, inference_conditions. Each head standardizes its own
         targets; observed conditions are standardized before shared encoding.
+    has_varying, has_invariant : bool, optional
+        Enable each target group (both default to True). At least one is required.
+        A custom network requires its corresponding target group.
     **kwargs
         Passed to the BayesFlow Approximator/Keras model base.
 
@@ -45,23 +48,27 @@ class MarginalApproximator(CompositeApproximator):
     def __init__(
         self,
         *,
-        inference_network=None,
-        invariant_inference_network=None,
-        summary_network=None,
+        varying_inference_network="coupling",
+        invariant_inference_network="coupling",
+        summary_network="recurrent",
         invariant_pooling=None,
         adapter=None,
         mode="smoothing",
         standardize="all",
+        has_varying=True,
+        has_invariant=True,
         **kwargs,
     ):
         super().__init__(
-            inference_network=inference_network,
+            varying_inference_network=varying_inference_network,
             invariant_inference_network=invariant_inference_network,
             summary_network=summary_network,
             invariant_pooling=invariant_pooling,
             adapter=adapter,
             mode=mode,
             standardize=standardize,
+            has_varying=has_varying,
+            has_invariant=has_invariant,
             joint=False,
             **kwargs,
         )

@@ -25,7 +25,7 @@ approximator = JointApproximator(
     summary_network=bf.networks.RecurrentNetwork(
         return_sequences=True, bidirectional=True, summary_dim=64
     ),
-    inference_network=bf.networks.CouplingFlow(),
+    varying_inference_network=bf.networks.CouplingFlow(),
     invariant_inference_network=bf.networks.CouplingFlow(),
     decoder_network=bf.networks.decoders.TransformerDecoder(),
     mode="smoothing",
@@ -88,7 +88,7 @@ adapter = JointApproximator.build_adapter(
 )
 
 approximator = JointApproximator(
-    inference_network=bf.networks.CouplingFlow(),
+    varying_inference_network=bf.networks.CouplingFlow(),
     invariant_inference_network=bf.networks.CouplingFlow(),
     adapter=adapter,
 )
@@ -110,7 +110,7 @@ preserves named varying channels, returning `(B, S, T, D)` varying samples and
 workflow = sup.Workflow(
     model=model,
     embedding_network=bf.networks.RecurrentNetwork(return_sequences=True),
-    inference_network=bf.networks.CouplingFlow(),
+    varying_inference_network=bf.networks.CouplingFlow(),
     invariant_inference_network=bf.networks.CouplingFlow(),
 )
 ```
@@ -123,10 +123,20 @@ joint_filter = sup.Workflow(model=model, approximator="joint", mode="filtering")
 ```
 
 You can instead pass a constructed `MarginalApproximator` or
-`JointApproximator`; its own `mode`, networks, and adapter are retained. Models
-without both target groups retain the ordinary continuous approximator when no
-family is requested. For an invariant-only model, the default recurrent encoder
-returns one global summary, so its targets also remain untiled.
+`JointApproximator`; its own `mode`, networks, and adapter are retained.
+
+The workflow defaults are `embedding_network="recurrent"`,
+`varying_inference_network="coupling"`, `invariant_inference_network="coupling"`,
+and `approximator="marginal"`. Each active density head gets a separate depth-2
+spline coupling flow.
+
+The model's target groups determine which heads are active. Varying-only models
+use per-time densities for marginal inference and an autoregressive trajectory
+density for joint inference. Invariant-only models use one pooled invariant
+vector density for either family; invariant targets remain untiled. A custom
+network for an absent target group raises an error. For a standalone approximator,
+set `has_varying=False` or `has_invariant=False` and omit the corresponding target
+group from its adapter. At least one target group is required.
 
 ## Metrics, sampling, and density evaluation
 

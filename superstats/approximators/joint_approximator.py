@@ -17,11 +17,11 @@ class JointApproximator(CompositeApproximator):
 
     Parameters
     ----------
-    inference_network : bayesflow.networks.InferenceNetwork
+    varying_inference_network : str or bayesflow.networks.InferenceNetwork, default: "coupling"
         Conditional sequence density network.
-    invariant_inference_network : bayesflow.networks.InferenceNetwork
+    invariant_inference_network : str or bayesflow.networks.InferenceNetwork, default: "coupling"
         Separate density network for the invariant parameter vector.
-    summary_network : keras.Layer, optional
+    summary_network : str or keras.Layer, default: "recurrent"
         Observation encoder returning (B, T, H). Defaults to a bidirectional
         RecurrentNetwork for smoothing or a unidirectional RecurrentNetwork
         for filtering.
@@ -40,6 +40,9 @@ class JointApproximator(CompositeApproximator):
         Controls observation availability for the conditional sequence factors.
     standardize : str or sequence of str or None, optional
         "all" (default), or canonical variable keys as in MarginalApproximator.
+    has_varying, has_invariant : bool, optional
+        Enable each target group (both default to True). At least one is required.
+        A custom network requires its corresponding target group.
     **kwargs
         Passed to the BayesFlow Approximator/Keras model base.
 
@@ -55,18 +58,20 @@ class JointApproximator(CompositeApproximator):
     def __init__(
         self,
         *,
-        inference_network=None,
-        invariant_inference_network=None,
-        summary_network=None,
+        varying_inference_network="coupling",
+        invariant_inference_network="coupling",
+        summary_network="recurrent",
         decoder_network=None,
         invariant_pooling=None,
         adapter=None,
         mode="smoothing",
         standardize="all",
+        has_varying=True,
+        has_invariant=True,
         **kwargs,
     ):
         super().__init__(
-            inference_network=inference_network,
+            varying_inference_network=varying_inference_network,
             invariant_inference_network=invariant_inference_network,
             summary_network=summary_network,
             decoder_network=decoder_network,
@@ -74,6 +79,8 @@ class JointApproximator(CompositeApproximator):
             adapter=adapter,
             mode=mode,
             standardize=standardize,
+            has_varying=has_varying,
+            has_invariant=has_invariant,
             joint=True,
             **kwargs,
         )
@@ -81,4 +88,4 @@ class JointApproximator(CompositeApproximator):
     @property
     def decoder_network(self):
         """The internally owned BayesFlow-compatible autoregressive decoder."""
-        return self.sequence_approximator.decoder_network
+        return self.sequence_approximator.decoder_network if self.has_varying else None

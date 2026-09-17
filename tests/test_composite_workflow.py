@@ -29,7 +29,7 @@ def test_default_workflow_trains_samples_and_scores_separate_targets():
     workflow = Workflow(
         model=simulator,
         embedding_network=keras.layers.Dense(4),
-        inference_network=flow(),
+        varying_inference_network=flow(),
         invariant_inference_network=flow(),
     )
     assert isinstance(workflow.approximator, MarginalApproximator)
@@ -59,7 +59,7 @@ def test_workflow_selects_composite_and_mode_by_name(name, expected, mode):
     assert isinstance(workflow.approximator, expected)
     assert workflow.mode == mode
     assert workflow.approximator.mode == mode
-    for network in (workflow.inference_network, workflow.invariant_inference_network):
+    for network in (workflow.varying_inference_network, workflow.invariant_inference_network):
         assert network.get_config()["depth"] == 2
         assert network.get_config()["transform"] == "spline"
 
@@ -81,7 +81,7 @@ def test_workflow_selects_composite_and_mode_by_name(name, expected, mode):
 def test_external_custom_approximator_takes_precedence(cls, mode):
     external_model = model()
     summary_network = keras.layers.Dense(4)
-    inference_network = flow()
+    varying_inference_network = flow()
     invariant_inference_network = flow()
     kwargs = {}
     if cls is JointApproximator:
@@ -91,7 +91,7 @@ def test_external_custom_approximator_takes_precedence(cls, mode):
 
     approximator = cls(
         summary_network=summary_network,
-        inference_network=inference_network,
+        varying_inference_network=varying_inference_network,
         invariant_inference_network=invariant_inference_network,
         mode=mode,
         adapter=Workflow.default_adapter(external_model),
@@ -106,7 +106,7 @@ def test_external_custom_approximator_takes_precedence(cls, mode):
     assert workflow.model is external_model
     assert workflow.adapter is approximator.adapter
     assert workflow.embedding_network is summary_network
-    assert workflow.inference_network is inference_network
+    assert workflow.varying_inference_network is varying_inference_network
     assert workflow.invariant_inference_network is invariant_inference_network
 
 
@@ -123,11 +123,91 @@ def test_invariant_only_model_defaults_to_one_global_summary():
         simulator=lambda level, offset: {"x": level + offset},
         missing=None,
     )
-    workflow = Workflow(model=simulator, inference_network=flow())
-    assert type(workflow.approximator) is bf.approximators.ContinuousApproximator
-    assert workflow.embedding_network.return_sequences is False
+    workflow = Workflow(model=simulator, invariant_inference_network=flow())
+    assert isinstance(workflow.approximator, MarginalApproximator)
+    assert workflow.varying_inference_network is None
     adapted = workflow.adapter(simulator.sample(batch_size=4, num_steps=3))
-    assert adapted["inference_variables"].shape == (4, 2)
+    assert adapted["invariant_variables"].shape == (4, 2)
     workflow.approximator.build(keras.tree.map_structure(np.shape, adapted))
     metrics = workflow.approximator.compute_metrics(**adapted)
     assert np.isfinite(keras.ops.convert_to_numpy(metrics["loss"]))
+
+
+@pytest.mark.parametrize("name", ["marginal", "joint"])
+@pytest.mark.parametrize("group", ["varying", "invariant"])
+def test_single_group_workflow_trains_and_samples(name, group):
+    if group == "varying":
+        simulator = Model(
+            prior=JointPrior(theta=RandomWalk(sigma=0.1, delta=0.0)),
+            simulator=lambda theta: {"x": theta},
+            missing=None,
+        )
+    else:
+        simulator = Model(
+            prior=JointPrior(level=Prior("normal", loc=0, scale=1)),
+            simulator=lambda level: {"x": level},
+            missing=None,
+        )
+    cls = MarginalApproximator if name == "marginal" else JointApproximator
+    kwargs = {}
+    if name == "joint" and group == "varying":
+        kwargs["decoder_network"] = bf.networks.decoders.RecurrentDecoder(embed_dim=4, output_dim=4)
+    approximator = cls(
+        adapter=Workflow.default_adapter(simulator),
+        has_varying=group == "varying",
+        has_invariant=group == "invariant",
+        varying_inference_network=flow() if group == "varying" else "coupling",
+        invariant_inference_network=flow() if group == "invariant" else "coupling",
+        summary_network=keras.layers.Dense(4),
+        **kwargs,
+    )
+    workflow = Workflow(model=simulator, approximator=approximator)
+    data = simulator.sample(batch_size=4, num_steps=3)
+    history = workflow.fit_offline(data, data, epochs=1, batch_size=4, verbose=0)
+    assert np.isfinite(history.history["loss"]).all()
+    samples = workflow.sample(data, num_samples=2, seed=7)
+    key = "theta" if group == "varying" else "level"
+    assert set(samples) == {key}
+    assert samples[key].shape == ((4, 2, 3, 1) if group == "varying" else (4, 2, 1))
+    assert np.isfinite(workflow.approximator.log_prob(data)).all()
+
+
+@pytest.mark.parametrize("name", [None, ""])
+def test_workflow_rejects_implicit_approximator_selection(name):
+    with pytest.raises((TypeError, ValueError), match="approximator"):
+        Workflow(model=model(), approximator=name)
+
+
+def test_workflow_rejects_network_for_absent_target_group():
+    simulator = Model(
+        prior=JointPrior(level=Prior("normal", loc=0, scale=1)),
+        simulator=lambda level: {"x": level},
+        missing=None,
+    )
+    with pytest.raises(ValueError, match="varying_inference_network"):
+        Workflow(model=simulator, varying_inference_network=flow())
+    with pytest.raises(TypeError, match="varying_inference_network"):
+        Workflow(model=simulator, inference_network=flow())
+
+
+@pytest.mark.parametrize("name", ["marginal", "joint"])
+@pytest.mark.parametrize("group", ["varying", "invariant"])
+def test_string_selected_workflow_activates_available_targets(name, group):
+    prior = (
+        JointPrior(theta=RandomWalk(sigma=0.1, delta=0.0))
+        if group == "varying"
+        else JointPrior(theta=Prior("normal", loc=0, scale=1))
+    )
+    simulator = Model(prior=prior, simulator=lambda theta: {"x": theta}, missing=None)
+    workflow = Workflow(model=simulator, approximator=name)
+    assert workflow.approximator.has_varying is (group == "varying")
+    assert workflow.approximator.has_invariant is (group == "invariant")
+    network = workflow.varying_inference_network if group == "varying" else workflow.invariant_inference_network
+    assert network.get_config()["depth"] == 2
+    assert network.get_config()["transform"] == "spline"
+
+
+@pytest.mark.parametrize("argument", ["embedding_network", "varying_inference_network", "invariant_inference_network"])
+def test_workflow_rejects_none_network_selection(argument):
+    with pytest.raises(TypeError, match="network"):
+        Workflow(model=model(), **{argument: None})
