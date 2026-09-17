@@ -51,8 +51,8 @@ def prepare_time_invariant_data(
                 local_mixture_names[name] = list(mixture_names[base_name])
     else:
         estimates_arr = np.asarray(estimates)
-        if estimates_arr.ndim != 4:
-            raise ValueError("Array estimates must have shape (num_datasets, num_post_samples, num_steps, num_params).")
+        if estimates_arr.ndim not in (3, 4):
+            raise ValueError("Array estimates must have shape (B, S, D) or (B, S, T, D).")
         num_params = estimates_arr.shape[-1]
         names = list(variable_names) if variable_names is not None else [f"param_{p}" for p in range(num_params)]
         if not names:
@@ -74,10 +74,11 @@ def prepare_time_invariant_data(
     num_datasets = None
     sample_shape = None
     for name, values in local_estimates.items():
+        if values.ndim == 3:
+            values = values[:, :, None, :]
+            local_estimates[name] = values
         if values.ndim != 4:
-            raise ValueError(
-                f"Estimates for '{name}' must have shape (num_datasets, num_post_samples, num_steps, num_components)."
-            )
+            raise ValueError(f"Estimates for '{name}' must have shape (B, S, D) or (B, S, T, D).")
         if num_datasets is None:
             num_datasets = values.shape[0]
             sample_shape = values.shape[1:3]
@@ -154,6 +155,9 @@ def flatten_time_invariant_parameters(
                 parameter_names.append(f"{display_name}: {component_names[component]}")
 
     flattened_samples = np.stack(sample_columns, axis=-1)
+    target_values = np.stack(target_columns, axis=-1) if targets is not None else None
+    if estimates[names[0]].shape[2] == 1:
+        return flattened_samples, target_values, parameter_names
     num_datasets = flattened_samples.shape[0]
     num_samples = estimates[names[0]].shape[1]
     generator = np.random.default_rng()
@@ -161,7 +165,6 @@ def flatten_time_invariant_parameters(
         [generator.choice(flattened_samples.shape[1], size=num_samples, replace=False) for _ in range(num_datasets)]
     )
     samples = np.take_along_axis(flattened_samples, flat_indices[..., None], axis=1)
-    target_values = np.stack(target_columns, axis=-1) if targets is not None else None
     return samples, target_values, parameter_names
 
 

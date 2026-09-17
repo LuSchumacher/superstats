@@ -17,6 +17,44 @@ def _merge_defaults(defaults, kwargs):
 
 
 @singledispatch
+def find_approximator(arg, *args, **kwargs):
+    raise TypeError(f"approximator must be 'marginal', 'joint', an approximator instance, not {arg!r}.")
+
+
+@find_approximator.register
+def _(
+    name: str,
+    *args,
+    summary_network="recurrent",
+    varying_inference_network="coupling",
+    invariant_inference_network="coupling",
+    **kwargs,
+):
+    from superstats.approximators import JointApproximator, MarginalApproximator
+
+    match name.lower():
+        case "marginal":
+            constructor = MarginalApproximator
+        case "joint":
+            constructor = JointApproximator
+        case unknown_approximator:
+            raise ValueError(f"Unknown approximator: {unknown_approximator!r}.")
+
+    return constructor(
+        *args,
+        summary_network=summary_network,
+        varying_inference_network=varying_inference_network,
+        invariant_inference_network=invariant_inference_network,
+        **kwargs,
+    )
+
+
+@find_approximator.register
+def _(approximator: bf.approximators.Approximator, *args, **kwargs):
+    return approximator
+
+
+@singledispatch
 def find_embedding_network(arg, *args, **kwargs):
     raise TypeError(
         f"embedding network must be one of 'recurrent', 'transformer', or a keras.Layer instance, not {arg!r}."
@@ -45,7 +83,7 @@ def _(network: keras.Layer, *args, **kwargs):
 @singledispatch
 def find_inference_network(arg, *args, **kwargs):
     raise TypeError(
-        f"inference_network must be one of 'coupling', 'coupling_flow' or a keras.Layer instance, not {arg!r}."
+        f"inference network must be one of 'coupling', 'coupling_flow' or a keras.Layer instance, not {arg!r}."
     )
 
 

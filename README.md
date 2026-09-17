@@ -14,7 +14,7 @@
 
 ## What is Superstats?
 
-Superstats is a Python library for simulation and Bayesian estimation of dynamic models with time-varying parameters.
+Superstats is a Python library for simulation and Bayesian estimation of dynamic models with time-varying and time-invariant parameters.
 
 The library aims to be domain-agnostic, but for now focuses on cognitive modeling. It provides users with:
 
@@ -35,13 +35,20 @@ The library aims to be domain-agnostic, but for now focuses on cognitive modelin
 </div>
 <br>
 
-A superstatistical model has two levels. A **low-level observation model** $\mathcal{G}$ generates the data at each time step.
+A superstatistical model has two levels. A **low-level observation model** $\mathcal{G}$ generates the data $x_t$ at each time step.
 A **high-level transition model** $\mathcal{T}$ describes how the parameters of that model evolve:
 
 $$\theta_t = \mathcal{T}(\theta_{0:t-1}; \eta) \qquad x_t = \mathcal{G}(x_{1:t-1}; \theta_t, \lambda)$$
 
-Superstats trains a neural estimator on simulations from any generative model of this form and returns the joint posterior $p(\theta_{1:T}, \eta, \lambda \mid x_{1:T})$ over all time-varying parameters $\theta_{1:T}$ and time-invariant parameters $(\eta, \lambda)$.
+Superstats trains neural estimators on simulations from generative models of this form. Let $\phi = (\eta, \lambda)$ collect the time-invariant transition hyperparameters and shared observation parameters, and let $x_{1:T}$ denote the observation sequence. Generally, we can ask for four types of posteriors covering both the time-varying trajectory $\theta_{1:T}$ and the invariant parameters $\phi$:
 
+- **Marginal filtering (MF):** $q_{\mathrm{MF}}(\theta_{1:T}, \phi \mid x_{1:T}) = q(\phi \mid x_{1:T}) \prod_{t=1}^T q(\theta_t \mid \phi, x_{1:t})$.
+- **Marginal smoothing (MS):** $q_{\mathrm{MS}}(\theta_{1:T}, \phi \mid x_{1:T}) = q(\phi \mid x_{1:T}) \prod_{t=1}^T q(\theta_t \mid \phi, x_{1:T})$.
+- **Full joint filtering (JF):** $q_{\mathrm{JF}}(\theta_{1:T}, \phi \mid x_{1:T}) = q(\phi \mid x_{1:T}) \prod_{t=1}^T q(\theta_t \mid \theta_{1:t-1}, \phi, x_{1:t})$.
+- **Full joint smoothing (JS):** $q_{\mathrm{JS}}(\theta_{1:T}, \phi \mid x_{1:T}) = q(\phi \mid x_{1:T}) \prod_{t=1}^T q(\theta_t \mid \theta_{1:t-1}, \phi, x_{1:T})$.
+
+These distributions are realized through different neural approximators. Select them with `Workflow(model=model, approximator="marginal" | "joint", mode="filtering" | "smoothing")`, or pass a constructed approximator directly. A constructed approximator keeps its own mode. Marginal factors are independent across time conditional on the observations and invariants; joint factors also condition on the preceding parameter trajectory. Sharing an invariant draw can induce temporal dependence even in the marginal approximations.
+See the [approximator guide](docsrc/user_guide/approximators.md) for configuration and tensor shapes.
 
 ## Install
 
@@ -96,8 +103,8 @@ It is highly recommended to use a GPU for fast training and inference. For an in
 
 | Notebook | What it covers |
 |---|---|
-| [Minimal workflow demo](examples/minimal_workflow_demo.ipynb) | Short path from prior to posterior |
-| Extensive workflow demo | Coming soon |
+| [Workflow demo](examples/workflow_demo.ipynb) | Complete path from prior to posterior |
+| [Marginal versus joint smoothing](examples/joint_vs_marginal.ipynb) | Compact comparison of the two trajectory approximations |
 
 More examples are always welcome. If you have an application, please consider opening a pull request.
 
