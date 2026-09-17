@@ -94,7 +94,7 @@ def test_missing_dispatches_random_defaults():
 
 
 def test_missing_dispatch_passes_existing_processes_through():
-    process = RandomMissingProcess(p_missing=0.0)
+    process = RandomMissingProcess()
 
     assert find_missing(process) is process
     assert find_missing(None) is None

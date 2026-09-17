@@ -392,3 +392,104 @@ def test_nuisance_transition_hyperparameters_are_excluded_from_targets():
     assert model.deterministic_keys == []
     assert draws["hyper_params"] == {}
     assert "p_contaminated" not in draws["hyper_param_groups"]
+
+
+@pytest.mark.parametrize("batch_size", [2, 3])
+def test_formula_resimulation_accepts_posterior_scalar_trajectory_shape(batch_size):
+    model = Model(
+        JointPrior(a_0=RandomWalk(), b_a=Prior("normal")),
+        simulator,
+        formula=Formula(["a = a_0 + b_a * x"]),
+        context={"x": [-1, 0, 1]},
+        design_context=("x",),
+        missing=None,
+    )
+    raw = {
+        "a_0": np.full((batch_size, 3, 1), 2.0),
+        "b_a": np.arange(1, batch_size + 1),
+    }
+    result = model.simulate_from_parameters(raw, batch_size, 3)
+    expected = 2 + np.arange(1, batch_size + 1)[:, None] * [-1, 0, 1]
+    np.testing.assert_allclose(result["observation"], expected)
+
+
+@pytest.mark.parametrize(
+    "specification",
+    [
+        Prior("normal", loc=0, scale=0),
+        RandomWalk(initial_prior=Prior("normal", loc=0, scale=0), sigma=Prior("normal", loc=0, scale=0)),
+        Linear(intercept=Prior("normal", loc=0, scale=0), slope=0),
+    ],
+)
+def test_missing_probability_and_hyperparameters_are_always_nuisance(specification):
+    from superstats.simulation import RandomMissingProcess
+
+    model = Model(
+        JointPrior(a=Prior("normal"), p_missing=specification),
+        simulator,
+        missing=RandomMissingProcess(),
+        link_function={"p_missing": LinkFunction()},
+    )
+    result = model.sample(2, 3)
+    np.testing.assert_allclose(result["p_missing"], 0.5)
+    keys = model.local_keys + model.hyper_keys + model.shared_keys + model.deterministic_keys + model.fixed_keys
+    assert not any(key.startswith("p_missing") for key in keys)
+    draws = model._sample_inference_prior(2, 3)
+    assert "p_missing" not in draws["hyper_param_groups"]
+    assert not any(key.startswith("p_missing") for group in draws.values() for key in group)
+
+
+def test_missing_probability_is_sampled_and_linked_once(monkeypatch):
+    from superstats.simulation import RandomMissingProcess
+
+    probability = Prior("normal", loc=-2, scale=0)
+    process = RandomMissingProcess()
+    prior = JointPrior(a=1, p_missing=probability)
+    model = Model(prior, simulator, missing=process, link_function={"p_missing": LinkFunction()})
+    original_sample = probability.sample
+    calls = []
+
+    def sample(*args, **kwargs):
+        calls.append(1)
+        return original_sample(*args, **kwargs)
+
+    monkeypatch.setattr(probability, "sample", sample)
+    result = model.sample(2, 3)
+    assert calls == [1]
+    np.testing.assert_allclose(result["p_missing"], 1 / (1 + np.exp(2)))
+
+
+def test_default_missing_prior_does_not_mutate_callers_prior():
+    from superstats.defaults import DEFAULT_P_MISSING_PRIOR
+
+    prior = JointPrior(a=1)
+    model = Model(prior, simulator)
+    assert "p_missing" not in prior.params
+    assert model.prior.params["p_missing"] is DEFAULT_P_MISSING_PRIOR
+    assert "p_missing" not in model.shared_keys
+
+
+@pytest.mark.parametrize("apply_missing", [False, True])
+def test_prior_push_forward_missingness_is_opt_in(monkeypatch, apply_missing):
+    import superstats.simulation.model as module
+    from superstats.simulation import RandomMissingProcess
+
+    model = Model(JointPrior(a=1, p_missing=1), simulator, missing=RandomMissingProcess(missing_value=-99))
+    captured = {}
+    monkeypatch.setattr(module, "plot_push_forward", lambda **kwargs: captured.update(kwargs))
+    kwargs = {"apply_missing": True} if apply_missing else {}
+    model.plot_push_forward(batch_size=2, num_steps=3, **kwargs)
+    np.testing.assert_array_equal(captured["data"]["observation"], np.full((2, 3), -99 if apply_missing else 1))
+
+
+@pytest.mark.parametrize("apply_missing", [False, True])
+def test_posterior_resimulation_missingness_is_opt_in(apply_missing):
+    from superstats import Workflow
+    from superstats.simulation import RandomMissingProcess
+
+    model = Model(JointPrior(a=1, p_missing=1), simulator, missing=RandomMissingProcess(missing_value=-99))
+    workflow = Workflow.__new__(Workflow)
+    workflow.model = model
+    kwargs = {"apply_missing": True} if apply_missing else {}
+    result = workflow.resimulate({"a": np.ones((1, 2, 1))}, num_sims=1, num_steps=3, rng=0, **kwargs)
+    np.testing.assert_array_equal(result["observation"], np.full((1, 1, 3), -99 if apply_missing else 1))

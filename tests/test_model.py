@@ -45,8 +45,9 @@ def _build_model(**kwargs):
         tau=0.2,
         bias=0.0,
     )
-    if "p_contaminated" in kwargs:
-        prior.params["p_contaminated"] = kwargs.pop("p_contaminated")
+    for name in ("p_contaminated", "p_missing"):
+        if name in kwargs:
+            prior.params[name] = kwargs.pop(name)
     return Model(prior=prior, simulator=sample_ddm, **kwargs)
 
 
@@ -413,7 +414,7 @@ def test_workflow_prepare_data_rejects_continuous_time():
 
 
 def test_workflow_prepare_data_uses_model_missing_value():
-    gm = _build_model(missing=RandomMissingProcess(p_missing=0.0, missing_value=-999.0))
+    gm = _build_model(p_missing=0.0, missing=RandomMissingProcess(missing_value=-999.0))
     workflow = object.__new__(Workflow)
     workflow.model = gm
     df = pd.DataFrame(
@@ -476,7 +477,7 @@ def test_model_missing_none_disables_mask():
 
 def test_model_missing_none_leaves_data_unmodified():
     gm_no_missing = _build_model(missing=None)
-    gm_with_missing = _build_model(missing=RandomMissingProcess(p_missing=1.0, missing_value=-999.0))
+    gm_with_missing = _build_model(p_missing=1.0, missing=RandomMissingProcess(missing_value=-999.0))
 
     rng = np.random.default_rng(1)
     result_none = gm_no_missing.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS, rng=np.random.default_rng(1))
@@ -491,8 +492,8 @@ def test_model_missing_none_leaves_data_unmodified():
 
 
 def test_model_accepts_custom_missing_instance():
-    custom = RandomMissingProcess(p_missing=0.0, missing_value=-1.0, shared_across_batch=True)
-    gm = _build_model(missing=custom)
+    custom = RandomMissingProcess(missing_value=-1.0, shared_across_batch=True)
+    gm = _build_model(p_missing=0.0, missing=custom)
 
     assert gm.missing is custom
 
@@ -507,7 +508,7 @@ def test_model_missing_receives_rng_for_reproducibility():
     # so only the missingness draw -- not the underlying simulated data --
     # is guaranteed reproducible here. We isolate that by masking the same
     # fixed array twice rather than asserting on `sample()`'s full output.
-    process = RandomMissingProcess(p_missing=0.5)
+    process = RandomMissingProcess()
     rng = np.random.default_rng(0)
     data_a = {
         "response_time": rng.normal(size=(BATCH_SIZE, NUM_STEPS)).astype(np.float32),
@@ -515,8 +516,8 @@ def test_model_missing_receives_rng_for_reproducibility():
     }
     data_b = {key: value.copy() for key, value in data_a.items()}
 
-    result_a = process.apply(data_a, rng=np.random.default_rng(42))
-    result_b = process.apply(data_b, rng=np.random.default_rng(42))
+    result_a = process.apply(data_a, rng=np.random.default_rng(42), probability=0.5)
+    result_b = process.apply(data_b, rng=np.random.default_rng(42), probability=0.5)
 
     assert np.array_equal(result_a["missing_mask"], result_b["missing_mask"])
     for key in data_a:
