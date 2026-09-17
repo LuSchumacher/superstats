@@ -23,6 +23,7 @@ from superstats.defaults import (
     Y_LABEL_PAD,
 )
 from superstats.utils.plotting import (
+    get_default_num_cols,
     get_layout,
     plot_dist,
     resolve_dist_alpha,
@@ -50,7 +51,9 @@ def plot_joint_prior(
     """Plot joint prior diagnostics.
 
     Combines hyperparameter distributions, shared-parameter distributions,
-    and time-varying trajectories. Each row corresponds to one parameter.
+    and time-varying trajectories. Time-varying parameters each have a
+    dedicated row; shared distributions fill equal-width panels across
+    subsequent rows, with parameter names as panel titles.
 
     Parameters
     ----------
@@ -101,7 +104,8 @@ def plot_joint_prior(
         If no plottable parameters are found or ``dist_type`` is invalid.
     """
 
-    all_param_names = list(dict.fromkeys(list(local_params.keys()) + list(shared_params.keys())))
+    hyper_owners = [name for name, keys in (hyper_param_groups or {}).items() if keys]
+    all_param_names = list(dict.fromkeys(list(local_params.keys()) + hyper_owners))
 
     row_specs = []
 
@@ -119,23 +123,27 @@ def plot_joint_prior(
                 "name": param_name,
                 "hyper_cols": hyper_cols,
                 "local": (np.asarray(local_params[param_name]) if param_name in local_params else None),
-                "shared": (np.asarray(shared_params[param_name]) if param_name in shared_params else None),
             }
         )
 
-    max_hyper = max(len(row["hyper_cols"]) for row in row_specs)
+    if not row_specs and not shared_params:
+        raise ValueError("No plottable parameters found.")
+    max_hyper = max((len(row["hyper_cols"]) for row in row_specs), default=0)
     num_cols = max_hyper + 1
-    num_rows = len(row_specs)
+    # A trajectory cell has twice the width of a distribution cell.
+    shared_num_cols = num_cols + 1 if row_specs else get_default_num_cols(len(shared_params))
+    shared_num_rows = int(np.ceil(len(shared_params) / shared_num_cols))
+    num_rows = len(row_specs) + shared_num_rows
 
     plot_figsize, legend_bottom, legend_y = get_layout(
         num_rows,
-        num_cols,
+        num_cols if row_specs else shared_num_cols,
         figsize,
         col_width=4.0,
         row_height=BASE_ROW_HEIGHT,
     )
 
-    if figsize is None:
+    if figsize is None and row_specs:
         label_font = FontProperties(
             family=plt.rcParams["font.family"],
             size=label_fontsize,
@@ -167,13 +175,14 @@ def plot_joint_prior(
         figure=fig,
     )
 
-    axes = np.array([[fig.add_subplot(gs[row_i, col_i]) for col_i in range(num_cols)] for row_i in range(num_rows)])
+    axes = np.array(
+        [[fig.add_subplot(gs[row_i, col_i]) for col_i in range(num_cols)] for row_i in range(len(row_specs))]
+    )
 
     for row_i, spec in enumerate(row_specs):
         param_name = spec["name"]
         hyper_cols = spec["hyper_cols"]
         local_arr = spec["local"]
-        shared_arr = spec["shared"]
         prefix = param_name + "_"
 
         for col_i, (label, values) in enumerate(hyper_cols):
@@ -219,24 +228,6 @@ def plot_joint_prior(
                 fontsize=title_fontsize,
                 pad=15,
             )
-            ax.set_xlabel("")
-            ax.set_ylabel("")
-            ax.grid(alpha=0.3)
-            ax.tick_params(labelsize=tick_fontsize)
-
-        if shared_arr is not None:
-            ax = axes[row_i, 0]
-            panel_dist_alpha = resolve_dist_alpha(dist_alpha, 1)
-
-            plot_dist(
-                shared_arr.reshape(-1),
-                ax=ax,
-                dist_type=dist_type,
-                color=color,
-                num_bins=num_bins,
-                alpha=panel_dist_alpha,
-            )
-
             ax.set_xlabel("")
             ax.set_ylabel("")
             ax.grid(alpha=0.3)
@@ -309,10 +300,9 @@ def plot_joint_prior(
             len(hyper_cols),
             num_cols - 1,
         ):
-            if shared_arr is None or col_i > 0:
-                axes[row_i, col_i].axis("off")
+            axes[row_i, col_i].axis("off")
 
-        row_label_ax = axes[row_i, 0] if hyper_cols or shared_arr is not None else ax_traj
+        row_label_ax = axes[row_i, 0] if hyper_cols else ax_traj
         row_label_ax.set_ylabel(
             param_name,
             rotation=0,
@@ -321,6 +311,30 @@ def plot_joint_prior(
             fontsize=label_fontsize,
             labelpad=Y_LABEL_PAD,
         )
+
+    shared_items = list(shared_params.items())
+    for shared_row in range(shared_num_rows):
+        sub = gs[len(row_specs) + shared_row, :].subgridspec(1, shared_num_cols, wspace=WSPACE)
+        for col_i in range(shared_num_cols):
+            ax = fig.add_subplot(sub[col_i])
+            index = shared_row * shared_num_cols + col_i
+            if index >= len(shared_items):
+                ax.axis("off")
+                continue
+            name, values = shared_items[index]
+            plot_dist(
+                np.asarray(values).reshape(-1),
+                ax=ax,
+                dist_type=dist_type,
+                color=color,
+                num_bins=num_bins,
+                alpha=resolve_dist_alpha(dist_alpha, 1),
+            )
+            ax.set_title(name, fontsize=title_fontsize, pad=15)
+            ax.set_xlabel("")
+            ax.set_ylabel("")
+            ax.grid(alpha=0.3)
+            ax.tick_params(labelsize=tick_fontsize)
 
     fig.legend(
         handles=[
