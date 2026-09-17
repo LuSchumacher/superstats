@@ -184,7 +184,8 @@ find = {}
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 filterwarnings = [
-    "ignore:__array__ implementation doesn't accept a copy keyword.*:DeprecationWarning:keras.src.backend.jax.core",
+    # Keras variable conversion still uses the pre-NumPy-2 __array__ signature.
+    "ignore:__array__ implementation doesn't accept a copy keyword.*:DeprecationWarning:keras\\.src\\.backend\\.(jax\\.core|common\\.variables)",
 ]
 
 [dependency-groups]

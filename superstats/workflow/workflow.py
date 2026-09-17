@@ -103,6 +103,8 @@ class Workflow:
         restore_history: bool = True,
         **kwargs,
     ):
+        if "inference_network" in kwargs:
+            raise TypeError("Use varying_inference_network instead of inference_network.")
         self.model = getattr(approximator, "model", None) or model
         self.adapter = getattr(approximator, "adapter", None) or adapter
         if self.adapter is None:
