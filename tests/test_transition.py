@@ -51,10 +51,7 @@ def test_transition_sample_shape_and_keys(transition, expected_hyper_keys, expec
     assert local_params.shape == (BATCH_SIZE, NUM_STEPS)
     assert local_params.dtype == np.float32
 
-    # values must respect the (default) bounds
-    lower, upper = transition.bounds
-    assert np.all(local_params >= lower - 1e-4)
-    assert np.all(local_params <= upper + 1e-4)
+    assert np.all(np.isfinite(local_params))
 
     assert set(result["hyper_params"].keys()) == expected_hyper_keys
     for values in result["hyper_params"].values():
@@ -94,7 +91,6 @@ def test_jump_sample_one_step_returns_finite_float():
 def test_mixture_sample_shape_and_keys():
     mixture = Mixture(
         transitions=[RandomWalk(), Jump()],
-        bounds=(-3.0, 3.0),
         initial_prior=Prior("normal", loc=0.0, scale=1.0),
     )
 
@@ -104,8 +100,7 @@ def test_mixture_sample_shape_and_keys():
 
     local_params = result["local_params"]
     assert local_params.shape == (BATCH_SIZE, NUM_STEPS)
-    assert np.all(local_params >= -3.0 - 1e-4)
-    assert np.all(local_params <= 3.0 + 1e-4)
+    assert np.all(np.isfinite(local_params))
 
     regimes = result["regimes"]
     assert regimes.shape == (BATCH_SIZE, NUM_STEPS)
@@ -136,7 +131,6 @@ def test_mixture_preserves_explicit_fixed_weights():
     mixture = Mixture(
         transitions=[RandomWalk(), Jump()],
         mixture_weights=(0.25, 0.75),
-        bounds=(-3.0, 3.0),
         initial_prior=Prior("normal", loc=0.0, scale=1.0),
     )
 
@@ -152,16 +146,15 @@ def test_mixture_requires_at_least_two_transitions():
         Mixture(transitions=[RandomWalk()])
 
 
-def test_mixture_rejects_component_with_own_bounds():
-    with pytest.raises(ValueError):
-        Mixture(transitions=[RandomWalk(bounds=(-1.0, 1.0)), Jump()])
+def test_transition_bounds_removed():
+    with pytest.raises(TypeError, match="bounds"):
+        RandomWalk(bounds=(-1, 1))
 
 
 def test_mixture_with_dirichlet_weights():
     mixture = Mixture(
         transitions=[RandomWalk(), Jump()],
         mixture_weights=Prior("dirichlet", alpha=[5.0, 5.0]),
-        bounds=(-3.0, 3.0),
         initial_prior=Prior("normal", loc=0.0, scale=1.0),
     )
     result = mixture.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS)

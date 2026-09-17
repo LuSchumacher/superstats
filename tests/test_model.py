@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 from superstats.prior import JointPrior, Prior
-from superstats.simulation import ContextMapping, ContextSimulator, Model, sample_ddm
+from superstats.simulation import ContextSimulator, Model, sample_ddm
 from superstats.simulation.augmentation import (
     ContaminationProcess,
     MissingProcess,
@@ -40,11 +40,13 @@ class _DeterministicTestTransition(DeterministicTransition):
 
 def _build_model(**kwargs):
     prior = JointPrior(
-        v=RandomWalk(bounds=(-3.0, 3.0), initial_prior=Prior("normal", loc=0.0, scale=0.5), sigma=0.05, delta=0.0),
+        v=RandomWalk(initial_prior=Prior("normal", loc=0.0, scale=0.5), sigma=0.05, delta=0.0),
         a=Prior("halfnormal", scale=1.0),
         tau=0.2,
         bias=0.0,
     )
+    if "p_contaminated" in kwargs:
+        prior.params["p_contaminated"] = kwargs.pop("p_contaminated")
     return Model(prior=prior, simulator=sample_ddm, **kwargs)
 
 
@@ -97,7 +99,7 @@ def test_model_routes_context_to_design_and_simulator():
             "simulator_offset": np.full(shape, 3.0),
         }
 
-    class DesignMatrix:
+    class ParameterFormula:
         def __init__(self):
             self.contexts = []
 
@@ -111,25 +113,23 @@ def test_model_routes_context_to_design_and_simulator():
         simulator_contexts.append(context)
         return {"observation": v + context["simulator_offset"].reshape(-1)}
 
-    design_matrix = DesignMatrix()
+    formula = ParameterFormula()
     model = Model(
         prior=JointPrior(v=1.0),
         simulator=simulator,
         missing=None,
         context=ContextSimulator(generate_context),
-        context_mapping=ContextMapping(
-            design_context=("design_offset",),
-            simulator_context=("simulator_offset",),
-        ),
-        design_matrix=design_matrix,
+        design_context=("design_offset",),
+        simulator_context=("simulator_offset",),
+        formula=formula,
     )
 
-    design_matrix.contexts.clear()
+    formula.contexts.clear()
     simulator_contexts.clear()
     result = model.sample(batch_size=2, num_steps=3)
 
     assert context_calls == [(1, 1), (2, 3)]
-    assert set(design_matrix.contexts[0]) == {"design_offset"}
+    assert set(formula.contexts[0]) == {"design_offset"}
     assert set(simulator_contexts[0]) == {"simulator_offset"}
     np.testing.assert_allclose(result["observation"], 6.0)
 
@@ -152,7 +152,7 @@ def test_model_binds_simulator_context_matching_a_simulator_argument():
         simulator=simulator,
         missing=None,
         context=ContextSimulator(generate_context),
-        context_mapping=ContextMapping(simulator_context=("correct_idx",)),
+        simulator_context=("correct_idx",),
     )
 
     received_correct_idx.clear()
@@ -265,7 +265,7 @@ def test_deterministic_trajectories_are_simulated_but_not_inferred():
 
 def test_resimulate_reconstructs_linear_deterministic_parameter():
     prior = JointPrior(
-        v=RandomWalk(bounds=(-3.0, 3.0), initial_prior=Prior("normal", loc=0.0, scale=0.5), sigma=0.0, delta=0.0),
+        v=RandomWalk(initial_prior=Prior("normal", loc=0.0, scale=0.5), sigma=0.0, delta=0.0),
         a=Linear(intercept=0.5, slope=0.5),
         tau=0.2,
         bias=0.0,
@@ -557,10 +557,9 @@ def test_model_random_choice_contamination():
 
 def test_model_registers_inferred_contamination_prior_as_shared():
     contamination = RandomChoiceContamination(
-        p_contaminated=Prior("beta", a=2, b=8),
         infer=True,
     )
-    gm = _build_model(contamination=contamination, missing=None)
+    gm = _build_model(p_contaminated=Prior("beta", a=2, b=8), contamination=contamination, missing=None)
 
     result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS, tile_to_steps=True)
 
@@ -572,14 +571,19 @@ def test_model_registers_inferred_contamination_prior_as_shared():
 
 def test_model_registers_inferred_contamination_transition_as_local():
     contamination = RandomChoiceContamination(
+        infer=True,
+    )
+    gm = _build_model(
         p_contaminated=RandomWalk(
-            bounds=(0.0, 1.0),
             sigma=Prior("halfnormal", scale=0.05),
             delta=0.0,
         ),
-        infer=True,
+        contamination=contamination,
+        missing=None,
     )
-    gm = _build_model(contamination=contamination, missing=None)
+    from superstats import LinkFunction
+
+    gm.link_function = {"p_contaminated": LinkFunction()}
 
     result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS, tile_to_steps=True)
 
@@ -592,10 +596,9 @@ def test_model_registers_inferred_contamination_transition_as_local():
 
 def test_model_does_not_register_contamination_when_infer_is_false():
     contamination = RandomChoiceContamination(
-        p_contaminated=Prior("beta", a=2, b=8),
         infer=False,
     )
-    gm = _build_model(contamination=contamination, missing=None)
+    gm = _build_model(p_contaminated=Prior("beta", a=2, b=8), contamination=contamination, missing=None)
 
     result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS)
 
@@ -604,8 +607,8 @@ def test_model_does_not_register_contamination_when_infer_is_false():
 
 
 def test_model_registers_inferred_fixed_contamination_as_fixed():
-    contamination = RandomChoiceContamination(p_contaminated=0.1, infer=True)
-    gm = _build_model(contamination=contamination, missing=None)
+    contamination = RandomChoiceContamination(infer=True)
+    gm = _build_model(p_contaminated=0.1, contamination=contamination, missing=None)
 
     result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS)
     result_with_fixed = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS, include_fixed=True)

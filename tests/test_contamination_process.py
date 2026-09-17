@@ -3,11 +3,9 @@
 import numpy as np
 import pytest
 
-from superstats.prior import Prior
 from superstats.simulation.model import Model
 from superstats.simulation.augmentation.contamination import ContaminationProcess
 from superstats.simulation.augmentation.random_choice_contamination import RandomChoiceContamination
-from superstats.transition import Linear, RandomWalk
 
 
 def _make_bare_model(contamination=None, missing=None, data_keys=("response_time", "choice")):
@@ -159,10 +157,10 @@ class TestApplyContaminationProcess:
         guaranteed to be contaminated, making the effect deterministic
         enough to assert on.
         """
-        model = _make_bare_model(contamination=RandomChoiceContamination(p_contaminated=1.0))
+        model = _make_bare_model(contamination=RandomChoiceContamination())
         rng = np.random.default_rng(0)
 
-        out_data, extra = model._apply_contamination(sim_data, rng=rng)
+        out_data, extra = model._apply_contamination(sim_data, rng=rng, probability=1.0)
 
         assert "p_contaminated" in extra
         np.testing.assert_allclose(extra["p_contaminated"], [1.0])
@@ -175,10 +173,10 @@ class TestApplyContaminationProcess:
         assert np.all(out_data["response_time"] > 0)
 
     def test_random_choice_contamination_p_zero_is_noop(self, sim_data):
-        model = _make_bare_model(contamination=RandomChoiceContamination(p_contaminated=0.0))
+        model = _make_bare_model(contamination=RandomChoiceContamination())
         rng = np.random.default_rng(0)
 
-        out_data, extra = model._apply_contamination(sim_data, rng=rng)
+        out_data, extra = model._apply_contamination(sim_data, rng=rng, probability=0.0)
 
         np.testing.assert_allclose(out_data["response_time"], sim_data["response_time"])
         np.testing.assert_allclose(out_data["choice"], sim_data["choice"])
@@ -190,10 +188,10 @@ class TestApplyContaminationProcess:
             "choice": np.array([[0.0, 99.0, -1.0, 1.0]]),
         }
         original_response_time = sim_data["response_time"].copy()
-        model = _make_bare_model(contamination=RandomChoiceContamination(p_contaminated=1.0))
+        model = _make_bare_model(contamination=RandomChoiceContamination())
         rng = np.random.default_rng(0)
 
-        out_data, extra = model._apply_contamination(sim_data, rng=rng)
+        out_data, extra = model._apply_contamination(sim_data, rng=rng, probability=1.0)
 
         np.testing.assert_allclose(sim_data["response_time"], original_response_time)
         np.testing.assert_allclose(extra["p_contaminated"], [1.0])
@@ -210,14 +208,13 @@ class TestApplyContaminationProcess:
             "metadata": np.array([42.0]),
         }
         process = RandomChoiceContamination(
-            p_contaminated=0.0,
             response_time_key="rt",
             choice_key="resp",
         )
         model = _make_bare_model(contamination=process, data_keys=("rt", "resp", "metadata"))
         rng = np.random.default_rng(0)
 
-        out_data, extra = model._apply_contamination(sim_data, rng=rng)
+        out_data, extra = model._apply_contamination(sim_data, rng=rng, probability=0.0)
 
         np.testing.assert_allclose(out_data["rt"], sim_data["rt"])
         np.testing.assert_allclose(out_data["resp"], sim_data["resp"])
@@ -229,54 +226,24 @@ class TestApplyContaminationProcess:
         with pytest.raises(KeyError):
             model._apply_contamination({"response_time": np.array([[1.0]])}, rng=None)
 
-    def test_prior_probability_can_be_registered_as_shared(self, sim_data):
-        process = RandomChoiceContamination(p_contaminated=Prior("beta", a=2, b=8), infer=True)
-
-        out = process.apply(sim_data, rng=np.random.default_rng(0))
-
-        assert out["p_contaminated"].shape == (1,)
-
-    def test_stochastic_probability_can_vary_over_steps(self, sim_data):
-        process = RandomChoiceContamination(
-            p_contaminated=RandomWalk(bounds=(0.0, 1.0), sigma=0.0, delta=0.0),
-            infer=True,
-        )
-
-        out = process.apply(sim_data, rng=np.random.default_rng(0))
-
-        assert out["p_contaminated"].shape == sim_data["response_time"].shape
-
-    def test_deterministic_probability_exposes_transition_hyperparameters(self, sim_data):
-        process = RandomChoiceContamination(
-            p_contaminated=Linear(
-                bounds=(0.0, 1.0),
-                intercept=Prior("beta", a=2, b=8),
-                slope=0.0,
-            ),
-            infer=True,
-        )
-
-        out = process.apply(sim_data, rng=np.random.default_rng(0))
-
-        assert out["p_contaminated"].shape == sim_data["response_time"].shape
-
 
 class TestContaminationParameterValidation:
+    def test_default_is_not_inferred(self):
+        assert RandomChoiceContamination().infer is False
+
     def test_rejects_non_boolean_infer(self):
         with pytest.raises(TypeError, match="infer must be a bool"):
             RandomChoiceContamination(infer=1)
 
-    def test_rejects_probability_outside_unit_interval(self):
+    @pytest.mark.parametrize("probability", [1.1, -0.1, np.nan, np.inf])
+    def test_rejects_invalid_probability(self, sim_data, probability):
         with pytest.raises(ValueError, match="between 0 and 1"):
-            RandomChoiceContamination(p_contaminated=1.1)
+            RandomChoiceContamination().apply(sim_data, probability=probability)
 
-    def test_rejects_unsupported_probability_type(self):
-        with pytest.raises(TypeError, match="p_contaminated must be"):
-            RandomChoiceContamination(p_contaminated="often")
-
-    def test_rejects_transition_bounds_outside_unit_interval(self):
-        with pytest.raises(ValueError, match="bounds within"):
-            RandomChoiceContamination(p_contaminated=RandomWalk(bounds=(-1.0, 1.0)))
+    def test_per_trial_probability(self, sim_data):
+        probability = np.full(sim_data["response_time"].shape, 0.2)
+        out = RandomChoiceContamination().apply(sim_data, probability=probability)
+        np.testing.assert_array_equal(out["p_contaminated"], probability)
 
 
 class TestSampleIntegrationOrdering:

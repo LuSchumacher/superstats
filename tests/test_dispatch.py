@@ -115,7 +115,7 @@ def test_contamination_dispatches_random_choice_defaults():
 
 
 def test_contamination_dispatch_passes_existing_processes_through():
-    process = RandomChoiceContamination(p_contaminated=0.0)
+    process = RandomChoiceContamination()
 
     assert find_contamination(process) is process
     assert find_contamination(None) is None

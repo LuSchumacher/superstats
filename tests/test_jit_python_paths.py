@@ -25,10 +25,6 @@ from superstats.transition.stochastic.ornstein_uhlenbeck import _one_step_ou, _s
 from superstats.transition.stochastic.random_walk import _one_step_random_walk, _sample_random_walk
 
 
-def sigmoid(values):
-    return 1.0 / (1.0 + np.exp(-np.asarray(values)))
-
-
 def test_python_ddm_covers_both_boundaries_and_timeout():
     result = sample_ddm.py_func(
         v=np.array([2.0, -2.0, 0.0]),
@@ -94,27 +90,23 @@ def test_python_rdm_respects_explicit_correct_accumulator():
 
 
 def test_python_transition_rollouts_follow_zero_noise_equations():
-    bounds = np.array([0.0, 1.0])
 
     random_walk = _sample_random_walk.py_func(
         np.array([[0.0, np.nan, np.nan]]),
         np.array([0.0]),
         np.array([1.0]),
-        bounds,
     )
     ar1 = _sample_ar1.py_func(
         np.array([[2.0, np.nan, np.nan]]),
         np.array([0.0]),
         np.array([0.5]),
         np.array([0.0]),
-        bounds,
     )
     ou = _sample_ou.py_func(
         np.array([[2.0, np.nan, np.nan]]),
         np.array([0.0]),
         np.array([0.5]),
         np.array([0.0]),
-        bounds,
     )
     levy = _sample_levy_flight.py_func(
         np.array([[0.0, np.nan, np.nan]]),
@@ -122,13 +114,12 @@ def test_python_transition_rollouts_follow_zero_noise_equations():
         np.array([1.0]),
         np.array([1.5]),
         np.array([0.0]),
-        bounds,
     )
 
-    np.testing.assert_allclose(random_walk[0], sigmoid([0.0, 1.0, 2.0]))
-    np.testing.assert_allclose(ar1[0], sigmoid([2.0, 1.0, 0.5]))
-    np.testing.assert_allclose(ou[0], sigmoid([2.0, 1.0, 0.5]))
-    np.testing.assert_allclose(levy[0], sigmoid([0.0, 1.0, 2.0]))
+    np.testing.assert_allclose(random_walk[0], np.asarray([0.0, 1.0, 2.0]))
+    np.testing.assert_allclose(ar1[0], np.asarray([2.0, 1.0, 0.5]))
+    np.testing.assert_allclose(ou[0], np.asarray([2.0, 1.0, 0.5]))
+    np.testing.assert_allclose(levy[0], np.asarray([0.0, 1.0, 2.0]))
 
 
 def test_python_jump_rollout_covers_jump_and_stay_paths():
@@ -136,11 +127,10 @@ def test_python_jump_rollout_covers_jump_and_stay_paths():
         np.array([[0.0, np.nan, np.nan], [0.0, np.nan, np.nan]]),
         np.array([1.0, 0.0]),
         np.array([[1.0, 2.0], [3.0, 4.0]]),
-        np.array([0.0, 1.0]),
     )
 
-    np.testing.assert_allclose(result[0], sigmoid([0.0, 1.0, 2.0]))
-    np.testing.assert_allclose(result[1], sigmoid([0.0, 0.0, 0.0]))
+    np.testing.assert_allclose(result[0], np.asarray([0.0, 1.0, 2.0]))
+    np.testing.assert_allclose(result[1], np.asarray([0.0, 0.0, 0.0]))
     assert _one_step_jump.py_func(2.0, 1.0, 5.0) == 5.0
     assert _one_step_jump.py_func(2.0, 0.0, 5.0) == 2.0
 
@@ -185,10 +175,9 @@ def test_python_gaussian_process_rollout_returns_finite_bounded_values():
         local_params=np.empty((2, 3)),
         start=np.array([0.0, 1.0]),
         kernel_mat=np.broadcast_to(np.eye(3), (2, 3, 3)),
-        bounds=np.array([-2.0, 3.0]),
         noise=1e-9,
     )
 
     assert result.shape == (2, 3)
     assert np.all(np.isfinite(result))
-    assert np.all((-2.0 < result) & (result < 3.0))
+    assert np.all(np.isfinite(result))
