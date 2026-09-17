@@ -8,10 +8,12 @@ from .cognitive.rdm import sample_rdm
 from .cognitive.cdm import sample_cdm
 from .cognitive.cpt import sample_cpt
 from .context.context_simulator import ContextSimulator
-from .context.context_mapping import ContextMapping
 from .formula import Formula
 
+from superstats.simulation.link_function import LinkFunction
+
 __all__ = [
+    "LinkFunction",
     "Model",
     "RandomMissingProcess",
     "RandomChoiceContamination",
@@ -20,6 +22,5 @@ __all__ = [
     "sample_cdm",
     "sample_cpt",
     "ContextSimulator",
-    "ContextMapping",
     "Formula",
 ]

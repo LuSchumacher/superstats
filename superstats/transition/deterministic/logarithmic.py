@@ -1,6 +1,5 @@
 """Logarithmic deterministic transition."""
 
-from collections.abc import Sequence
 from typing import Any, Dict
 
 import numpy as np
@@ -13,9 +12,6 @@ class Logarithmic(DeterministicTransition):
 
     Parameters
     ----------
-    bounds          : sequence of two floats or None, optional, default: None
-        Lower and upper bounds for the deterministic trajectory. Tuples and
-        lists are accepted.
     intercept       : float, Prior, or None, optional, default: None
         Initial value of the trajectory. A `Prior` samples one intercept per
         trajectory; `None` uses the deterministic default prior.
@@ -31,17 +27,16 @@ class Logarithmic(DeterministicTransition):
     -----
     The trajectory is defined as ``intercept + beta * log1p(t)``. The `sample`
     method returns a dict with keys `deterministic_params`, `hyper_params`,
-    and `fixed_params`. Trajectory values are clipped to `bounds`.
+    and `fixed_params`. Trajectories are returned on the raw coefficient scale.
     """
 
     def __init__(
         self,
-        bounds: Sequence[float, float] | None = None,
         intercept: float | Prior | None = None,
         beta: float | Prior | None = None,
         normalize_steps: bool = True,
     ):
-        super().__init__(bounds=bounds)
+        super().__init__()
         self.normalize_steps = normalize_steps
         self.hyper_specs = {"intercept": intercept, "beta": beta}
         self.transition_name = "logarithmic"
@@ -75,7 +70,7 @@ class Logarithmic(DeterministicTransition):
         trajectory = intercept[:, None] + beta[:, None] * np.log1p(index[None, :])
 
         return {
-            "deterministic_params": self._bound(trajectory),
+            "deterministic_params": trajectory.astype(self.dtype),
             "hyper_params": hyper,
             "fixed_params": fixed,
         }
@@ -111,4 +106,4 @@ class Logarithmic(DeterministicTransition):
             else np.arange(num_steps, dtype=self.dtype)
         )
         trajectory = intercept[:, None] + beta[:, None] * np.log1p(index[None, :])
-        return self._bound(trajectory)
+        return trajectory.astype(self.dtype)

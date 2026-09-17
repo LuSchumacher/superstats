@@ -1,11 +1,10 @@
 """Autoregressive transition models."""
 
-from typing import Tuple, Dict, Any
+from typing import Dict, Any
 import numpy as np
 from numba import njit, prange
 
 from .stochastic_transition import StochasticTransition, Prior
-from superstats.utils.transformations import scaled_sigmoid
 
 
 @njit(parallel=True, fastmath=True)
@@ -14,7 +13,6 @@ def _sample_ar1(
     sigma: np.ndarray,
     phi: np.ndarray,
     delta: np.ndarray,
-    bounds: np.ndarray,
 ) -> np.ndarray:
     """Vectorized AR(1) rollout across a batch, filled in place.
 
@@ -29,16 +27,13 @@ def _sample_ar1(
         Autoregressive coefficient.
     delta        : np.ndarray of shape (batch_size,)
         Additive drift term.
-    bounds       : np.ndarray of shape (2,)
-        (lower, upper) bounds passed to `scaled_sigmoid`.
 
     Returns
     -------
     local_params : np.ndarray of shape (batch_size, steps) - the same
-        array, filled with the bounded AR(1) rollout
+        array, filled with the raw AR(1) rollout
     """
     batch_size, steps = local_params.shape
-    lower, upper = bounds[0], bounds[1]
 
     noise = np.random.randn(batch_size, steps - 1)
 
@@ -48,8 +43,6 @@ def _sample_ar1(
         for t in range(1, steps):
             x_prev = phi[b] * x_prev + delta[b] + sigma[b] * noise[b, t - 1]
             local_params[b, t] = x_prev
-
-        local_params[b, :] = scaled_sigmoid(local_params[b, :], lower, upper)
 
     return local_params
 
@@ -87,8 +80,6 @@ class AutoRegression(StochasticTransition):
 
     Parameters
     ----------
-    bounds        : tuple or None, optional, default: None
-        Lower and upper bounds for the latent state.
     initial_prior : Prior or None, optional, default: None
         Prior for the initial latent state.
     sigma         : float or Prior or None, optional, default: None
@@ -105,13 +96,12 @@ class AutoRegression(StochasticTransition):
 
     def __init__(
         self,
-        bounds: Tuple[float, float] | None = None,
         initial_prior: Prior | None = None,
         sigma: float | Prior | None = None,
         phi: float | Prior | None = None,
         delta: float | Prior | None = None,
     ):
-        super().__init__(bounds, initial_prior)
+        super().__init__(initial_prior)
 
         self.hyper_specs = {
             "sigma": sigma,
@@ -161,7 +151,6 @@ class AutoRegression(StochasticTransition):
             sigma,
             phi,
             delta,
-            self.bounds,
         )
 
         return {

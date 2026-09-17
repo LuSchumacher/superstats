@@ -1,13 +1,8 @@
 """Wrapper for a contaminated random choice data augmentation process."""
 
-from numbers import Real
-
 import numpy as np
 
 from .contamination import ContaminationProcess
-from superstats.defaults import DEFAULT_P_CONTAMINATED_PRIOR
-from superstats.prior.prior import Prior
-from superstats.transition import DeterministicTransition, StochasticTransition
 
 
 class RandomChoiceContamination(ContaminationProcess):
@@ -37,24 +32,11 @@ class RandomChoiceContamination(ContaminationProcess):
 
     Parameters
     ----------
-    p_contaminated     : float, Prior, StochasticTransition,
-        DeterministicTransition, or None, default: None
-        Probability that a time step is contaminated.
-        - None (default): drawn from `DEFAULT_P_CONTAMINATED_PRIOR`.
-        - float: fixed probability, shared across the whole batch.
-        - Prior: sampled once per dataset to obtain a per-dataset
-          probability.
-        - StochasticTransition: sampled once per dataset and time step.
-        - DeterministicTransition: constructs one probability trajectory
-          per dataset.
-    infer             : bool, default: False
-        Whether `Model` should register contamination parameters as model
-        parameters. The parameter type determines its category in the same
-        way as `JointPrior`: scalars are fixed, `Prior` values are shared,
-        stochastic trajectories are local, and deterministic trajectories
-        are deterministic. Transition hyperparameters are registered as
-        hyper or fixed parameters as appropriate. A scalar remains fixed
-        even when `infer=True`, because it has no uncertainty to infer.
+    infer : bool, default: False
+        Include the probability and its sampled transition hyperparameters in
+        inference targets. Specify ``p_contaminated`` in ``JointPrior``;
+        otherwise Model supplies the default beta prior. With False, it is
+        a nuisance parameter drawn afresh during posterior resimulation.
     student_t_df      : float, default: 5
         Degrees of freedom for the Student's t distribution used to
         generate contaminant response times. Must be greater than 2.
@@ -66,7 +48,6 @@ class RandomChoiceContamination(ContaminationProcess):
 
     def __init__(
         self,
-        p_contaminated: float | Prior | StochasticTransition | DeterministicTransition | None = None,
         infer: bool = False,
         student_t_df: float = 5,
         response_time_key: str = "response_time",
@@ -79,21 +60,6 @@ class RandomChoiceContamination(ContaminationProcess):
         if not isinstance(infer, bool):
             raise TypeError("infer must be a bool.")
 
-        self.p_contaminated = p_contaminated if p_contaminated is not None else DEFAULT_P_CONTAMINATED_PRIOR
-        if not (
-            isinstance(self.p_contaminated, Real)
-            or isinstance(self.p_contaminated, (Prior, StochasticTransition, DeterministicTransition))
-        ):
-            raise TypeError(
-                "p_contaminated must be a scalar, Prior, StochasticTransition, DeterministicTransition, or None."
-            )
-        if isinstance(self.p_contaminated, Real) and not 0.0 <= float(self.p_contaminated) <= 1.0:
-            raise ValueError("p_contaminated must be between 0 and 1.")
-        if isinstance(self.p_contaminated, (StochasticTransition, DeterministicTransition)):
-            lower, upper = self.p_contaminated.bounds
-            if lower < 0.0 or upper > 1.0:
-                raise ValueError("A p_contaminated transition must have bounds within [0, 1].")
-
         self.infer = infer
         self.student_t_df = student_t_df
         self.key_map = {
@@ -102,38 +68,15 @@ class RandomChoiceContamination(ContaminationProcess):
         }
         self.required_keys = set(self.key_map.values())
 
-    def draw_parameter_groups(self, batch_size: int, num_steps: int) -> dict[str, dict]:
-        """Draw the contamination probability and its associated parameters."""
-        p = self.p_contaminated
-
-        if isinstance(p, Prior):
-            groups = {"shared_params": {"p_contaminated": p.sample(batch_size)}}
-        elif isinstance(p, StochasticTransition):
-            samples = p.sample(batch_size=batch_size, num_steps=num_steps)
-            groups = {
-                "local_params": {"p_contaminated": samples["local_params"]},
-                "hyper_params": {f"p_contaminated_{key}": value for key, value in samples["hyper_params"].items()},
-                "fixed_params": {f"p_contaminated_{key}": value for key, value in samples["fixed_params"].items()},
-            }
-        elif isinstance(p, DeterministicTransition):
-            samples = p.sample(batch_size=batch_size, num_steps=num_steps)
-            groups = {
-                "deterministic_params": {"p_contaminated": samples["deterministic_params"]},
-                "hyper_params": {f"p_contaminated_{key}": value for key, value in samples["hyper_params"].items()},
-                "fixed_params": {f"p_contaminated_{key}": value for key, value in samples["fixed_params"].items()},
-            }
-        else:
-            groups = {"fixed_params": {"p_contaminated": p}}
-
-        values = next(values["p_contaminated"] for values in groups.values() if "p_contaminated" in values)
-        if np.any((np.asarray(values) < 0.0) | (np.asarray(values) > 1.0)):
-            raise ValueError("Sampled p_contaminated values must be between 0 and 1.")
-        return groups
+    def __call__(self, data, rng=None, *, probability):
+        return self.apply(data, rng=rng, probability=probability)
 
     def apply(
         self,
         data: dict[str, np.ndarray],
         rng: np.random.Generator | None = None,
+        *,
+        probability: np.ndarray | float,
     ) -> dict:
         """Apply random-choice contamination to response times and choices.
 
@@ -147,17 +90,19 @@ class RandomChoiceContamination(ContaminationProcess):
             is created via `_default_rng`, so calling `apply` directly is
             safe but not reproducible unless a seeded `rng` is supplied.
 
+        probability : float or np.ndarray
+            Final linked probability supplied by Model, in [0, 1].
+
         Returns
         -------
         result : dict
             A shallow copy of `data` with the configured response-time and
             choice keys replaced by their contaminated versions, plus
             "p_contaminated" (the contamination probability used, shape
-            (batch_size,) for a scalar or `Prior`, and
-            (batch_size, num_steps) for a transition). With `infer=True`,
-            inferred transition hyperparameters and fixed transition
-            parameters are also included using `p_contaminated_`-prefixed
-            names. All other keys in `data` are carried over unchanged.
+            (batch_size,) for a shared value, and
+            (batch_size, num_steps) for a trajectory). The
+            raw inference targets are returned by Model separately. All other
+            keys in `data` are carried over unchanged.
 
         Raises
         ------
@@ -176,11 +121,18 @@ class RandomChoiceContamination(ContaminationProcess):
         choice = data[choice_key]
 
         batch_size, num_steps = response_time.shape
-        parameter_groups = self.draw_parameter_groups(batch_size, num_steps)
-        p = next(values["p_contaminated"] for values in parameter_groups.values() if "p_contaminated" in values)
-        p = np.asarray(p)
+        p = np.asarray(probability)
+        if p.ndim == 3 and p.shape[-1] == 1:
+            p = p[..., 0]
+        if p.shape == (batch_size, 1):
+            p = p[:, 0]
+        if not np.all(np.isfinite(p)) or np.any((p < 0.0) | (p > 1.0)):
+            raise ValueError("Sampled p_contaminated values must be between 0 and 1; configure Model.link_function.")
         if p.ndim == 0:
             p = np.full(batch_size, p.item())
+
+        if p.shape not in ((batch_size,), (batch_size, num_steps)):
+            raise ValueError("probability must be scalar, per-dataset, or per-trial.")
 
         valid_rt = response_time > 0
         probabilities = p[:, None] if p.ndim == 1 else p
@@ -231,9 +183,5 @@ class RandomChoiceContamination(ContaminationProcess):
         out[response_time_key] = np.where(mask, contaminant_rt, response_time)
         out[choice_key] = contaminated_choices
         out["p_contaminated"] = p
-
-        if self.infer:
-            for values in parameter_groups.values():
-                out.update(values)
 
         return out

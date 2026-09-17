@@ -47,6 +47,7 @@ class Formula:
         self.formulas = tuple(formulas)
         self.targets: list[str] = []
         self._expressions: list[ast.expr] = []
+        self.dependencies: dict[str, set[str]] = {}
 
         for formula in self.formulas:
             target, expression = self._parse_formula(formula)
@@ -54,6 +55,7 @@ class Formula:
                 raise ValueError(f"Formula target {target!r} is assigned more than once.")
             self.targets.append(target)
             self._expressions.append(expression)
+            self.dependencies[target] = {node.id for node in ast.walk(expression) if isinstance(node, ast.Name)}
 
     def resolve(
         self,
@@ -83,7 +85,7 @@ class Formula:
             Optional mapping of covariate names to scalars or arrays. A
             trial-level covariate normally has shape
             ``(batch_size, num_steps)``. It is commonly the
-            ``formula_context`` supplied by :class:`ContextMapping`.
+            context selected by :class:`Model` through ``design_context``.
 
         Returns
         -------

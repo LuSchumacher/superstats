@@ -1,11 +1,10 @@
 """Ornstein-Uhlenbeck transition models."""
 
-from typing import Tuple, Dict, Any
+from typing import Dict, Any
 import numpy as np
 from numba import njit, prange
 
 from .stochastic_transition import StochasticTransition, Prior
-from superstats.utils.transformations import scaled_sigmoid
 
 
 @njit(parallel=True, fastmath=True)
@@ -14,7 +13,6 @@ def _sample_ou(
     mu: np.ndarray,
     theta: np.ndarray,
     sigma: np.ndarray,
-    bounds: np.ndarray,
 ) -> np.ndarray:
     """Vectorized Ornstein-Uhlenbeck rollout across a batch, filled in place.
 
@@ -29,16 +27,13 @@ def _sample_ou(
         Mean-reversion speed, per trajectory.
     sigma        : np.ndarray of shape (batch_size,)
         Diffusion scale, per trajectory.
-    bounds       : np.ndarray of shape (2,)
-        (lower, upper) bounds passed to `scaled_sigmoid`.
 
     Returns
     -------
     local_params : np.ndarray of shape (batch_size, steps) - the same
-        array, filled with the bounded OU rollout
+        array, filled with the raw OU rollout
     """
     batch_size, steps = local_params.shape
-    lower, upper = bounds[0], bounds[1]
 
     noise = np.random.randn(batch_size, steps - 1)
 
@@ -48,8 +43,6 @@ def _sample_ou(
         for t in range(1, steps):
             x_prev = x_prev + theta[b] * (mu[b] - x_prev) + sigma[b] * noise[b, t - 1]
             local_params[b, t] = x_prev
-
-        local_params[b, :] = scaled_sigmoid(local_params[b, :], lower, upper)
 
     return local_params
 
@@ -87,8 +80,6 @@ class OrnsteinUhlenbeck(StochasticTransition):
 
     Parameters
     ----------
-    bounds        : tuple or None, optional, default: None
-        Lower and upper bounds for the latent state.
     initial_prior : Prior or None, optional, default: None
         Prior for the initial latent state.
     sigma         : float or Prior or None, optional, default: None
@@ -106,13 +97,12 @@ class OrnsteinUhlenbeck(StochasticTransition):
 
     def __init__(
         self,
-        bounds: Tuple[float, float] | None = None,
         initial_prior: Prior | None = None,
         sigma: float | Prior | None = None,
         mu: float | Prior | None = None,
         theta: float | Prior | None = None,
     ):
-        super().__init__(bounds, initial_prior)
+        super().__init__(initial_prior)
 
         self.hyper_specs = {
             "sigma": sigma,
@@ -162,7 +152,6 @@ class OrnsteinUhlenbeck(StochasticTransition):
             mu,
             theta,
             sigma,
-            self.bounds,
         )
 
         return {

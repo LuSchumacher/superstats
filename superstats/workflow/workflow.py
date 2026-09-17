@@ -385,6 +385,8 @@ class Workflow:
         num_sims: int = 10,
         rng=None,
         data_idx: int | Sequence[int] | None = None,
+        context: Mapping[str, np.ndarray] | None = None,
+        num_steps: int | None = None,
     ) -> dict[str, np.ndarray]:
         """Generate posterior predictive simulations from posterior parameter draws.
 
@@ -403,6 +405,15 @@ class Workflow:
             Dataset indices to resimulate. None selects all datasets.
             A single integer still preserves the dataset axis, and a
             sequence preserves the requested order.
+
+        context : mapping or None, optional
+            Original dataset context for posterior prediction. Batched arrays
+            have shape (datasets, steps, ...); they are selected with data_idx
+            and repeated across posterior simulations. One shared trial sequence
+            is also accepted. If omitted, Model generates its configured context.
+        num_steps : int or None, optional
+            Trial count, needed when shared-only posterior draws do not retain
+            a trial axis. Can also be inferred from explicit context.
 
         Returns
         -------
@@ -447,7 +458,33 @@ class Workflow:
         batch_size = len(selected_indices)
         time_varying_keys = set(self.model.local_keys) | set(self.model.deterministic_keys)
         time_varying_arrays = [np.asarray(value) for name, value in estimates.items() if name in time_varying_keys]
-        num_steps = time_varying_arrays[0].shape[2] if time_varying_arrays else example.shape[2]
+        if num_steps is None:
+            if time_varying_arrays:
+                num_steps = time_varying_arrays[0].shape[2]
+            elif context:
+                context_array = np.asarray(next(iter(context.values())))
+                if context_array.ndim > 0:
+                    num_steps = context_array.shape[1] if context_array.ndim >= 2 else context_array.shape[0]
+                else:
+                    num_steps = example.shape[2]
+            elif isinstance(getattr(self.model, "context", None), pd.DataFrame):
+                num_steps = len(self.model.context)
+            elif isinstance(getattr(self.model, "context", None), Mapping):
+                arrays = [np.asarray(v) for v in self.model.context.values() if np.asarray(v).ndim > 0]
+                num_steps = arrays[0].shape[0] if arrays else example.shape[2]
+            else:
+                num_steps = example.shape[2]
+        if not isinstance(num_steps, (int, np.integer)) or num_steps <= 0:
+            raise ValueError("num_steps must be a positive integer.")
+        simulation_context = None
+        if context is not None:
+            simulation_context = {}
+            for name, value in context.items():
+                array = np.asarray(value)
+                if array.ndim >= 2 and array.shape[:2] == (original_batch_size, num_steps):
+                    simulation_context[name] = np.repeat(array[selected_indices], num_sims, axis=0)
+                else:
+                    simulation_context[name] = array
 
         sample_idx = rng.integers(num_draws, size=(batch_size, num_sims))
 
@@ -499,12 +536,16 @@ class Workflow:
                 raise ValueError(f"Cannot reshape posterior parameter '{name}' with shape {arr.shape}.")
 
         for name, value in fixed_params.items():
-            expanded_params[name] = np.broadcast_to(np.asarray(value), (batch_size * num_sims,))
+            expanded_params[name] = np.broadcast_to(
+                np.asarray(value), (batch_size * num_sims, *np.asarray(value).shape)
+            )
 
         for name in self.model.deterministic_keys:
             if name in expanded_params:
                 continue
-            transition = self.model.prior.params[name]
+            transition = self.model.prior.params.get(name)
+            if transition is None:
+                raise ValueError(f"No transition registered for deterministic parameter {name!r}.")
             prefix = f"{name}_"
             transition_params = {
                 key[len(prefix) :]: value for key, value in expanded_params.items() if key.startswith(prefix)
@@ -519,10 +560,14 @@ class Workflow:
                 num_steps=num_steps,
             )
 
+        context_kwargs = {} if simulation_context is None else {"context": simulation_context}
+        if getattr(self.model, "contamination", None) is not None:
+            context_kwargs["rng"] = rng
         raw_sim = self.model.simulate_from_parameters(
             expanded_params,
             batch_size=batch_size * num_sims,
             num_steps=num_steps,
+            **context_kwargs,
         )
 
         return {name: value.reshape(batch_size, num_sims, num_steps) for name, value in raw_sim.items()}

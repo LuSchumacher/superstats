@@ -4,14 +4,16 @@ import logging as _logging
 
 from . import prior, diagnostics, simulation, workflow
 from .prior import JointPrior, Prior
-from .simulation import Model
+from .simulation import Model, LinkFunction
 from .workflow import Workflow
-from .simulation import ContextMapping, ContextSimulator, Formula
+from .simulation import ContextSimulator, Formula
 
 _logging.basicConfig(level=_logging.INFO)
 _logging.getLogger(__name__).setLevel(_logging.INFO)
 
+
 __all__ = [
+    "LinkFunction",
     "diagnostics",
     "prior",
     "simulation",
@@ -20,7 +22,6 @@ __all__ = [
     "Prior",
     "Model",
     "Workflow",
-    "ContextMapping",
     "ContextSimulator",
     "Formula",
 ]

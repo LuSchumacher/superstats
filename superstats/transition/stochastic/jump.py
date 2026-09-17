@@ -1,11 +1,10 @@
 """Jump-process transition models."""
 
-from typing import Tuple, Dict, Any
+from typing import Dict, Any
 import numpy as np
 from numba import njit, prange
 
 from .stochastic_transition import StochasticTransition, Prior
-from superstats.utils.transformations import scaled_sigmoid
 
 
 @njit(parallel=True, fastmath=True)
@@ -13,7 +12,6 @@ def _sample_jump_process(
     local_params: np.ndarray,
     p_jump: np.ndarray,
     proposals: np.ndarray,
-    bounds: np.ndarray,
 ) -> np.ndarray:
     """Vectorized jump-process rollout across a batch, filled in place.
 
@@ -26,16 +24,13 @@ def _sample_jump_process(
         Per-trajectory probability of jumping at each step.
     proposals    : np.ndarray of shape (batch_size, steps - 1)
         Pre-sampled proposal values to jump to, one per step.
-    bounds       : np.ndarray of shape (2,)
-        (lower, upper) bounds passed to `scaled_sigmoid`.
 
     Returns
     -------
     local_params : np.ndarray of shape (batch_size, steps) - the same
-        array, filled with the bounded jump-process rollout
+        array, filled with the raw jump-process rollout
     """
     batch_size, steps = local_params.shape
-    lower, upper = bounds[0], bounds[1]
 
     uniform = np.random.rand(batch_size, steps - 1)
 
@@ -45,8 +40,6 @@ def _sample_jump_process(
                 local_params[b, t] = proposals[b, t - 1]
             else:
                 local_params[b, t] = local_params[b, t - 1]
-
-        local_params[b, :] = scaled_sigmoid(local_params[b, :], lower, upper)
 
     return local_params
 
@@ -82,8 +75,6 @@ class Jump(StochasticTransition):
 
     Parameters
     ----------
-    bounds         : tuple or None, optional, default: None
-        Lower and upper bounds for the latent state.
     initial_prior  : Prior or None, optional, default: None
         Prior for the initial latent state.
     p_jump         : float or Prior, optional, default: 1.0
@@ -100,12 +91,11 @@ class Jump(StochasticTransition):
 
     def __init__(
         self,
-        bounds: Tuple[float, float] | None = None,
         initial_prior: Prior | None = None,
         p_jump: float | Prior = 1.0,
         proposal_prior: Prior | None = None,
     ):
-        super().__init__(bounds, initial_prior)
+        super().__init__(initial_prior)
 
         self._user_defined_p_jump = p_jump != 1.0
 
@@ -150,7 +140,6 @@ class Jump(StochasticTransition):
             local_params,
             p_jump,
             proposals,
-            self.bounds,
         )
 
         return {

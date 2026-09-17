@@ -13,9 +13,6 @@ class Polynomial(DeterministicTransition):
 
     Parameters
     ----------
-    bounds          : sequence of two floats or None, optional, default: None
-        Lower and upper bounds for the deterministic trajectory. Tuples and
-        lists are accepted.
     intercept       : float, Prior, or None, optional, default: None
         Constant term of the polynomial. A `Prior` samples one intercept per
         trajectory; `None` uses the deterministic default prior.
@@ -35,19 +32,17 @@ class Polynomial(DeterministicTransition):
     Notes
     -----
     The `sample` method returns a dict with keys `deterministic_params`,
-    `hyper_params`, and `fixed_params`. Trajectory values are clipped to
-    `bounds`.
+    `hyper_params`, and `fixed_params`. Trajectories are returned on the raw coefficient scale.
     """
 
     def __init__(
         self,
-        bounds: Sequence[float, float] | None = None,
         intercept: float | Prior | None = None,
         betas: float | Prior | Sequence[float | Prior | None] | None = None,
         degree: int = 2,
         normalize_steps: bool = True,
     ):
-        super().__init__(bounds=bounds)
+        super().__init__()
 
         if degree < 1:
             raise ValueError("degree must be at least 1")
@@ -83,7 +78,7 @@ class Polynomial(DeterministicTransition):
             local += resolved[f"beta_{power}"][:, None] * np.power(index[None, :], power)
 
         return {
-            "deterministic_params": self._bound(local),
+            "deterministic_params": local.astype(self.dtype),
             "hyper_params": hyper,
             "fixed_params": fixed,
         }
@@ -106,7 +101,7 @@ class Polynomial(DeterministicTransition):
             beta = np.broadcast_to(np.asarray(params[f"beta_{power}"], dtype=self.dtype), (batch_size,))
             trajectory += beta[:, None] * np.power(index[None, :], power)
 
-        return self._bound(trajectory)
+        return trajectory.astype(self.dtype)
 
     def _expand_beta_specs(
         self,
