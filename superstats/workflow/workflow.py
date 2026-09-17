@@ -387,6 +387,7 @@ class Workflow:
         data_idx: int | Sequence[int] | None = None,
         context: Mapping[str, np.ndarray] | None = None,
         num_steps: int | None = None,
+        apply_missing: bool = False,
     ) -> dict[str, np.ndarray]:
         """Generate posterior predictive simulations from posterior parameter draws.
 
@@ -414,6 +415,10 @@ class Workflow:
         num_steps : int or None, optional
             Trial count, needed when shared-only posterior draws do not retain
             a trial axis. Can also be inferred from explicit context.
+
+        apply_missing : bool, optional, default: False
+            Apply configured missingness, drawing fresh probabilities from
+            JointPrior. By default, return complete observations.
 
         Returns
         -------
@@ -561,7 +566,9 @@ class Workflow:
             )
 
         context_kwargs = {} if simulation_context is None else {"context": simulation_context}
-        if getattr(self.model, "contamination", None) is not None:
+        if apply_missing:
+            context_kwargs["apply_missing"] = True
+        if apply_missing or getattr(self.model, "contamination", None) is not None:
             context_kwargs["rng"] = rng
         raw_sim = self.model.simulate_from_parameters(
             expanded_params,

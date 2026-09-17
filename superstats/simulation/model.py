@@ -16,6 +16,7 @@ from superstats.diagnostics.plots.time_invariant_prior import plot_time_invarian
 from superstats.diagnostics.plots.time_varying_prior import plot_time_varying_prior
 from .augmentation.random_choice_contamination import RandomChoiceContamination
 from superstats.diagnostics.plots.prior_push_forward import plot_push_forward
+from superstats.simulation.augmentation.random_missing import RandomMissingProcess
 from superstats.simulation.augmentation.missing import MissingProcess
 from superstats.simulation.augmentation.contamination import ContaminationProcess
 from superstats.simulation.context.context_simulator import ContextSimulator
@@ -65,6 +66,9 @@ class Model:
         Process applied to simulated data to introduce missingness.
         - Not provided (default) or `"random"`: uses `RandomMissingProcess()`,
           the default MCAR missingness process.
+        The nuisance probability `p_missing` belongs in `JointPrior`; Model
+        adds the default beta prior when omitted, without mutating the caller's
+        prior. It and its transition hyperparameters are never inferred.
         - `None`: disables missingness augmentation and `sample` will not
           include a `"missing_mask"` entry in its result.
         - `MissingProcess` instance: used as-is.
@@ -139,16 +143,23 @@ class Model:
             # Preserve the caller's prior while retaining the convenient default.
             self.prior = JointPrior(**self.prior.params, p_contaminated=DEFAULT_P_CONTAMINATED_PRIOR)
 
+        if isinstance(self.missing, RandomMissingProcess) and "p_missing" not in self.prior.params:
+            from superstats.defaults import DEFAULT_P_MISSING_PRIOR
+
+            self.prior = JointPrior(**self.prior.params, p_missing=DEFAULT_P_MISSING_PRIOR)
+
         # Inspect simulator signature
         self.signature = inspect.signature(simulator)
         self.param_order = [name for name in self.signature.parameters if name != "context"]
 
         if isinstance(self.link_function, Mapping):
-            unknown = set(self.link_function) - set(self.param_order) - {"p_contaminated"}
+            unknown = set(self.link_function) - set(self.param_order) - {"p_contaminated", "p_missing"}
             if unknown:
                 raise ValueError(f"Unknown link_function targets: {sorted(unknown)}")
             if "p_contaminated" in self.link_function and not isinstance(self.contamination, RandomChoiceContamination):
                 raise ValueError("p_contaminated link requires RandomChoiceContamination.")
+            if "p_missing" in self.link_function and not isinstance(self.missing, RandomMissingProcess):
+                raise ValueError("p_missing link requires RandomMissingProcess.")
 
         # Run a pilot draw to determine key groups once
         pilot_context, pilot_contexts = self._generate_context(batch_size=1, num_steps=1, pilot=True)
@@ -172,10 +183,12 @@ class Model:
             }
             if not self.contamination.infer:
                 self._nuisance_keys = {key for keys in self._contamination_parameter_groups.values() for key in keys}
-                for attribute in ("local_keys", "deterministic_keys", "hyper_keys", "shared_keys", "fixed_keys"):
-                    setattr(
-                        self, attribute, [key for key in getattr(self, attribute) if key not in self._nuisance_keys]
-                    )
+        if "p_missing" in self.prior.params:
+            self._nuisance_keys.add("p_missing")
+            self._nuisance_keys.update(self.prior._last_hyper_param_groups.get("p_missing", ()))
+            self._nuisance_keys.update(self.prior._last_fixed_param_groups.get("p_missing", ()))
+        for attribute in ("local_keys", "deterministic_keys", "hyper_keys", "shared_keys", "fixed_keys"):
+            setattr(self, attribute, [key for key in getattr(self, attribute) if key not in self._nuisance_keys])
 
         self.data_keys = self._infer_data_keys(pilot, pilot_contexts)
         self.context_keys = list(pilot_context)
@@ -194,6 +207,7 @@ class Model:
         include_fixed: bool = False,
         tile_to_steps: bool = False,
         rng: np.random.Generator | None = None,
+        apply_missing: bool = True,
     ) -> Dict[str, np.ndarray]:
         """Sample parameters from the prior and generate simulated data.
 
@@ -220,6 +234,10 @@ class Model:
             Random generator forwarded to `self.missing`. If
             None, the missing process falls back to its own default
             (an unseeded generator).
+
+        apply_missing : bool, optional, default: True
+            Apply the configured missing process. False returns complete
+            observations without missingness metadata.
 
         Returns
         -------
@@ -308,7 +326,9 @@ class Model:
         self._exclude_nuisance(prior_draws)
 
         # Apply missingness augmentation, if configured
-        sim_data, missing_mask, missing_extra = self._apply_missing(sim_data, rng)
+        missing_mask, missing_extra = None, {}
+        if apply_missing:
+            sim_data, missing_mask, missing_extra = self._apply_missing(sim_data, rng, model_params.get("p_missing"))
 
         local_params = self._normalize_local_params(local_params, batch_size, num_steps)
         deterministic_params = self._normalize_local_params(deterministic_params, batch_size, num_steps)
@@ -573,6 +593,7 @@ class Model:
         dist_alpha: float | None = None,
         spaghetti: bool = False,
         num_cols: int | None = None,
+        apply_missing: bool = False,
         **kwargs,
     ) -> plt.Figure:
         """Render prior push-forward diagnostics for the generative simulator.
@@ -613,11 +634,15 @@ class Model:
         **kwargs
             Forwarded to `plot_push_forward`.
 
+        apply_missing : bool, optional, default: False
+            Apply configured missingness to the plotted observations. By
+            default, show complete observations, as in posterior resimulation.
+
         Returns
         -------
         fig : plt.Figure - the figure containing the requested plot
         """
-        sample = self.sample(batch_size=batch_size, num_steps=num_steps)
+        sample = self.sample(batch_size=batch_size, num_steps=num_steps, apply_missing=apply_missing)
         data = {key: sample[key] for key in self.data_keys}
         return plot_push_forward(
             data=data,
@@ -656,6 +681,7 @@ class Model:
         num_steps: int,
         context: Mapping[str, Any] | None = None,
         rng: np.random.Generator | None = None,
+        apply_missing: bool = False,
     ) -> Dict[str, np.ndarray]:
         """Simulate outputs and contamination for given raw parameter values.
 
@@ -675,7 +701,10 @@ class Model:
             is interpreted as one fixed sequence and repeated across batches.
             If omitted, the model's configured context source is used.
         rng : np.random.Generator or None
-            Generator used for contamination draws.
+            Generator used for contamination and missingness masks.
+        apply_missing : bool, optional, default: False
+            Apply configured missingness with a fresh nuisance probability
+            from JointPrior. By default, return complete observations.
 
         Returns
         -------
@@ -705,6 +734,10 @@ class Model:
                 if not np.isscalar(specification):
                     raise ValueError("Posterior p_contaminated is required when infer=True.")
                 raw_params["p_contaminated"] = specification
+        if apply_missing and isinstance(self.missing, RandomMissingProcess):
+            nuisance = JointPrior(p_missing=self.prior.params["p_missing"]).sample(batch_size, num_steps)
+            for group in ("local_params", "deterministic_params", "shared_params", "fixed_params"):
+                raw_params.update(nuisance[group])
         combined_params, simulator_context = self._resolve_parameters(raw_params, contexts)
 
         ordered_params = self._ordered_model_args(
@@ -717,6 +750,8 @@ class Model:
         model_output = self._call_simulator(ordered_params, simulator_context)
         sim_data = self._reshape_model_output(model_output, batch_size, num_steps, expected_data_keys=self.data_keys)
         sim_data, _ = self._apply_contamination(sim_data, rng, combined_params.get("p_contaminated"))
+        if apply_missing:
+            sim_data, _, _ = self._apply_missing(sim_data, rng, combined_params.get("p_missing"))
         return sim_data
 
     @staticmethod
@@ -874,8 +909,9 @@ class Model:
         draws = self.prior.sample(batch_size=batch_size, num_steps=num_steps)
         groups = dict(self.prior._last_hyper_param_groups)
         self._exclude_nuisance(draws)
-        if self._nuisance_keys:
-            groups.pop("p_contaminated", None)
+        for name in list(groups):
+            if name in self._nuisance_keys:
+                groups.pop(name)
         # Deterministic trajectories are derived; only their sampled hyperparameters are inferred.
         draws["deterministic_params"] = {}
         draws["hyper_param_groups"] = groups
@@ -890,6 +926,14 @@ class Model:
         if self.formula is None:
             return parameters
 
+        # Posterior scalar trajectories use (batch, steps, 1), whereas
+        # design context and prior trajectories use (batch, steps).
+        parameters = {
+            name: np.asarray(value)[..., 0]
+            if np.asarray(value).ndim == 3 and np.asarray(value).shape[-1] == 1
+            else value
+            for name, value in parameters.items()
+        }
         resolver = getattr(self.formula, "resolve", self.formula)
         if not callable(resolver):
             raise TypeError("formula must be callable or provide a callable resolve method.")
@@ -1252,6 +1296,7 @@ class Model:
         self,
         sim_data: Dict[str, np.ndarray],
         rng: np.random.Generator | None,
+        probability: np.ndarray | float | None = None,
     ) -> tuple[Dict[str, np.ndarray], Optional[np.ndarray], Dict[str, np.ndarray]]:
         """Run `self.missing` on `sim_data`, if configured.
 
@@ -1285,7 +1330,10 @@ class Model:
         except (TypeError, ValueError):
             accepts_rng = False
 
-        result = self.missing(sim_data, rng=rng) if accepts_rng else self.missing(sim_data)
+        if isinstance(self.missing, RandomMissingProcess):
+            result = self.missing.apply(sim_data, rng=rng, probability=probability)
+        else:
+            result = self.missing(sim_data, rng=rng) if accepts_rng else self.missing(sim_data)
 
         sim_data = {key: result[key] for key in self.data_keys}
         missing_mask = result["missing_mask"]

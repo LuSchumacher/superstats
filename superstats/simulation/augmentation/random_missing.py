@@ -3,14 +3,16 @@
 from collections.abc import Mapping
 
 from .missing import MissingProcess
-from superstats.defaults.augmentation_defaults import DEFAULT_P_MISSING_PRIOR
-from superstats.prior.prior import Prior
 
 import numpy as np
 
 
 class RandomMissingProcess(MissingProcess):
     """MCAR missingness with a per-dataset missing probability.
+
+    Specify ``p_missing`` in JointPrior. Model samples and links it once;
+    it is always a nuisance parameter, never an inference target. Direct
+    calls require an explicit final ``probability`` in [0, 1].
 
     Missingness is drawn per (batch, step): whenever a time step is
     selected as missing, all data dimensions at that step are set to
@@ -19,15 +21,6 @@ class RandomMissingProcess(MissingProcess):
 
     Parameters
     ----------
-    p_missing           : float, Prior, or None, default: None
-        Probability that a time step is missing.
-        - None (default): drawn from `DEFAULT_P_MISSING_PRIOR`, a
-        Beta(2, 18) prior with mean 0.1.
-        - float: fixed probability, shared across the whole batch.
-        - Prior: sampled to obtain the probability. Sampled once for
-        the whole batch if `shared_across_batch=True`, or once per
-        dataset (default) otherwise.
-        Prior draws (including the default) are clipped to [0, 1].
     missing_value       : float or np.ndarray, default: -1
         Value written into masked entries. A scalar fills every observed
         variable; a mapping sets a per-variable sentinel; an array of
@@ -37,20 +30,22 @@ class RandomMissingProcess(MissingProcess):
     shared_across_batch : bool, default: False
         If True, one probability and one mask are drawn and applied to
         every dataset in the batch. If False (default), each dataset
-        gets its own probability draw and its own mask.
+        gets its own probability draw and its own mask. In shared mode,
+        the first dataset's probability trajectory is used for the batch.
     """
 
     def __init__(
         self,
-        p_missing: float | Prior | None = None,
         missing_value: float = -1,
         shared_across_batch: bool = False,
     ):
-        self.p_missing = p_missing if p_missing is not None else DEFAULT_P_MISSING_PRIOR
         self.missing_value = missing_value
         self.shared_across_batch = shared_across_batch
 
-    def apply(self, data: Mapping[str, np.ndarray], rng: np.random.Generator | None = None) -> dict:
+    def __call__(self, data, rng=None, *, probability):
+        return self.apply(data, rng=rng, probability=probability)
+
+    def apply(self, data: Mapping[str, np.ndarray], rng=None, *, probability: float | np.ndarray) -> dict:
         """Apply missingness to a mapping of simulated data arrays."""
         rng = self._default_rng(rng)
         data = {key: np.array(value, copy=True) for key, value in data.items()}
@@ -58,7 +53,7 @@ class RandomMissingProcess(MissingProcess):
         keys = list(data)
         first = data[keys[0]]
         batch_size, num_steps = first.shape
-        mask, p_used = self._draw_mask(batch_size, num_steps, rng)
+        mask, p_used = self._draw_mask(batch_size, num_steps, rng, probability)
 
         filled = {
             key: self._fill_array(value, mask, self._missing_value_for_key(key, index, len(keys)))
@@ -66,32 +61,25 @@ class RandomMissingProcess(MissingProcess):
         }
         return filled | {"missing_mask": mask, "p_missing": p_used}
 
-    def _draw_p(self, n: int) -> np.ndarray:
-        """Return `n` missing-probabilities in [0, 1].
-
-        Note: `Prior.sample` draws from the global `np.random` state, not
-        from the `rng` passed into `apply`, so draws from a `Prior` are not
-        controlled by the seed threaded through `Model.sample`.
-        """
-        p = self.p_missing
-        if isinstance(p, Prior):
-            vals = p.sample(n)
-        else:
-            vals = np.full(n, p)
-        return vals
-
-    def _draw_mask(self, batch_size: int, num_steps: int, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:
-        """Draw a batch x time missingness mask and the probabilities used."""
+    def _draw_mask(self, batch_size, num_steps, rng, probability):
+        """Use Model's final linked probability to draw an observation mask."""
+        p = np.asarray(probability)
+        if p.ndim == 3 and p.shape[-1] == 1:
+            p = p[..., 0]
+        if p.ndim == 0:
+            p = np.full((batch_size, 1), p.item())
+        elif p.shape == (batch_size,):
+            p = p[:, None]
+        if p.shape not in ((batch_size, 1), (batch_size, num_steps)):
+            raise ValueError("probability must be scalar, per-dataset, or per-trial.")
+        if not np.all(np.isfinite(p)) or np.any((p < 0) | (p > 1)):
+            raise ValueError("p_missing must be between 0 and 1; configure Model.link_function.")
         if self.shared_across_batch:
-            p = self._draw_p(1)[0]
-            mask = rng.random(num_steps) < p
-            mask = np.broadcast_to(mask[None, :], (batch_size, num_steps))
-            p_used = np.full((batch_size, 1), p)
+            p = np.broadcast_to(p[:1], p.shape).copy()
+            mask = np.broadcast_to((rng.random((1, num_steps)) < p[:1]), (batch_size, num_steps)).copy()
         else:
-            p = self._draw_p(batch_size)
-            mask = rng.random((batch_size, num_steps)) < p[:, None]
-            p_used = p.reshape(batch_size, 1)
-        return mask, p_used
+            mask = rng.random((batch_size, num_steps)) < p
+        return mask, p
 
     @staticmethod
     def _fill_array(arr: np.ndarray, mask: np.ndarray, missing_value) -> np.ndarray:
