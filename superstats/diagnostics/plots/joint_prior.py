@@ -314,7 +314,7 @@ def plot_joint_prior(
 
     shared_items = list(shared_params.items())
     for shared_row in range(shared_num_rows):
-        sub = gs[len(row_specs) + shared_row, :].subgridspec(1, shared_num_cols, wspace=WSPACE)
+        sub = gs[len(row_specs) + shared_row, :].subgridspec(1, shared_num_cols, wspace=2 * WSPACE)
         for col_i in range(shared_num_cols):
             ax = fig.add_subplot(sub[col_i])
             index = shared_row * shared_num_cols + col_i
