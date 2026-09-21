@@ -237,7 +237,7 @@ def test_model_sample_includes_time_steps():
 def test_workflow_default_adapter_uses_named_time_series_data_keys():
     gm = _build_model()
     adapter = Workflow.default_adapter(gm)
-    result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS, tile_to_steps=True)
+    result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS)
 
     adapted = adapter(result)
 
@@ -245,7 +245,8 @@ def test_workflow_default_adapter_uses_named_time_series_data_keys():
     assert "response_time" not in adapted
     assert "choice" not in adapted
     assert adapted["summary_variables"].shape == (BATCH_SIZE, NUM_STEPS, 4)
-    assert adapted["inference_variables"].shape == (BATCH_SIZE, NUM_STEPS, 2)
+    assert adapted["inference_variables"].shape == (BATCH_SIZE, NUM_STEPS, 1)
+    assert adapted["invariant_variables"].shape == (BATCH_SIZE, 1)
 
 
 def test_deterministic_trajectories_are_simulated_but_not_inferred():
@@ -562,12 +563,13 @@ def test_model_registers_inferred_contamination_prior_as_shared():
     )
     gm = _build_model(p_contaminated=Prior("beta", a=2, b=8), contamination=contamination, missing=None)
 
-    result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS, tile_to_steps=True)
+    result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS)
 
     _assert_key_in_only_category(gm, "p_contaminated", "shared_keys")
-    assert result["p_contaminated"].shape == (BATCH_SIZE, NUM_STEPS, 1)
+    assert result["p_contaminated"].shape == (BATCH_SIZE, 1)
     adapted = Workflow.default_adapter(gm)(result)
-    assert adapted["inference_variables"].shape[-1] == 3
+    assert adapted["inference_variables"].shape[-1] == 1
+    assert adapted["invariant_variables"].shape == (BATCH_SIZE, 2)
 
 
 def test_model_registers_inferred_contamination_transition_as_local():

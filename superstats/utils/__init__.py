@@ -13,6 +13,7 @@ from .plotting import (
     smooth_trajectories,
 )
 from .dispatch import (
+    find_approximator,
     find_contamination,
     find_inference_network,
     find_missing,
@@ -31,6 +32,7 @@ __all__ = [
     "plot_uncertainty_bands",
     "resolve_dist_alpha",
     "smooth_trajectories",
+    "find_approximator",
     "find_inference_network",
     "find_missing",
     "find_contamination",

@@ -11,6 +11,7 @@ This guide takes you from a simulator to posterior estimates for models with tim
 | Decide which parameters vary over time | [Joint prior](joint_prior.ipynb) |
 | Check what the complete model generates | [Model](model.ipynb) |
 | Represent missing or contaminated observations | [Data augmentation](augmentation.ipynb) |
+| Estimate varying and invariant parameters together | [Posterior approximators](approximators.md) |
 | More coming soon... |  |
 
 For a compact end-to-end demo notebook, see the [examples folder](https://github.com/LuSchumacher/superstats/tree/main/examples).
@@ -26,4 +27,5 @@ simulator.ipynb
 joint_prior.ipynb
 model.ipynb
 augmentation.ipynb
+approximators
 ```

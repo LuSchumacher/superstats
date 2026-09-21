@@ -372,9 +372,12 @@ def test_time_varying_posterior_uses_compact_dynamic_columns_for_datasets():
     plt.close(fig)
 
 
-def test_marginals_uses_selected_posterior_and_shared_layout(monkeypatch):
+@pytest.mark.parametrize("untiled", [False, True])
+def test_marginals_uses_selected_posterior_and_shared_layout(monkeypatch, untiled):
     rng = np.random.default_rng(9)
     estimates = {"a": rng.normal(size=(2, 4, 3, 1))}
+    if untiled:
+        estimates = {"a": estimates["a"][:, :, 0]}
     target_values = rng.normal(size=(2, 1))
     targets = {"a": np.broadcast_to(target_values[:, None, :], (2, 3, 1))}
     captured = []
