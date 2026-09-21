@@ -10,12 +10,13 @@ def simulator(a, v=0.0):
     return {"observation": a + v}
 
 
-@pytest.mark.parametrize("function,expected", [("softplus", np.log(2)), ("sigmoid", 0.5), ("identity", 0), ("exp", 1)])
+@pytest.mark.parametrize("function,expected", [("softplus", np.log(2)), ("identity", 0), ("exp", 1)])
 def test_link_options(function, expected):
     assert LinkFunction(function)(0) == pytest.approx(expected)
 
 
 def test_scaled_sigmoid_bounds_and_stability():
+    assert LinkFunction()(0) == pytest.approx(0.5)
     link = LinkFunction(bounds=(0.2, 4))
     np.testing.assert_allclose(link(np.array([-10000.0, 0.0, 10000.0])), [0.2, 2.1, 4])
     for bounds in [(1, 1), (2, 1), (0, np.inf), (0,)]:
@@ -23,6 +24,38 @@ def test_scaled_sigmoid_bounds_and_stability():
             LinkFunction(bounds=bounds)
     with pytest.raises(ValueError, match="shape"):
         LinkFunction(lambda x: np.zeros(2))(np.zeros(3))
+    with pytest.raises(ValueError, match="Unknown link function"):
+        LinkFunction("sigmoid")
+
+
+def test_clip_requires_bounds_and_clips_without_changing_shape():
+    with pytest.raises(ValueError, match="bounds are required"):
+        LinkFunction("clip")
+
+    link = LinkFunction("clip", bounds=(-1.0, 2.0))
+    values = np.array([[-2.0, -1.0, 0.5, 2.0, 3.0]])
+
+    np.testing.assert_array_equal(link(values), [[-1.0, -1.0, 0.5, 2.0, 2.0]])
+
+
+@pytest.mark.parametrize("bounds", [(1, 1), (2, 1), (0, np.inf), (0,)])
+def test_clip_rejects_invalid_bounds(bounds):
+    with pytest.raises(ValueError, match="bounds"):
+        LinkFunction("clip", bounds=bounds)
+
+
+def test_model_clips_completed_deterministic_trajectory_but_keeps_raw_target():
+    model = Model(
+        JointPrior(a=Linear(intercept=-1, slope=4)),
+        simulator,
+        missing=None,
+        link_function={"a": LinkFunction("clip", bounds=(0, 2))},
+    )
+
+    sample = model.sample(batch_size=1, num_steps=3)
+
+    np.testing.assert_array_equal(sample["a"][..., 0], [[-1, 1, 3]])
+    np.testing.assert_array_equal(sample["observation"], [[0, 1, 2]])
 
 
 @pytest.mark.parametrize("vary_intercept,vary_slope", [(False, False), (True, False), (False, True), (True, True)])
@@ -290,14 +323,15 @@ def test_prior_plots_include_only_inferred_contamination(infer):
     assert ("p_contaminated" in draws["shared_params"]) == infer
 
 
-def test_deterministic_prior_plot_shows_only_inferred_curve_coefficients(monkeypatch):
+def test_joint_prior_plot_shows_deterministic_trajectories_and_inferred_curve_coefficients(monkeypatch):
     import superstats.simulation.model as model_module
 
     model = Model(JointPrior(a=Linear(intercept=Prior("normal"), slope=1)), simulator, missing=None)
     captured = {}
     monkeypatch.setattr(model_module, "plot_joint_prior", lambda **kwargs: captured.update(kwargs))
-    model.plot_joint_prior(num_steps=4, num_draws=3)
-    assert captured["local_params"] == {}
+    model.plot_joint_prior(num_steps=4, num_draws=3, num_trajectories=2)
+    assert set(captured["local_params"]) == {"a"}
+    assert captured["local_params"]["a"].shape == (2, 4)
     assert captured["shared_params"] == {}
     assert set(captured["hyper_params"]) == {"a_intercept"}
     fig = model_module.plot_time_invariant_prior(captured["hyper_params"], {})

@@ -520,14 +520,19 @@ class Model:
         alpha: float = 0.5,
         figsize: tuple[float, float] | None = None,
     ) -> Figure:
-        """Plot raw local, shared, and hyperparameter inference targets.
+        """Plot raw stochastic and deterministic trajectories with invariant priors.
+
+        Deterministic trajectories are derived from their sampled curve
+        coefficients and displayed alongside stochastic local trajectories.
+        All trajectories remain on their raw transition scale; formulas,
+        links, and simulator context are not resolved for this plot.
 
         Parameters
         ----------
         num_steps        : int, optional, default: 200
             Number of time steps for local trajectory sampling.
         num_trajectories : int, optional, default: 20
-            Number of local trajectories to plot.
+            Number of stochastic and deterministic trajectories to plot.
         num_draws        : int, optional, default: 1000
             Number of draws used for time-invariant parameter sampling.
         marginal         : bool, optional, default: True
@@ -557,8 +562,12 @@ class Model:
         fig : matplotlib.figure.Figure
             The generated figure.
         """
-        samples = self._sample_inference_prior(batch_size=num_draws, num_steps=num_steps)
-        all_local_params = samples["local_params"]
+        samples = self._sample_inference_prior(
+            batch_size=num_draws,
+            num_steps=num_steps,
+            include_deterministic=True,
+        )
+        all_local_params = {**samples["local_params"], **samples["deterministic_params"]}
         local_params = {k: v[:num_trajectories] for k, v in all_local_params.items()}
         return plot_joint_prior(
             local_params=local_params,
@@ -904,16 +913,20 @@ class Model:
             for key in self._nuisance_keys:
                 draws.get(group, {}).pop(key, None)
 
-    def _sample_inference_prior(self, batch_size, num_steps):
-        """Draw inference targets without formulas, links, or simulator context."""
+    def _sample_inference_prior(self, batch_size, num_steps, include_deterministic=False):
+        """Draw raw prior groups without formulas, links, or simulator context.
+
+        Deterministic trajectories are derived rather than inferred directly,
+        so they are omitted unless ``include_deterministic`` is True.
+        """
         draws = self.prior.sample(batch_size=batch_size, num_steps=num_steps)
         groups = dict(self.prior._last_hyper_param_groups)
         self._exclude_nuisance(draws)
         for name in list(groups):
             if name in self._nuisance_keys:
                 groups.pop(name)
-        # Deterministic trajectories are derived; only their sampled hyperparameters are inferred.
-        draws["deterministic_params"] = {}
+        if not include_deterministic:
+            draws["deterministic_params"] = {}
         draws["hyper_param_groups"] = groups
         return draws
 
