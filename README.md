@@ -146,3 +146,7 @@ If you use Superstats in your research, please cite:
   doi     = {10.1007/s42113-024-00218-4}
 }
 ```
+
+## License
+
+MIT

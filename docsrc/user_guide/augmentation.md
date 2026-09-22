@@ -76,6 +76,13 @@ The missingness probability can be specified in two ways:
 
 Set `shared_across_batch=True` to draw one probability and one mask that are shared by the entire simulated batch. This is mainly useful when the batch represents repeated versions of the same design. The default, `False`, generates independent missingness patterns for independent datasets.
 
+Missingness is applied by default in `Model.sample()`, including simulations
+used for training. Prior push-forward plots and posterior resimulation produce
+complete observations by default; pass `apply_missing=True` to include the
+configured missingness process. Posterior resimulation then draws a fresh
+missingness probability from its prior because `p_missing` is never estimated.
+Direct calls to a missingness process must receive `probability` explicitly.
+
 `missing_value` may be one scalar for every observation variable, a mapping from observation names to values, or an array containing one value per observation variable. Choose sentinels that cannot be confused with valid observations.
 
 ## Contaminated Responses
@@ -159,6 +166,12 @@ print("p_contaminated shape:", dynamic_data["p_contaminated"].shape)
 ```
 
 Here, `p_contaminated` is a local parameter with shape `(batch_size, num_steps, 1)`, while `p_contaminated_sigma` is a time-invariant hyperparameter. The default workflow adapter automatically includes both as inference variables. Fixed transition parameters such as `p_contaminated_delta` remain excluded from inference.
+
+During posterior resimulation, an inferred contamination probability is taken
+from the paired posterior draw. When `infer=False`, contamination remains
+active but its probability is drawn afresh from the prior. Calling the
+contamination process directly, outside `Model`, requires probabilities that
+are already within `[0, 1]`.
 
 ## Combining Missingness and Contamination
 

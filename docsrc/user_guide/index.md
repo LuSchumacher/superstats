@@ -22,6 +22,7 @@ For individual classes and function signatures, use the [API reference](../api/i
 :maxdepth: 1
 :titlesonly:
 :numbered:
+:hidden:
 
 introduction
 simulator.md

@@ -48,6 +48,13 @@ Transitions produce trajectories on an unconstrained scale. `Model` provides two
 
 Parameters omitted from either mapping are passed through unchanged. Both stages transform copies used by the simulation pipeline: `Model.sample()` continues to return the original unconstrained prior draws as inference targets.
 
+Formulas are evaluated in their declared order. All latent links are applied
+before the first formula and all formula links are applied only after the last
+formula. Consequently, a later formula sees the unlinked output of an earlier
+formula target. Simulator defaults and context-bound simulator parameters are
+assumed to already be on the simulator scale; `Model` does not infer a domain
+from a parameter name.
+
 For example, with `formula=Formula(["v = v_0 + dv_t * validity"])`, configuring a latent link for `dv_t` gives `v = h(dv_t) * validity + v_0`, whereas configuring a formula link for `v` gives `v = h(v_0 + dv_t * validity)`. Both mappings may be supplied when both transformations are part of the model. Parameters that come directly from `JointPrior`, including parameters used without a formula, always use latent links.
 
 `LinkFunction` supports the following named transformations:
@@ -61,6 +68,13 @@ For example, with `formula=Formula(["v = v_0 + dv_t * validity"])`, configuring 
 | `LinkFunction("identity")` | Unconstrained | Parameters that need no transformation |
 
 As a practical default, use a scaled sigmoid with sensible bounds for stochastic trajectories and hard clipping with sensible bounds for deterministic trajectories.
+
+Bounds must contain two finite, strictly increasing values. They are required
+for `"clip"` and otherwise apply only to `"scaled_sigmoid"`. Custom callables
+are also accepted; they must preserve the input shape and return finite values.
+The scaled sigmoid is numerically stable for large predictors, although
+floating-point rounding can still produce an interval endpoint. Use a strictly
+positive lower bound when the simulator does not accept zero.
 
 Links change the values used to construct simulator parameters, not what the posterior approximator learns. `Model.sample()` returns stochastic and reconstructed deterministic trajectories on their raw scale, together with the raw coefficients and transition hyperparameters used as inference targets, while formulas and the simulator receive the configured linked copies. This keeps inference unconstrained and makes posterior resimulation apply the same links consistently. Simulator defaults and context-bound simulator parameters are expected to already be on the simulator scale. `Model.sample_prior()["model_params"]` can be used to inspect the final simulator parameters directly. Prior plots remain on the raw scale; prior push-forward plots show the consequences of both link stages in simulated observations.
 

@@ -237,6 +237,27 @@ on the right. Formulas support numeric literals, parentheses, `+`, `-`, `*`,
 `/`, and `**`. They are evaluated in order, so later formulas may use earlier
 targets.
 
+More generally, for design columns $X_{btk}$ and coefficients $B_{btkp}$,
+
+$$
+\eta_{btp} = \sum_k X_{btk}B_{btkp}, \qquad
+\theta_{btp} = h_p(\eta_{btp}).
+$$
+
+A time-invariant coefficient is broadcast across trials, whereas a
+time-varying coefficient retains its full trajectory. Intercepts and slopes
+can vary independently; the output link does not depend on which coefficients
+vary. With a formula link, coefficients are defined on the predictor scale. In
+particular, at a zero-valued covariate the simulator parameter is $h_p(\beta_0)$,
+not $\beta_0$, and coefficient priors should be chosen accordingly.
+
+Interactions can be written directly, for example
+`"a = a_0 + b_a * difficulty + b_interaction * difficulty * reward"`.
+Categorical predictors must be supplied as named, pre-encoded dummy columns
+with a fixed reference level. Superstats does not implicitly standardize
+predictors or generate random design columns. Use the same coding and scaling
+during simulation and inference.
+
 The example below assigns one regressor to DDM drift and another to boundary
 separation:
 
@@ -314,7 +335,10 @@ print("Workflow summaries:", ddm_model.summary_keys)
 `v` and `a` vary across trials because their regressors vary, but they are
 deterministic formula outputs rather than independent posterior targets. The
 posterior learns the four free coefficients. Formula targets are returned at
-their final linked values for inspection.
+their final linked values for inspection and are listed in
+`model.formula_keys`; they are not added to the inference targets, summary
+inputs, or raw-prior plots. Posterior resimulation reconstructs them from the
+raw inferred coefficients and the supplied context.
 
 ```python
 fig, axes = plt.subplots(1, 2, figsize=(10, 4))
