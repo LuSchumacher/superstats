@@ -75,7 +75,7 @@ history = workflow.fit_online(num_steps=100, epochs=20, batch_size=16)
 samples = workflow.sample(data=rt_data, num_samples=250)
 ```
 
-A GPU is highly recommended for training and inference. Start with the [user-guide quickstart](user_guide/quickstart.ipynb), then explore the [examples folder](https://github.com/LuSchumacher/superstats/tree/main/examples), including the [minimal workflow demo](https://github.com/LuSchumacher/superstats/blob/main/examples/minimal_workflow_demo.ipynb), for a complete analysis with training and diagnostics.
+A GPU is highly recommended for training and inference. Start with the [user-guide quickstart](user_guide/quickstart.md), then explore the [examples folder](https://github.com/LuSchumacher/superstats/tree/main/examples), including the [minimal workflow demo](https://github.com/LuSchumacher/superstats/blob/main/examples/minimal_workflow_demo.ipynb), for a complete analysis with training and diagnostics.
 
 
 ## Contributing
