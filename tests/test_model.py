@@ -119,7 +119,7 @@ def test_model_routes_context_to_design_and_simulator():
         prior=JointPrior(v=1.0),
         simulator=simulator,
         missing=None,
-        context=ContextSimulator(generate_context),
+        context_simulator=ContextSimulator(generate_context),
         design_context=("design_offset",),
         simulator_context=("simulator_offset",),
         formula=formula,
@@ -152,7 +152,7 @@ def test_model_binds_simulator_context_matching_a_simulator_argument():
         prior=JointPrior(v=Prior("normal", loc=0.0, scale=1.0)),
         simulator=simulator,
         missing=None,
-        context=ContextSimulator(generate_context),
+        context_simulator=ContextSimulator(generate_context),
         simulator_context=("correct_idx",),
     )
 
@@ -586,7 +586,7 @@ def test_model_registers_inferred_contamination_transition_as_local():
     )
     from superstats import LinkFunction
 
-    gm.link_function = {"p_contaminated": LinkFunction()}
+    gm.latent_link_functions = {"p_contaminated": LinkFunction()}
 
     result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS, tile_to_steps=True)
 

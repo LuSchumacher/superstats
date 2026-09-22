@@ -49,7 +49,7 @@ def test_model_clips_completed_deterministic_trajectory_but_keeps_raw_target():
         JointPrior(a=Linear(intercept=-1, slope=4)),
         simulator,
         missing=None,
-        link_function={"a": LinkFunction("clip", bounds=(0, 2))},
+        latent_link_functions={"a": LinkFunction("clip", bounds=(0, 2))},
     )
 
     sample = model.sample(batch_size=1, num_steps=3)
@@ -67,9 +67,9 @@ def test_regression_links_after_mixed_coefficients_and_resimulation(vary_interce
         JointPrior(a_0=intercept, b_a=slope),
         simulator,
         missing=None,
-        context={"x": [-2, 0, 2]},
+        context_simulator={"x": [-2, 0, 2]},
         design_context=("x",),
-        link_function={"a": LinkFunction(bounds=(0.2, 4))},
+        formula_link_functions={"a": LinkFunction(bounds=(0.2, 4))},
         **resolver,
     )
     draws = model.sample_prior(2, 3)
@@ -85,17 +85,85 @@ def test_regression_links_after_mixed_coefficients_and_resimulation(vary_interce
     np.testing.assert_allclose(model.simulate_from_parameters(raw, 2, 3)["observation"], expected)
 
 
-def test_context_binding_precedes_link_and_defaults_are_linked():
+def test_latent_links_are_applied_before_formula_and_keep_raw_inference_targets():
+    raw_trajectory = np.array([-2.0, -1.0, 0.0])
+    model = Model(
+        JointPrior(
+            v_0=10.0,
+            dv_t=RandomWalk(initial_prior=Prior("normal", loc=-2, scale=0), sigma=0, delta=1),
+        ),
+        lambda v: {"observation": v},
+        missing=None,
+        context_simulator={"validity": np.ones(3)},
+        design_context=("validity",),
+        formula=Formula(["v = v_0 + dv_t * validity"]),
+        latent_link_functions={"dv_t": LinkFunction("scaled_sigmoid")},
+    )
+
+    sample = model.sample(batch_size=1, num_steps=3)
+    expected = 10.0 + LinkFunction("scaled_sigmoid")(raw_trajectory)
+
+    np.testing.assert_allclose(sample["dv_t"][0, :, 0], raw_trajectory)
+    np.testing.assert_allclose(sample["observation"][0], expected)
+    np.testing.assert_allclose(sample["v"][0, :, 0], expected)
+
+
+def test_latent_and_simulator_links_compose_around_formula():
+    model = Model(
+        JointPrior(v_0=0.0, dv_t=Prior("normal", loc=0, scale=0)),
+        lambda v: {"observation": v},
+        missing=None,
+        context_simulator={"validity": [1.0]},
+        design_context=("validity",),
+        formula=Formula(["v = v_0 + dv_t * validity"]),
+        latent_link_functions={"dv_t": LinkFunction("scaled_sigmoid")},
+        formula_link_functions={"v": LinkFunction("softplus")},
+    )
+
+    sample = model.sample(batch_size=1, num_steps=1)
+
+    np.testing.assert_allclose(sample["dv_t"], 0.0)
+    np.testing.assert_allclose(sample["observation"], np.logaddexp(0.0, 0.5))
+
+
+def test_model_validates_latent_link_targets():
+    with pytest.raises(ValueError, match="Unknown latent_link_functions targets"):
+        Model(
+            JointPrior(a=1.0),
+            simulator,
+            missing=None,
+            latent_link_functions={"typo": LinkFunction()},
+        )
+
+
+def test_formula_links_require_a_formula_and_declared_formula_target():
+    with pytest.raises(ValueError, match="requires formula"):
+        Model(
+            JointPrior(a=1.0),
+            simulator,
+            missing=None,
+            formula_link_functions={"a": LinkFunction()},
+        )
+
+    with pytest.raises(ValueError, match="not produced by formula"):
+        Model(
+            JointPrior(v=1.0),
+            simulator,
+            formula=Formula(["v = v + 1"]),
+            formula_link_functions={"a": LinkFunction()},
+            missing=None,
+        )
+
+
+def test_context_bound_parameters_and_defaults_are_on_simulator_scale():
     model = Model(
         JointPrior(),
         simulator,
         missing=None,
-        context={"a": [-2, 2]},
+        context_simulator={"a": [-2, 2]},
         simulator_context=("a",),
-        link_function={"a": LinkFunction("softplus"), "v": LinkFunction("exp")},
     )
-    expected = np.logaddexp(0, [-2, 2]) + 1
-    np.testing.assert_allclose(model.sample(2, 2)["observation"], np.tile(expected, (2, 1)))
+    np.testing.assert_allclose(model.sample(2, 2)["observation"], np.tile([-2, 2], (2, 1)))
 
 
 def test_formula_interactions_and_link_validation():
@@ -106,7 +174,7 @@ def test_formula_interactions_and_link_validation():
     with pytest.raises(KeyError, match="unknown name"):
         formula.resolve(parameters={})
     with pytest.raises(ValueError, match="Unknown"):
-        Model(JointPrior(a=1), simulator, link_function={"typo": LinkFunction()})
+        Model(JointPrior(a=1), simulator, latent_link_functions={"typo": LinkFunction()})
 
 
 def test_stochastic_and_mixture_outputs_are_raw():
@@ -123,7 +191,7 @@ def test_prior_plots_keep_raw_inference_scale():
         JointPrior(a=Prior("normal", loc=-2, scale=0)),
         simulator,
         missing=None,
-        link_function={"a": LinkFunction(bounds=(0.2, 4))},
+        latent_link_functions={"a": LinkFunction(bounds=(0.2, 4))},
     )
     raw = model._sample_inference_prior(2, 3)
     np.testing.assert_allclose(raw["shared_params"]["a"], -2)
@@ -138,10 +206,10 @@ def test_workflow_resimulation_uses_original_context_and_fixed_coefficients():
         JointPrior(a_0=Prior("normal"), b_a=2),
         simulator,
         missing=None,
-        context={"x": [0, 0, 0]},
+        context_simulator={"x": [0, 0, 0]},
         design_context=("x",),
         formula=Formula(["a = a_0 + b_a * x"]),
-        link_function={"a": LinkFunction("softplus")},
+        formula_link_functions={"a": LinkFunction("softplus")},
     )
     workflow = Workflow.__new__(Workflow)
     workflow.model = model
@@ -164,7 +232,7 @@ def test_model_transforms_contamination_and_retains_raw_targets():
         diffusion,
         missing=None,
         contamination=process,
-        link_function={"p_contaminated": LinkFunction()},
+        latent_link_functions={"p_contaminated": LinkFunction()},
     )
     sample = model.sample(2, 3)
     np.testing.assert_allclose(sample["p_contaminated"], -2)
@@ -178,10 +246,10 @@ def test_shared_only_resimulation_infers_trial_count_from_configured_dataframe()
         JointPrior(a_0=Prior("normal"), b_a=1),
         simulator,
         missing=None,
-        context=pd.DataFrame({"x": [-1, 0, 1]}),
+        context_simulator=pd.DataFrame({"x": [-1, 0, 1]}),
         design_context=("x",),
         formula=Formula(["a = a_0 + b_a * x"]),
-        link_function={"a": LinkFunction("softplus")},
+        formula_link_functions={"a": LinkFunction("softplus")},
     )
     workflow = Workflow.__new__(Workflow)
     workflow.model = model
@@ -200,7 +268,7 @@ def test_deterministic_contamination_reconstructs_during_resimulation():
         lambda a: {"response_time": np.ones_like(a), "choice": np.zeros_like(a)},
         missing=None,
         contamination=process,
-        link_function={"p_contaminated": LinkFunction()},
+        latent_link_functions={"p_contaminated": LinkFunction()},
     )
     workflow = Workflow.__new__(Workflow)
     workflow.model = model
@@ -216,9 +284,9 @@ def test_joint_plot_retains_transition_hyperparameters_for_derived_targets():
         prior,
         simulator,
         missing=None,
-        context={"x": [0, 1]},
+        context_simulator={"x": [0, 1]},
         design_context=("x",),
-        link_function={"a": LinkFunction()},
+        formula_link_functions={"a": LinkFunction()},
         **resolver,
     )
     assert model._sample_inference_prior(2, 2)["hyper_param_groups"]["a_0"] == ["a_0_sigma"]
@@ -248,11 +316,11 @@ def test_model_routes_callable_context_with_requested_api():
     model = Model(
         prior=JointPrior(a_0=Prior("normal", loc=-2, scale=0), b_a=Linear(intercept=1, slope=0)),
         simulator=observation_simulator,
-        context=context_generator,
+        context_simulator=context_generator,
         formula=Formula(["a = a_0 + b_a * difficulty"]),
         design_context=("difficulty",),
         simulator_context=("stimulus", "correct_idx", "difficulty"),
-        link_function={"a": LinkFunction(bounds=(0.2, 4.0))},
+        formula_link_functions={"a": LinkFunction(bounds=(0.2, 4.0))},
         missing=None,
     )
     result = model.sample(2, 3)
@@ -274,9 +342,9 @@ def test_model_routes_callable_context_with_requested_api():
 @pytest.mark.parametrize("selector", ["design_context", "simulator_context"])
 def test_model_validates_context_selectors(selector):
     with pytest.raises(TypeError, match=selector):
-        Model(JointPrior(a=1), simulator, context={"x": [0]}, **{selector: "x"})
+        Model(JointPrior(a=1), simulator, context_simulator={"x": [0]}, **{selector: "x"})
     with pytest.raises(KeyError, match="missing"):
-        Model(JointPrior(a=1), simulator, context={"x": [0]}, **{selector: ("missing",)})
+        Model(JointPrior(a=1), simulator, context_simulator={"x": [0]}, **{selector: ("missing",)})
     with pytest.raises(ValueError, match="require context"):
         Model(JointPrior(a=1), simulator, **{selector: ("x",)})
 
@@ -288,11 +356,11 @@ def test_prior_plots_show_regression_targets_without_context_or_links(monkeypatc
         JointPrior(v_diff_0=RandomWalk(sigma=Prior("halfnormal", scale=0.1)), b_difficulty=Prior("normal"), fixed=1),
         lambda v_diff, correct_idx: {"observation": v_diff},
         missing=None,
-        context={"difficulty": [-1, 1], "correct_idx": [0, 1]},
+        context_simulator={"difficulty": [-1, 1], "correct_idx": [0, 1]},
         design_context=("difficulty",),
         simulator_context=("correct_idx",),
         formula=Formula(["v_diff = v_diff_0 + b_difficulty * difficulty"]),
-        link_function={"v_diff": LinkFunction(bounds=(0, 3))},
+        formula_link_functions={"v_diff": LinkFunction(bounds=(0, 3))},
     )
     captured = {}
     monkeypatch.setattr(model_module, "plot_joint_prior", lambda **kwargs: captured.update(kwargs))
@@ -347,7 +415,7 @@ def test_contamination_probability_sampled_once_and_linked_once(monkeypatch, inf
     model = Model(
         JointPrior(a=1, p_contaminated=probability),
         lambda a: {"response_time": np.ones_like(a), "choice": np.zeros_like(a)},
-        link_function={"p_contaminated": LinkFunction()},
+        latent_link_functions={"p_contaminated": LinkFunction()},
         contamination=process,
         missing=None,
     )
@@ -380,7 +448,7 @@ def test_resimulation_uses_posterior_or_fresh_nuisance_probability(monkeypatch, 
     model = Model(
         JointPrior(a=1, p_contaminated=probability),
         lambda a: {"response_time": np.ones_like(a), "choice": np.zeros_like(a)},
-        link_function={"p_contaminated": LinkFunction()},
+        latent_link_functions={"p_contaminated": LinkFunction()},
         contamination=process,
         missing=None,
     )
@@ -418,7 +486,7 @@ def test_nuisance_transition_hyperparameters_are_excluded_from_targets():
         JointPrior(a=Prior("normal"), p_contaminated=Linear(intercept=Prior("normal"), slope=0)),
         simulator,
         contamination=RandomChoiceContamination(),
-        link_function={"p_contaminated": LinkFunction()},
+        latent_link_functions={"p_contaminated": LinkFunction()},
         missing=None,
     )
     draws = model._sample_inference_prior(2, 3)
@@ -434,7 +502,7 @@ def test_formula_resimulation_accepts_posterior_scalar_trajectory_shape(batch_si
         JointPrior(a_0=RandomWalk(), b_a=Prior("normal")),
         simulator,
         formula=Formula(["a = a_0 + b_a * x"]),
-        context={"x": [-1, 0, 1]},
+        context_simulator={"x": [-1, 0, 1]},
         design_context=("x",),
         missing=None,
     )
@@ -462,7 +530,7 @@ def test_missing_probability_and_hyperparameters_are_always_nuisance(specificati
         JointPrior(a=Prior("normal"), p_missing=specification),
         simulator,
         missing=RandomMissingProcess(),
-        link_function={"p_missing": LinkFunction()},
+        latent_link_functions={"p_missing": LinkFunction()},
     )
     result = model.sample(2, 3)
     np.testing.assert_allclose(result["p_missing"], 0.5)
@@ -479,7 +547,7 @@ def test_missing_probability_is_sampled_and_linked_once(monkeypatch):
     probability = Prior("normal", loc=-2, scale=0)
     process = RandomMissingProcess()
     prior = JointPrior(a=1, p_missing=probability)
-    model = Model(prior, simulator, missing=process, link_function={"p_missing": LinkFunction()})
+    model = Model(prior, simulator, missing=process, latent_link_functions={"p_missing": LinkFunction()})
     original_sample = probability.sample
     calls = []
 

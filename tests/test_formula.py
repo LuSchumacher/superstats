@@ -73,7 +73,7 @@ def test_model_applies_formula_to_context_simulated_covariates():
         prior=JointPrior(v_0=1.0, b_v=2.0),
         simulator=simulator,
         missing=None,
-        context=ContextSimulator(context_simulator),
+        context_simulator=ContextSimulator(context_simulator),
         design_context=("covariate",),
         formula=Formula(["v = v_0 + b_v * covariate"]),
     )
@@ -100,7 +100,7 @@ def test_model_accepts_fixed_context(context):
         prior=JointPrior(v_0=1.0),
         simulator=simulator,
         missing=None,
-        context=context,
+        context_simulator=context,
         design_context=("covariate",),
         formula=Formula(["v = v_0 + covariate"]),
     )
@@ -119,7 +119,7 @@ def test_model_rejects_fixed_context_with_wrong_number_of_trials():
         prior=JointPrior(v=1.0),
         simulator=simulator,
         missing=None,
-        context={"covariate": [0.0, 1.0]},
+        context_simulator={"covariate": [0.0, 1.0]},
     )
 
     with pytest.raises(ValueError, match="3 trial rows"):
@@ -133,7 +133,7 @@ def test_model_returns_linked_formula_params_without_adding_inference_targets(ti
     model = Model(
         JointPrior(v_0=Prior("normal", loc=-2, scale=0)),
         lambda v: {"observation": v},
-        link_function={"v": LinkFunction(bounds=(0.2, 4.0))},
+        formula_link_functions={"v": LinkFunction(bounds=(0.2, 4.0))},
         formula=Formula(["v = v_0 - 1"]),
         missing=None,
     )
@@ -158,7 +158,7 @@ def test_formula_params_do_not_overwrite_existing_raw_inference_targets():
         JointPrior(v=Prior("normal", loc=-2, scale=0)),
         lambda v: {"observation": v},
         formula=Formula(["v = v + 1"]),
-        link_function={"v": LinkFunction("softplus")},
+        formula_link_functions={"v": LinkFunction("softplus")},
         missing=None,
     )
     sample = model.sample(2, 3)
