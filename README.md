@@ -19,7 +19,7 @@ Superstats is a Python library for simulation and Bayesian estimation of dynamic
 The library aims to be domain-agnostic, but for now focuses on cognitive modeling. It provides users with:
 
 - A lean API for non-stationary models: specify which parameters change across time, and how.
-- A library of transition models: random walks, ARs, levy flights, jump processes, mixtures, and Gaussian processes.
+- A library of transition models: random walks, ARs, levy flights, jump processes, mixtures, and Gaussian processes, as well as deterministic trends such as linear, polynomial, exponential, and logarithmic.
 - Built-in cognitive models, plus a plug-in interface for any simulator of your own.
 - Amortized Bayesian inference built on top of [BayesFlow](https://github.com/bayesflow-org/bayesflow): train once, then quickly fit every data set.
 - Diagnostics and visualization tools for every critical step in a principled Bayesian workflow.
