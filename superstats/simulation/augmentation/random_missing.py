@@ -73,7 +73,7 @@ class RandomMissingProcess(MissingProcess):
         if p.shape not in ((batch_size, 1), (batch_size, num_steps)):
             raise ValueError("probability must be scalar, per-dataset, or per-trial.")
         if not np.all(np.isfinite(p)) or np.any((p < 0) | (p > 1)):
-            raise ValueError("p_missing must be between 0 and 1; configure Model.link_function.")
+            raise ValueError("p_missing must be between 0 and 1; configure Model.latent_link_functions.")
         if self.shared_across_batch:
             p = np.broadcast_to(p[:1], p.shape).copy()
             mask = np.broadcast_to((rng.random((1, num_steps)) < p[:1]), (batch_size, num_steps)).copy()

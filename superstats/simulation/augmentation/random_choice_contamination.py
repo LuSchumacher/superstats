@@ -127,7 +127,9 @@ class RandomChoiceContamination(ContaminationProcess):
         if p.shape == (batch_size, 1):
             p = p[:, 0]
         if not np.all(np.isfinite(p)) or np.any((p < 0.0) | (p > 1.0)):
-            raise ValueError("Sampled p_contaminated values must be between 0 and 1; configure Model.link_function.")
+            raise ValueError(
+                "Sampled p_contaminated values must be between 0 and 1; configure Model.latent_link_functions."
+            )
         if p.ndim == 0:
             p = np.full(batch_size, p.item())
 

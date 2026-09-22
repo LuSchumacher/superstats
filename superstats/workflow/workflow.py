@@ -422,10 +422,10 @@ class Workflow:
                     num_steps = context_array.shape[1] if context_array.ndim >= 2 else context_array.shape[0]
                 else:
                     num_steps = example.shape[2]
-            elif isinstance(getattr(self.model, "context", None), pd.DataFrame):
-                num_steps = len(self.model.context)
-            elif isinstance(getattr(self.model, "context", None), Mapping):
-                arrays = [np.asarray(v) for v in self.model.context.values() if np.asarray(v).ndim > 0]
+            elif isinstance(getattr(self.model, "context_simulator", None), pd.DataFrame):
+                num_steps = len(self.model.context_simulator)
+            elif isinstance(getattr(self.model, "context_simulator", None), Mapping):
+                arrays = [np.asarray(v) for v in self.model.context_simulator.values() if np.asarray(v).ndim > 0]
                 num_steps = arrays[0].shape[0] if arrays else example.shape[2]
             else:
                 num_steps = example.shape[2]

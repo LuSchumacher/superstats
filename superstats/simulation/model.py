@@ -41,27 +41,31 @@ class Model:
         The simulation function that takes parameter values and returns
         simulated data. The function signature determines the expected
         parameter names and order.
-    link_function     : mapping, LinkFunction, callable, or None, optional
-        Output links applied after regression and parameter context binding.
-        A mapping assigns a link per simulator parameter; omitted entries use
-        identity. A single link applies to all supplied simulator parameters.
-        Inference targets always remain on the raw coefficient scale.
     formula           : callable or object with ``resolve``, optional, default: None
         Parameter resolver called as ``resolve(parameters=..., context=...)``
         before the simulator runs.
-    context           : ContextSimulator, callable, Mapping, pandas.DataFrame, or None, optional, default: None
+    context_simulator : ContextSimulator, callable, Mapping, pandas.DataFrame, or None, optional, default: None
         Source of externally defined context variables. A batched callable
         accepting batch_size and num_steps is wrapped as a ContextSimulator.
-        A ``ContextSimulator``
-        generates new context for every sample. A mapping or DataFrame is
-        treated as fixed trial-level context and repeated across the batch;
-        DataFrame columns become context variables.
+        A ``ContextSimulator`` generates new context for every sample. A
+        mapping or DataFrame is treated as fixed trial-level context and
+        repeated across the batch; DataFrame columns become context variables.
     simulator_context : sequence of str, optional, default: ()
         Context variable names bound to matching simulator parameters or
         forwarded through its context keyword argument.
     design_context    : sequence of str, optional, default: ()
         Context variable names routed to Formula. Variables can also be
         included in simulator_context.
+    latent_link_functions : mapping, LinkFunction, callable, or None, optional
+        Latent-parameter links applied to prior draws before parameter formulas
+        are resolved. A mapping assigns a link per prior parameter; omitted
+        entries use identity. A single link applies to every sampled prior
+        parameter. Returned inference targets remain on their raw, unlinked
+        scale.
+    formula_link_functions : mapping, LinkFunction, callable, or None, optional
+        Links applied to formula targets after the complete formula has been
+        resolved. A mapping assigns a link per final formula target. A single
+        link applies to every declared formula target passed to the simulator.
     missing           : MissingProcess, Callable, "random", or None, optional, default: "random"
         Process applied to simulated data to introduce missingness.
         - Not provided (default) or `"random"`: uses `RandomMissingProcess()`,
@@ -83,51 +87,52 @@ class Model:
         process defaults to `infer=False`. If omitted from the prior, the
         default beta probability prior is added without mutating the caller's
         prior. Nuisance probabilities are redrawn during resimulation.
-
     Raises
     ------
     TypeError
-        If `simulator` is not callable, or if `missing` is neither
-        `None`, `"random"`, nor callable.
+        If `simulator` is not callable, `context_simulator` has an unsupported
+        type, or `missing` is neither `None`, `"random"`, nor callable.
+    ValueError
+        If context selectors are configured without `context_simulator`, or a
+        link configuration targets an unknown parameter.
     """
 
     def __init__(
         self,
         prior: JointPrior,
         simulator: Callable,
-        link_function: Mapping[str, LinkFunction | Callable] | LinkFunction | Callable | None = None,
         formula: Any | None = None,
-        context: ContextSimulator | Callable | Mapping[str, Any] | pd.DataFrame | None = None,
+        context_simulator: ContextSimulator | Callable | Mapping[str, Any] | pd.DataFrame | None = None,
         simulator_context: Sequence[str] = (),
         design_context: Sequence[str] = (),
+        latent_link_functions: Mapping[str, LinkFunction | Callable] | LinkFunction | Callable | None = None,
+        formula_link_functions: Mapping[str, LinkFunction | Callable] | LinkFunction | Callable | None = None,
         missing: MissingProcess | Callable | Literal["random"] | None = "random",
         contamination: ContaminationProcess | Callable | Literal["random_choice"] | None = None,
     ):
         self.prior = prior
         self.simulator = simulator
-        if callable(context) and not isinstance(context, ContextSimulator):
-            context = ContextSimulator(context)
-        self.context = context
+        if callable(context_simulator) and not isinstance(context_simulator, ContextSimulator):
+            context_simulator = ContextSimulator(context_simulator)
+        self.context_simulator = context_simulator
         self.design_context = self._context_names(design_context, "design_context")
         self.simulator_context = self._context_names(simulator_context, "simulator_context")
         self.formula = formula
-        if link_function is None:
-            self.link_function = {}
-        elif isinstance(link_function, Mapping):
-            self.link_function = {
-                name: link if isinstance(link, LinkFunction) else LinkFunction(link)
-                for name, link in link_function.items()
-            }
-        elif callable(link_function):
-            self.link_function = (
-                link_function if isinstance(link_function, LinkFunction) else LinkFunction(link_function)
+        self.latent_link_functions = self._normalize_link_functions(latent_link_functions, "latent_link_functions")
+        self.formula_link_functions = self._normalize_link_functions(formula_link_functions, "formula_link_functions")
+        if self.formula is None and self.formula_link_functions:
+            raise ValueError("formula_link_functions requires formula.")
+        if self.formula_link_functions and not isinstance(self.formula_link_functions, Mapping):
+            if getattr(self.formula, "targets", None) is None:
+                raise TypeError("A single formula link requires formula to declare targets.")
+        if (self.design_context or self.simulator_context) and context_simulator is None:
+            raise ValueError("Context selectors require context_simulator.")
+        if context_simulator is not None and not isinstance(
+            context_simulator, (ContextSimulator, Mapping, pd.DataFrame)
+        ):
+            raise TypeError(
+                "context_simulator must be a ContextSimulator, callable, mapping, pandas DataFrame, or None."
             )
-        else:
-            raise TypeError("link_function must be a mapping, LinkFunction, callable, or None.")
-        if (self.design_context or self.simulator_context) and context is None:
-            raise ValueError("Context selectors require context.")
-        if context is not None and not isinstance(context, (ContextSimulator, Mapping, pd.DataFrame)):
-            raise TypeError("context must be a ContextSimulator, callable, mapping, pandas DataFrame, or None.")
 
         self.missing = find_missing(missing)
 
@@ -152,14 +157,25 @@ class Model:
         self.signature = inspect.signature(simulator)
         self.param_order = [name for name in self.signature.parameters if name != "context"]
 
-        if isinstance(self.link_function, Mapping):
-            unknown = set(self.link_function) - set(self.param_order) - {"p_contaminated", "p_missing"}
+        if isinstance(self.latent_link_functions, Mapping):
+            unknown = set(self.latent_link_functions) - set(self.prior.params)
             if unknown:
-                raise ValueError(f"Unknown link_function targets: {sorted(unknown)}")
-            if "p_contaminated" in self.link_function and not isinstance(self.contamination, RandomChoiceContamination):
+                raise ValueError(f"Unknown latent_link_functions targets: {sorted(unknown)}")
+            if "p_contaminated" in self.latent_link_functions and not isinstance(
+                self.contamination, RandomChoiceContamination
+            ):
                 raise ValueError("p_contaminated link requires RandomChoiceContamination.")
-            if "p_missing" in self.link_function and not isinstance(self.missing, RandomMissingProcess):
+            if "p_missing" in self.latent_link_functions and not isinstance(self.missing, RandomMissingProcess):
                 raise ValueError("p_missing link requires RandomMissingProcess.")
+        if isinstance(self.formula_link_functions, Mapping):
+            unknown = set(self.formula_link_functions) - set(self.param_order)
+            if unknown:
+                raise ValueError(f"Unknown formula_link_functions targets: {sorted(unknown)}")
+            declared_targets = getattr(self.formula, "targets", None)
+            if declared_targets is not None:
+                unknown = set(self.formula_link_functions) - set(declared_targets)
+                if unknown:
+                    raise ValueError(f"formula_link_functions targets are not produced by formula: {sorted(unknown)}")
 
         # Run a pilot draw to determine key groups once
         pilot_context, pilot_contexts = self._generate_context(batch_size=1, num_steps=1, pilot=True)
@@ -623,7 +639,7 @@ class Model:
             `aggregation(x, axis=...)` (e.g. np.mean, np.median).
             If None, individual datasets are shown in separate panels.
             If specified, all datasets are aggregated into a single panel.
-        uncertainty_fun : {"std", "95ci", "mad", "95hdi"} or callable or None, optional, default: None
+        uncertainty_fun : {"std", "ci", "mad", "hdi"} or callable or None, optional, default: None
             Uncertainty function for aggregate time-series plots. Forwarded
             directly to `plot_push_forward`, so the accepted values must
             match that function's own supported set.
@@ -789,16 +805,16 @@ class Model:
         pilot: bool = False,
     ) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
         """Generate context and split it for the model's consumers."""
-        if self.context is None:
+        if self.context_simulator is None:
             return {}, {
                 "simulator_context": {},
                 "design_context": {},
             }
 
-        if isinstance(self.context, ContextSimulator):
-            context = self.context.sample(batch_size=batch_size, num_steps=num_steps)
+        if isinstance(self.context_simulator, ContextSimulator):
+            context = self.context_simulator.sample(batch_size=batch_size, num_steps=num_steps)
         else:
-            context = self._coerce_fixed_context(self.context, batch_size, num_steps, pilot=pilot)
+            context = self._coerce_fixed_context(self.context_simulator, batch_size, num_steps, pilot=pilot)
         return context, self._split_context(context)
 
     def _sample_context(self, batch_size: int, num_steps: int) -> dict[str, dict[str, Any]]:
@@ -855,10 +871,23 @@ class Model:
             parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in signature.parameters.values()
         )
 
-    def _apply_links(self, parameters):
+    @staticmethod
+    def _normalize_link_functions(links, argument_name):
+        """Normalize one link configuration to a mapping or LinkFunction."""
+        if links is None:
+            return {}
+        if isinstance(links, Mapping):
+            return {
+                name: link if isinstance(link, LinkFunction) else LinkFunction(link) for name, link in links.items()
+            }
+        if callable(links):
+            return links if isinstance(links, LinkFunction) else LinkFunction(links)
+        raise TypeError(f"{argument_name} must be a mapping, LinkFunction, callable, or None.")
+
+    @staticmethod
+    def _apply_links(parameters, links, default_targets):
         resolved = dict(parameters)
-        links = getattr(self, "link_function", {})
-        targets = links if isinstance(links, Mapping) else self.param_order
+        targets = links if isinstance(links, Mapping) else default_targets
         for name in targets:
             if name not in resolved:
                 continue  # Simulator defaults are handled separately.
@@ -867,10 +896,20 @@ class Model:
         return resolved
 
     def _resolve_parameters(self, parameters, contexts):
-        """Resolve raw coefficients, bind parameter context, then apply links once."""
-        resolved = self._resolve_formula(dict(parameters), contexts["design_context"])
+        """Apply latent links, resolve formulas, then apply formula links."""
+        linked_parameters = self._apply_links(parameters, self.latent_link_functions, parameters)
+        resolved = self._resolve_formula(linked_parameters, contexts["design_context"])
+        formula_targets = (
+            self.formula_link_functions
+            if isinstance(self.formula_link_functions, Mapping)
+            else [name for name in self.formula.targets if name in self.param_order]
+        )
+        missing_targets = set(formula_targets) - set(resolved)
+        if missing_targets:
+            raise ValueError(f"Formula did not produce linked targets: {sorted(missing_targets)}")
+        resolved = self._apply_links(resolved, self.formula_link_functions, formula_targets)
         resolved, simulator_context = self._apply_simulator_context(resolved, contexts["simulator_context"])
-        return self._apply_links(resolved), simulator_context
+        return resolved, simulator_context
 
     def sample_prior(self, batch_size=20, num_steps=200, context=None):
         """Draw raw coefficient groups and derived cognitive parameters without simulating.
@@ -894,7 +933,7 @@ class Model:
         draws["model_default_keys"] = [name for name in self.param_order if name not in resolved]
         for name in self.param_order:
             if name not in resolved and self.signature.parameters[name].default is not inspect.Parameter.empty:
-                resolved[name] = self._apply_links({name: self.signature.parameters[name].default})[name]
+                resolved[name] = self.signature.parameters[name].default
         cognitive = {name: resolved[name] for name in self.param_order if name in resolved}
         flat = self._prepare_flat_params(cognitive, batch_size, num_steps)
         draws["model_params"] = {
@@ -1002,7 +1041,7 @@ class Model:
             default = self.signature.parameters[name].default
             if default is inspect.Parameter.empty:
                 raise ValueError(f"Parameter '{name}' required by simulator but missing in {missing_context}.")
-            ordered_params.append(self._apply_links({name: default})[name])
+            ordered_params.append(default)
 
         return ordered_params
 

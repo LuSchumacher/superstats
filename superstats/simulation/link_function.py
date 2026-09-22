@@ -9,9 +9,10 @@ import numpy as np
 class LinkFunction:
     """Transform unconstrained predictors into simulator parameters.
 
-    Link functions are applied by :class:`Model` after parameter formulas and
-    simulator context have been resolved, and immediately before the
-    observation simulator is called. They preserve the shape of the input.
+    Link functions can be applied by :class:`Model` at two stages. Latent
+    links transform a copy of sampled parameters before parameter formulas are
+    resolved. Formula links transform final formula targets after the complete
+    formula has been resolved. They preserve the shape of the input.
 
     Parameters
     ----------
@@ -44,9 +45,9 @@ class LinkFunction:
     Notes
     -----
     Hard clipping is applied element-wise to the completed predictor array. It
-    does not feed clipped values back into a recursive transition. Model links
-    constrain the values received by the simulator while inference targets
-    remain on their raw transition or coefficient scale.
+    does not feed clipped values back into a recursive transition. Latent and
+    formula links operate on copies used by the simulation pipeline, while
+    inference targets remain on their raw transition or coefficient scale.
 
     Raises
     ------
