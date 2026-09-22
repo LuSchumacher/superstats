@@ -30,7 +30,13 @@ def test_checkpoint_warning_filter_only_suppresses_matching_message():
 
 
 def test_init_restores_checkpoint_and_history(monkeypatch, tmp_path):
-    restored_model = object()
+    restored_model = SimpleNamespace(
+        adapter=object(),
+        summary_network=object(),
+        varying_inference_network=object(),
+        invariant_inference_network=object(),
+        mode="filtering",
+    )
     restored_history = SimpleNamespace(history={"loss": [1.0]})
     with (tmp_path / "history.pkl").open("wb") as file:
         pickle.dump(restored_history, file)
@@ -44,18 +50,18 @@ def test_init_restores_checkpoint_and_history(monkeypatch, tmp_path):
     load_model = Mock(return_value=restored_model)
     monkeypatch.setattr(workflow_module.bf, "BasicWorkflow", FakeBasicWorkflow)
     monkeypatch.setattr(workflow_module.keras.saving, "load_model", load_model)
-    monkeypatch.setattr(workflow_module, "find_embedding_network", Mock(side_effect=lambda value: value))
-    monkeypatch.setattr(workflow_module, "find_inference_network", Mock(side_effect=lambda value: value))
-
     workflow = Workflow(
         adapter=object(),
-        embedding_network=object(),
-        inference_network=object(),
         checkpoint_filepath=str(tmp_path),
     )
 
     load_model.assert_called_once_with(str(tmp_path / "model.keras"))
     assert workflow.approximator is restored_model
+    assert workflow.embedding_network is restored_model.summary_network
+    assert workflow.varying_inference_network is restored_model.varying_inference_network
+    assert workflow.invariant_inference_network is restored_model.invariant_inference_network
+    assert workflow.adapter is restored_model.adapter
+    assert workflow.mode == "filtering"
     assert workflow.history.history == {"loss": [1.0]}
 
 
@@ -263,7 +269,8 @@ def test_verify_time_invariant_forwards_array_inputs(monkeypatch):
     assert plots["z_score"].call_args.kwargs["color"] == "red"
 
 
-def test_verify_time_invariant_expands_mixture_components(monkeypatch):
+@pytest.mark.parametrize("tiled", [False, True])
+def test_verify_time_invariant_expands_mixture_components(monkeypatch, tiled):
     plots = patch_verification_plots(monkeypatch)
     mixture = SimpleNamespace(names=["fast", "slow"])
     model = SimpleNamespace(
@@ -273,8 +280,8 @@ def test_verify_time_invariant_expands_mixture_components(monkeypatch):
     )
     workflow = bare_workflow(model)
     estimates = {
-        "theta": np.ones((2, 3, 4, 1)),
-        "mix_mixture_weights": np.ones((2, 3, 4, 2)),
+        "theta": np.ones((2, 3, 4, 1) if tiled else (2, 3, 1)),
+        "mix_mixture_weights": np.ones((2, 3, 4, 2) if tiled else (2, 3, 2)),
     }
     targets = {"theta": np.array([1.0, 2.0]), "mix_mixture_weights": np.ones((2, 2))}
 
@@ -283,7 +290,7 @@ def test_verify_time_invariant_expands_mixture_components(monkeypatch):
     assert result == ("recovery", "calibration", "z-score")
     call = plots["recovery"].call_args.kwargs
     assert call["targets"].shape == (2, 3)
-    assert call["estimates"].shape == (2, 12, 3)
+    assert call["estimates"].shape == (2, 12 if tiled else 3, 3)
     assert call["variable_names"] == ["theta", "mix_mixture_weights_fast", "mix_mixture_weights_slow"]
     assert call["uncertainty_agg"] is workflow_module.credible_interval
 
