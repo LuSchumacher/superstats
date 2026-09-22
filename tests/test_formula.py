@@ -145,7 +145,8 @@ def test_model_returns_linked_formula_params_without_adding_inference_targets(ti
     assert model.shared_keys == ["v_0"]
     assert "v" not in model.summary_keys
     adapted = Workflow.default_adapter(model)(sample)
-    np.testing.assert_allclose(adapted["inference_variables"], sample["v_0"])
+    assert "inference_variables" not in adapted
+    np.testing.assert_allclose(adapted["invariant_variables"], sample["v_0"])
     inference_prior = model._sample_inference_prior(2, 3)
     assert set(inference_prior["shared_params"]) == {"v_0"}
 
