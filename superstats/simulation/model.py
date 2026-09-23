@@ -56,13 +56,13 @@ class Model:
     design_context    : sequence of str, optional, default: ()
         Context variable names routed to Formula. Variables can also be
         included in simulator_context.
-    latent_link_functions : mapping, LinkFunction, callable, or None, optional
+    latent_link_function : mapping, LinkFunction, callable, or None, optional
         Latent-parameter links applied to prior draws before parameter formulas
         are resolved. A mapping assigns a link per prior parameter; omitted
         entries use identity. A single link applies to every sampled prior
         parameter. Returned inference targets remain on their raw, unlinked
         scale.
-    formula_link_functions : mapping, LinkFunction, callable, or None, optional
+    formula_link_function : mapping, LinkFunction, callable, or None, optional
         Links applied to formula targets after the complete formula has been
         resolved. A mapping assigns a link per final formula target. A single
         link applies to every declared formula target passed to the simulator.
@@ -105,8 +105,8 @@ class Model:
         context_simulator: ContextSimulator | Callable | Mapping[str, Any] | pd.DataFrame | None = None,
         simulator_context: Sequence[str] = (),
         design_context: Sequence[str] = (),
-        latent_link_functions: Mapping[str, LinkFunction | Callable] | LinkFunction | Callable | None = None,
-        formula_link_functions: Mapping[str, LinkFunction | Callable] | LinkFunction | Callable | None = None,
+        latent_link_function: Mapping[str, LinkFunction | Callable] | LinkFunction | Callable | None = None,
+        formula_link_function: Mapping[str, LinkFunction | Callable] | LinkFunction | Callable | None = None,
         missing: MissingProcess | Callable | Literal["random"] | None = "random",
         contamination: ContaminationProcess | Callable | Literal["random_choice"] | None = None,
     ):
@@ -118,11 +118,11 @@ class Model:
         self.design_context = self._context_names(design_context, "design_context")
         self.simulator_context = self._context_names(simulator_context, "simulator_context")
         self.formula = formula
-        self.latent_link_functions = self._normalize_link_functions(latent_link_functions, "latent_link_functions")
-        self.formula_link_functions = self._normalize_link_functions(formula_link_functions, "formula_link_functions")
-        if self.formula is None and self.formula_link_functions:
-            raise ValueError("formula_link_functions requires formula.")
-        if self.formula_link_functions and not isinstance(self.formula_link_functions, Mapping):
+        self.latent_link_function = self._normalize_link_functions(latent_link_function, "latent_link_function")
+        self.formula_link_function = self._normalize_link_functions(formula_link_function, "formula_link_function")
+        if self.formula is None and self.formula_link_function:
+            raise ValueError("formula_link_function requires formula.")
+        if self.formula_link_function and not isinstance(self.formula_link_function, Mapping):
             if getattr(self.formula, "targets", None) is None:
                 raise TypeError("A single formula link requires formula to declare targets.")
         if (self.design_context or self.simulator_context) and context_simulator is None:
@@ -157,25 +157,25 @@ class Model:
         self.signature = inspect.signature(simulator)
         self.param_order = [name for name in self.signature.parameters if name != "context"]
 
-        if isinstance(self.latent_link_functions, Mapping):
-            unknown = set(self.latent_link_functions) - set(self.prior.params)
+        if isinstance(self.latent_link_function, Mapping):
+            unknown = set(self.latent_link_function) - set(self.prior.params)
             if unknown:
-                raise ValueError(f"Unknown latent_link_functions targets: {sorted(unknown)}")
-            if "p_contaminated" in self.latent_link_functions and not isinstance(
+                raise ValueError(f"Unknown latent_link_function targets: {sorted(unknown)}")
+            if "p_contaminated" in self.latent_link_function and not isinstance(
                 self.contamination, RandomChoiceContamination
             ):
                 raise ValueError("p_contaminated link requires RandomChoiceContamination.")
-            if "p_missing" in self.latent_link_functions and not isinstance(self.missing, RandomMissingProcess):
+            if "p_missing" in self.latent_link_function and not isinstance(self.missing, RandomMissingProcess):
                 raise ValueError("p_missing link requires RandomMissingProcess.")
-        if isinstance(self.formula_link_functions, Mapping):
-            unknown = set(self.formula_link_functions) - set(self.param_order)
+        if isinstance(self.formula_link_function, Mapping):
+            unknown = set(self.formula_link_function) - set(self.param_order)
             if unknown:
-                raise ValueError(f"Unknown formula_link_functions targets: {sorted(unknown)}")
+                raise ValueError(f"Unknown formula_link_function targets: {sorted(unknown)}")
             declared_targets = getattr(self.formula, "targets", None)
             if declared_targets is not None:
-                unknown = set(self.formula_link_functions) - set(declared_targets)
+                unknown = set(self.formula_link_function) - set(declared_targets)
                 if unknown:
-                    raise ValueError(f"formula_link_functions targets are not produced by formula: {sorted(unknown)}")
+                    raise ValueError(f"formula_link_function targets are not produced by formula: {sorted(unknown)}")
 
         # Run a pilot draw to determine key groups once
         pilot_context, pilot_contexts = self._generate_context(batch_size=1, num_steps=1, pilot=True)
@@ -897,17 +897,17 @@ class Model:
 
     def _resolve_parameters(self, parameters, contexts):
         """Apply latent links, resolve formulas, then apply formula links."""
-        linked_parameters = self._apply_links(parameters, self.latent_link_functions, parameters)
+        linked_parameters = self._apply_links(parameters, self.latent_link_function, parameters)
         resolved = self._resolve_formula(linked_parameters, contexts["design_context"])
         formula_targets = (
-            self.formula_link_functions
-            if isinstance(self.formula_link_functions, Mapping)
+            self.formula_link_function
+            if isinstance(self.formula_link_function, Mapping)
             else [name for name in self.formula.targets if name in self.param_order]
         )
         missing_targets = set(formula_targets) - set(resolved)
         if missing_targets:
             raise ValueError(f"Formula did not produce linked targets: {sorted(missing_targets)}")
-        resolved = self._apply_links(resolved, self.formula_link_functions, formula_targets)
+        resolved = self._apply_links(resolved, self.formula_link_function, formula_targets)
         resolved, simulator_context = self._apply_simulator_context(resolved, contexts["simulator_context"])
         return resolved, simulator_context
 

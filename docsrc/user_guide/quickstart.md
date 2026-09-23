@@ -36,7 +36,7 @@ This declaration asks the posterior approximator to estimate the trajectory `v`,
 model = sup.Model(
     prior=prior,
     simulator=sup.simulation.sample_ddm,
-    latent_link_functions={"v": sup.LinkFunction(bounds=(-4.0, 4.0))},
+    latent_link_function={"v": sup.LinkFunction(bounds=(-4.0, 4.0))},
     missing=None,
     contamination=None,
 )

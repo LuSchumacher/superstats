@@ -586,7 +586,7 @@ def test_model_registers_inferred_contamination_transition_as_local():
     )
     from superstats import LinkFunction
 
-    gm.latent_link_functions = {"p_contaminated": LinkFunction()}
+    gm.latent_link_function = {"p_contaminated": LinkFunction()}
 
     result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS, tile_to_steps=True)
 

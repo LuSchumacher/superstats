@@ -27,7 +27,7 @@ prior = sup.JointPrior(
 model = sup.Model(
     simulator=simulator,
     prior=prior,
-    latent_link_functions={
+    latent_link_function={
         "v": sup.LinkFunction(bounds=(0.0, 6.0)),
         "a": sup.LinkFunction(bounds=(0.2, 4.0)),
         "tau": sup.LinkFunction(bounds=(0.0, 2.0)),
@@ -43,8 +43,8 @@ This example disables both augmentation processes. This is explicit because `Mod
 
 Transitions produce trajectories on an unconstrained scale. `Model` provides two explicit places to transform them:
 
-- `latent_link_functions` transforms sampled prior parameters before formulas are resolved. Its keys name parameters in `JointPrior`, such as a time-varying regression coefficient `dv_t`.
-- `formula_link_functions` transforms final parameters produced by `Formula` after the complete formula has been resolved. Its keys must name formula targets that are passed to the simulator.
+- `latent_link_function` transforms sampled prior parameters before formulas are resolved. Its keys name parameters in `JointPrior`, such as a time-varying regression coefficient `dv_t`.
+- `formula_link_function` transforms final parameters produced by `Formula` after the complete formula has been resolved. Its keys must name formula targets that are passed to the simulator.
 
 Parameters omitted from either mapping are passed through unchanged. Both stages transform copies used by the simulation pipeline: `Model.sample()` continues to return the original unconstrained prior draws as inference targets.
 

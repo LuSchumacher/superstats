@@ -307,7 +307,7 @@ ddm_model = sup.Model(
     context_simulator=generate_ddm_design,
     design_context=("x_drift", "x_boundary"),
     simulator_context=(),
-    formula_link_functions={
+    formula_link_function={
         "v": sup.LinkFunction(
             "scaled_sigmoid",
             bounds=(-3.0, 3.0),

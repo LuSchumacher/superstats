@@ -133,7 +133,7 @@ def test_model_returns_linked_formula_params_without_adding_inference_targets(ti
     model = Model(
         JointPrior(v_0=Prior("normal", loc=-2, scale=0)),
         lambda v: {"observation": v},
-        formula_link_functions={"v": LinkFunction(bounds=(0.2, 4.0))},
+        formula_link_function={"v": LinkFunction(bounds=(0.2, 4.0))},
         formula=Formula(["v = v_0 - 1"]),
         missing=None,
     )
@@ -158,7 +158,7 @@ def test_formula_params_do_not_overwrite_existing_raw_inference_targets():
         JointPrior(v=Prior("normal", loc=-2, scale=0)),
         lambda v: {"observation": v},
         formula=Formula(["v = v + 1"]),
-        formula_link_functions={"v": LinkFunction("softplus")},
+        formula_link_function={"v": LinkFunction("softplus")},
         missing=None,
     )
     sample = model.sample(2, 3)

@@ -56,7 +56,7 @@ prior = sup.JointPrior(
     ),
     param_2=sup.Prior("normal", loc=0.0, scale=1.0),
 )
-latent_link_functions = {"param_1": sup.LinkFunction(bounds=(-6.0, 6.0))}
+latent_link_function = {"param_1": sup.LinkFunction(bounds=(-6.0, 6.0))}
 ```
 
 Here, `param_1` and `param_1_sigma` are estimated; `param_1_delta` is fixed.
@@ -76,7 +76,7 @@ The most interesting and sensible mixture is between one of the first four trans
 
 A few notes on using the `Mixture` transition:
 
-- `initial_prior` must be defined once at initialization of the `Mixture` itself and must **not** be specified again within the individual transitions it contains. Bounds are configured once for the final parameter through `Model.latent_link_functions`.
+- `initial_prior` must be defined once at initialization of the `Mixture` itself and must **not** be specified again within the individual transitions it contains. Bounds are configured once for the final parameter through `Model.latent_link_function`.
 
 - When a `Jump` transition is included in the `Mixture`, its `p_jump` is automatically fixed to $1.0$, since the `mixture_weights` already govern the probability of a jump occurring at a given time step. It would not be sensible for the `Jump` component to be selected at a given step and then, due to `p_jump < 1.0`, have a chance of no jump actually occurring.
 
@@ -105,7 +105,7 @@ prior = sup.JointPrior(
     ),
     param_3=0.5,
 )
-latent_link_functions = {
+latent_link_function = {
     "param_1": sup.LinkFunction(bounds=(-6, 6)),
     "param_2": sup.LinkFunction(bounds=(0, 1)),
 }
@@ -132,7 +132,7 @@ prior = sup.JointPrior(
         degree=2,
     ),
 )
-latent_link_functions = {
+latent_link_function = {
     "param_1": sup.LinkFunction("clip", bounds=(0.0, 4.0)),
     "param_2": sup.LinkFunction("clip", bounds=(-2.0, 2.0)),
 }

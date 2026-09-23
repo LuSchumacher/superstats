@@ -45,7 +45,7 @@ missing_process = sup.simulation.RandomMissingProcess(
 model_missing = sup.Model(
     simulator=simulator,
     prior=prior,
-    latent_link_functions={
+    latent_link_function={
         "v": sup.LinkFunction(bounds=(-4.0, 4.0)),
     },
     missing=missing_process,
@@ -104,7 +104,7 @@ contamination_process = sup.simulation.RandomChoiceContamination(infer=False)
 model_contaminated = sup.Model(
     simulator=simulator,
     prior=contamination_prior,
-    latent_link_functions={
+    latent_link_function={
         "v": sup.LinkFunction(bounds=(-4.0, 4.0)),
     },
     missing=None,
@@ -144,7 +144,7 @@ time_varying_contamination = sup.simulation.RandomChoiceContamination(infer=True
 model_time_varying_contamination = sup.Model(
     simulator=simulator,
     prior=time_varying_contamination_prior,
-    latent_link_functions={
+    latent_link_function={
         "v": sup.LinkFunction(bounds=(-4.0, 4.0)),
         "p_contaminated": sup.LinkFunction(bounds=(0.0, 0.25)),
     },
@@ -181,7 +181,7 @@ Missingness and contamination can be used together. Superstats first contaminate
 model_augmented = sup.Model(
     simulator=simulator,
     prior=contamination_prior,
-    latent_link_functions={
+    latent_link_function={
         "v": sup.LinkFunction(bounds=(-4.0, 4.0)),
     },
     missing=missing_process,
