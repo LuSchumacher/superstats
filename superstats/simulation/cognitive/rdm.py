@@ -9,113 +9,138 @@ def sample_rdm(
     v_base: np.ndarray,
     v_diff: np.ndarray,
     a_base: np.ndarray,
+    a_diff: np.ndarray,
     tau: np.ndarray,
-    bias: np.ndarray,
     sigma_diff: np.ndarray,
+    boost_idx: np.ndarray | None = None,
+    bias_idx: np.ndarray | None = None,
     num_accumulators: int = 2,
-    correct_idx: np.ndarray | None = None,
-    sigma_base: float = 1.0,
-    dt: float = 0.001,
-    max_steps: int = 10000,
-) -> dict[str, np.ndarray]:
+    sigma_base=1.0,
+    dt=0.001,
+    max_steps=10000,
+):
     """Sample from the Racing Diffusion Model (RDM).
 
-    Simulates `num_accumulators` independent diffusion accumulators racing
-    from a starting point of 0 toward their own threshold; the first to
-    cross wins and determines the response and response time. On each
-    trial, the accumulator at index `correct_idx[i]` is treated as the
-    correct/target accumulator: it receives a drift advantage of
-    `v_diff`, a bias-scaled threshold, and noise scaled by `sigma_diff`.
-    All other accumulators on that trial share the disadvantaged drift,
-    an unscaled threshold, and noise fixed at `sigma_base`.
+    Simulates independent diffusion accumulators racing from zero toward
+    response-specific boundaries. The first accumulator to cross its
+    boundary determines the choice and response time.
+
+    Drift rates, boundaries, and noise scales are parameterized on the
+    log scale. On each trial, the accumulator selected by `boost_idx`
+    receives the positive half-contrast for drift and noise; all other
+    accumulators receive the negative half-contrast. The accumulator
+    selected by `bias_idx` receives the positive half-contrast for the
+    boundary; all other accumulators receive the negative half-contrast.
+
+    Specifically:
+
+        v_boost = exp(v_base + v_diff / 2)
+        v_other = exp(v_base - v_diff / 2)
+
+        s_boost = sigma_base * exp(sigma_diff / 2)
+        s_other = sigma_base * exp(-sigma_diff / 2)
+
+        a_bias  = exp(a_base + a_diff / 2)
+        a_other = exp(a_base - a_diff / 2)
+
+    This contrast coding is unchanged when `num_accumulators > 2`: one
+    accumulator receives the positive half-contrast and every remaining
+    accumulator receives the negative half-contrast.
 
     Parameters
     ----------
-    v_base      : np.ndarray of shape (num_trials,)
-        Base drift rate shared by all accumulators before the
-        correct/incorrect adjustment.
-    v_diff      : np.ndarray of shape (num_trials,)
-        Drift rate difference between the correct and incorrect
-        accumulators. The correct accumulator gets `v_base + v_diff / 2`;
-        all other accumulators get `v_base - v_diff / 2`.
-    a_base      : np.ndarray of shape (num_trials,)
-        Base threshold distance from the origin for each trial.
-    tau         : np.ndarray of shape (num_trials,)
-        Non-decision times for each trial.
-    bias        : np.ndarray of shape (num_trials,)
-        Threshold scaling factor in [0, 1] for the correct/target
-        accumulator: its threshold is `a_base * bias`. All other
-        accumulators use the unscaled threshold `a_base`.
-    sigma_diff  : np.ndarray of shape (num_trials,)
-        Noise scaling factor in [0, +inf) for the correct/target
-        accumulator: its noise SD is `sigma_base * sigma_diff`. All other
-        accumulators always use `sigma_base` directly.
-    num_accumulators : int
-        Number of racing accumulators per trial (fixed across trials).
-    correct_idx : np.ndarray of shape (num_trials,), optional
-        Index (into `0 .. num_accumulators - 1`) of the correct/target
-        accumulator for each trial. If left empty, accumulator 0 is
-        treated as correct on every trial.
-    sigma_base  : float, optional, default: 1.0
-        Diffusion noise standard deviation of the non-correct
-        accumulators. Fixed (not estimated per trial) for identifiability.
-    dt          : float, optional, default: 0.001
-        Time step size.
-    max_steps   : int, optional, default: 10000
-        Maximum number of diffusion steps per trial before timing out.
+    v_base           : np.ndarray of shape (num_trials,)
+        Trial-wise midpoint of the log drift rates. Its exponential is
+        the drift rate when `v_diff` is zero and the geometric mean of
+        the boosted and nonboosted drift rates otherwise.
+    v_diff           : np.ndarray of shape (num_trials,)
+        Trial-wise log drift-rate difference between the boosted and
+        nonboosted accumulators.
+    a_base           : np.ndarray of shape (num_trials,)
+        Trial-wise midpoint of the log boundaries. Its exponential is
+        the boundary when `a_diff` is zero and the geometric mean of
+        the two boundary levels otherwise.
+    a_diff           : np.ndarray of shape (num_trials,)
+        Trial-wise log-boundary difference between the accumulator
+        selected by `bias_idx` and all other accumulators. Positive
+        values give the selected accumulator a higher boundary.
+    tau              : np.ndarray of shape (num_trials,)
+        Trial-wise nondecision time, added to the simulated decision time.
+    sigma_diff       : np.ndarray of shape (num_trials,)
+        Trial-wise log-noise difference between the boosted and
+        nonboosted accumulators.
+    boost_idx        : np.ndarray of shape (num_trials,), optional
+        Index of the accumulator receiving the positive drift and noise
+        contrasts on each trial. If omitted, accumulator 0 is boosted.
+    bias_idx         : np.ndarray of shape (num_trials,), optional
+        Index of the accumulator receiving the positive boundary
+        contrast on each trial. If omitted, accumulator 0 receives the
+        positive boundary contrast.
+    num_accumulators : int, default=2
+        Number of racing accumulators. Valid accumulator indices range
+        from 0 to `num_accumulators - 1`.
+    sigma_base       : float, default=1.0
+        Baseline noise scale. It is the geometric mean of the boosted
+        and nonboosted noise scales.
+    dt               : float, default=0.001
+        Simulation time-step size in seconds.
+    max_steps        : int, default=10000
+        Maximum number of diffusion steps per trial.
 
     Returns
     -------
-    data : dict of np.ndarray
-        Named decision data. `"response_time"` contains response times
-        (or -1.0 on timeout) and `"choice"` contains the index of the
-        winning accumulator (or -1.0 on timeout). Each array has shape
-        (num_trials,).
+    dict[str, np.ndarray]
+        `"response_time"` contains response times, including
+        nondecision time, and `"choice"` contains the winning
+        accumulator indices. Both arrays have shape `(num_trials,)`
+        and dtype `float32`. Trials without a boundary crossing before
+        `max_steps` receive `-1.0` for both values.
     """
-    num_trials = v_base.shape[0]
-    if correct_idx is None:
-        resolved_correct_idx = np.zeros(num_trials, dtype=np.int32)
-    else:
-        resolved_correct_idx = correct_idx.astype(np.int32)
-    response_time = np.empty(num_trials, dtype=np.float32)
-    choice = np.empty(num_trials, dtype=np.float32)
+    n = v_base.size
+    rt = np.full(n, -1.0, np.float32)
+    choice = np.full(n, -1.0, np.float32)
     sqrt_dt = np.sqrt(dt)
 
-    for i in prange(num_trials):
-        t = tau[i]
-        correct = resolved_correct_idx[i]
+    for i in prange(n):
+        boost = 0 if boost_idx is None else boost_idx[i]
+        bias = 0 if bias_idx is None else bias_idx[i]
 
-        thresholds = np.empty(num_accumulators, dtype=np.float32)
-        drifts = np.empty(num_accumulators, dtype=np.float32)
-        noise_scales = np.empty(num_accumulators, dtype=np.float32)
-        x = np.zeros(num_accumulators, dtype=np.float32)
+        dv = v_diff[i] * 0.5
+        da = a_diff[i] * 0.5
+        ds = sigma_diff[i] * 0.5
 
-        for j in range(num_accumulators):
-            if j == correct:
-                thresholds[j] = a_base[i] * bias[i]
-                drifts[j] = v_base[i] + v_diff[i] / 2
-                noise_scales[j] = sigma_base * sigma_diff[i] * sqrt_dt
-            else:
-                thresholds[j] = a_base[i]
-                drifts[j] = v_base[i] - v_diff[i] / 2
-                noise_scales[j] = sigma_base * sqrt_dt
+        vc = np.exp(v_base[i] + dv) * dt
+        vi = np.exp(v_base[i] - dv) * dt
+        sc = sigma_base * np.exp(ds) * sqrt_dt
+        si = sigma_base * np.exp(-ds) * sqrt_dt
+        ar = np.exp(a_base[i] + da)
+        ao = np.exp(a_base[i] - da)
 
-        drift_dt = drifts * dt
+        x = np.zeros(num_accumulators, np.float32)
 
-        winner = -1
         for step in range(max_steps):
-            t += dt
-            for j in range(num_accumulators):
-                x[j] += drift_dt[j] + noise_scales[j] * np.random.normal()
-                if x[j] >= thresholds[j]:
-                    winner = j
-                    break
-            if winner >= 0:
-                response_time[i] = t
-                choice[i] = float(winner)
-                break
-        else:
-            response_time[i] = -1.0
-            choice[i] = -1.0
+            winner, first = -1, 2.0
 
-    return {"response_time": response_time, "choice": choice}
+            for j in range(num_accumulators):
+                old = x[j]
+
+                if j == boost:
+                    new = old + vc + sc * np.random.randn()
+                else:
+                    new = old + vi + si * np.random.randn()
+
+                x[j] = new
+                bound = ar if j == bias else ao
+
+                if new >= bound:
+                    fraction = (bound - old) / (new - old)
+
+                    if fraction < first:
+                        winner, first = j, fraction
+
+            if winner >= 0:
+                rt[i] = tau[i] + (step + first) * dt
+                choice[i] = winner
+                break
+
+    return {"response_time": rt, "choice": choice}
