@@ -435,11 +435,12 @@ prediction = workflow.resimulate(
 )
 ```
 
-For empirical data, include every context variable as a named input alongside
-the observations. `workflow.prepare_data()` currently reshapes observation
-columns only; add context arrays from the DataFrame to the returned mapping with
-the same dataset and trial ordering. The number and ordering of trials must
-agree across observations and context.
+For empirical data, include every context variable in `data_mapping` alongside
+the observations. `workflow.prepare_data()` reshapes both observation and
+context columns with the same dataset and trial ordering. Mapping values must
+match the model's `summary_keys` (its observation and context keys). An
+observation-only mapping matching `data_keys` remains supported when context
+arrays are attached separately.
 
 Use the same coding and scaling at training and inference time. Changing a
 regressor's reference level or scale changes the meaning of its coefficients.

@@ -15,16 +15,16 @@ class RandomMissingProcess(MissingProcess):
     calls require an explicit final ``probability`` in [0, 1].
 
     Missingness is drawn per (batch, step): whenever a time step is
-    selected as missing, all data dimensions at that step are set to
-    `missing_value` (an entire observation is dropped, not individual
-    features within it).
+    selected as missing, every supplied summary variable at that step is
+    set to `missing_value` (the observations and any context are dropped
+    together, rather than individual features within them).
 
     Parameters
     ----------
     missing_value       : float or np.ndarray, default: -1
-        Value written into masked entries. A scalar fills every observed
-        variable; a mapping sets a per-variable sentinel; an array of
-        shape ``(num_variables,)`` sets sentinels in data-key order.
+        Value written into masked entries. A scalar fills every supplied
+        summary variable; a mapping sets a per-variable sentinel; an array
+        of shape ``(num_variables,)`` sets sentinels in mapping order.
         Output dtype is promoted as needed (e.g. ``np.nan`` forces
         float; ``-1`` stays int on int data).
     shared_across_batch : bool, default: False
@@ -100,5 +100,5 @@ class RandomMissingProcess(MissingProcess):
         if value.ndim == 0:
             return self.missing_value
         if value.shape != (num_keys,):
-            raise ValueError(f"Array missing_value for mapping data must have shape ({num_keys},), got {value.shape}.")
+            raise ValueError(f"Array missing_value for summary data must have shape ({num_keys},), got {value.shape}.")
         return value[index]

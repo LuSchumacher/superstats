@@ -3,6 +3,7 @@ import numpy as np
 import pytest
 
 from superstats import Formula, JointPrior, LinkFunction, Model, Prior
+from superstats.simulation import RandomMissingProcess
 from superstats.transition import Linear, Mixture, RandomWalk, Jump
 
 
@@ -218,6 +219,38 @@ def test_workflow_resimulation_uses_original_context_and_fixed_coefficients():
     result = workflow.resimulate(estimates, num_sims=2, rng=0, data_idx=[1, 0], context=context)
     expected = np.logaddexp(0, -2 + 2 * context["x"][[1, 0]])
     np.testing.assert_allclose(result["observation"], np.repeat(expected[:, None, :], 2, axis=1))
+
+
+def test_workflow_resimulation_applies_empirical_mask_after_using_original_context():
+    from superstats import Workflow
+
+    model = Model(
+        JointPrior(a_0=Prior("normal"), b_a=2),
+        simulator,
+        missing=RandomMissingProcess(missing_value=-99),
+        context_simulator={"x": [0, 0, 0]},
+        design_context=("x",),
+        formula=Formula(["a = a_0 + b_a * x"]),
+    )
+    workflow = Workflow.__new__(Workflow)
+    workflow.model = model
+    estimates = {"a_0": np.full((2, 4, 1), -2.0)}
+    context = {"x": np.array([[-1.0, 0, 1], [1.0, 2, 3]])}
+    missing_mask = np.array([[False, True, False], [True, False, True]])
+
+    result = workflow.resimulate(
+        estimates,
+        num_sims=2,
+        rng=0,
+        data_idx=[1, 0],
+        context=context,
+        missing_mask=missing_mask,
+    )
+
+    expected = -2 + 2 * context["x"][[1, 0]]
+    expected = np.repeat(expected[:, None, :], 2, axis=1)
+    expected[np.repeat(missing_mask[[1, 0]][:, None, :], 2, axis=1)] = -99
+    np.testing.assert_allclose(result["observation"], expected)
 
 
 def test_model_transforms_contamination_and_retains_raw_targets():

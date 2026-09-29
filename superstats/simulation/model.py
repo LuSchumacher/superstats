@@ -262,7 +262,8 @@ class Model:
             shape (batch_size, num_steps), corrupted by
             `self.missing` if one is configured.
             - one entry per generated context variable, retaining the
-            leading batch and time dimensions.
+            leading batch and time dimensions. When missingness is applied,
+            context and observations are masked at the same time steps.
             - `"time_steps"`: shape (batch_size, num_steps), each row
             equal to `1..num_steps`.
             - `"missing_mask"`: included only if `self.missing`
@@ -341,10 +342,17 @@ class Model:
             contamination_extra.pop("p_contaminated", None)  # Keep the raw inference target.
         self._exclude_nuisance(prior_draws)
 
-        # Apply missingness augmentation, if configured
+        # Apply missingness augmentation, if configured. Context is part of
+        # the summary input, so masked time steps must use the same missing
+        # representation for observations and context alike.
         missing_mask, missing_extra = None, {}
         if apply_missing:
-            sim_data, missing_mask, missing_extra = self._apply_missing(sim_data, rng, model_params.get("p_missing"))
+            summary_data = {**sim_data, **generated_context}
+            summary_data, missing_mask, missing_extra = self._apply_missing(
+                summary_data, rng, model_params.get("p_missing")
+            )
+            sim_data = {key: summary_data[key] for key in self.data_keys}
+            generated_context = {key: summary_data[key] for key in self.context_keys}
 
         local_params = self._normalize_local_params(local_params, batch_size, num_steps)
         deterministic_params = self._normalize_local_params(deterministic_params, batch_size, num_steps)
@@ -1350,13 +1358,13 @@ class Model:
         rng: np.random.Generator | None,
         probability: np.ndarray | float | None = None,
     ) -> tuple[Dict[str, np.ndarray], Optional[np.ndarray], Dict[str, np.ndarray]]:
-        """Run `self.missing` on `sim_data`, if configured.
+        """Run `self.missing` on the supplied summary data, if configured.
 
         Parameters
         ----------
         sim_data : dict of np.ndarray
-            Named simulated variables to potentially corrupt with
-            missingness. Each value must have shape
+            Named simulated observations and context to potentially corrupt
+            with missingness. Each value must have leading shape
             (batch_size, num_steps).
         rng      : np.random.Generator or None
             Generator forwarded to the missing process, if it accepts one.
@@ -1364,11 +1372,11 @@ class Model:
         Returns
         -------
         sim_data     : dict of np.ndarray - the (possibly corrupted)
-            named simulated variables
+            named summary variables
         missing_mask : np.ndarray or None - mask from the process, or
             None if `self.missing` is None
         extra        : dict of np.ndarray - any additional entries the
-            process returned beyond the simulator data keys and
+            process returned beyond the supplied summary keys and
             `"missing_mask"` (e.g. `RandomMissingProcess` also returns
             `"p_missing"`); empty dict if `self.missing` is None
             or the process returned no extra keys
@@ -1387,7 +1395,8 @@ class Model:
         else:
             result = self.missing(sim_data, rng=rng) if accepts_rng else self.missing(sim_data)
 
-        sim_data = {key: result[key] for key in self.data_keys}
+        input_keys = list(sim_data)
+        sim_data = {key: result[key] for key in input_keys}
         missing_mask = result["missing_mask"]
-        extra = {k: v for k, v in result.items() if k not in (*self.data_keys, "missing_mask")}
+        extra = {k: v for k, v in result.items() if k not in (*input_keys, "missing_mask")}
         return sim_data, missing_mask, extra

@@ -294,7 +294,7 @@ fig = workflow.plot_forest(
 
 ## Posterior predictive checks
 
-Posterior predictive checks return to the observation scale. `Workflow.resimulate()` preserves the relationship between paired posterior parameters and the model, reconstructs deterministic trajectories, resolves formulas and links, and calls the simulator. For regression models, pass the original design through `context`. Missingness is omitted by default and can be enabled with `apply_missing=True`.
+Posterior predictive checks return to the observation scale. `Workflow.resimulate()` preserves the relationship between paired posterior parameters and the model, reconstructs deterministic trajectories, resolves formulas and links, and calls the simulator. For regression models, pass the original, unmasked design through `context`. Missingness is omitted by default. Pass an empirical `missing_mask` to reproduce the observed missingness pattern after simulation, or use `apply_missing=True` to draw a new pattern from the configured missing process; these options are mutually exclusive.
 
 ```python
 selected_data = [0, 1, 2]

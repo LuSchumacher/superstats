@@ -9,11 +9,11 @@ class MissingProcess(ABC):
     """Introduces missingness into simulated data.
 
     Contract: ``(data, rng) -> filled | {"missing_mask": mask}``,
-    where ``data`` is a mapping of named arrays with shape
-    ``(batch_size, num_steps)``. ``mask`` is a boolean array of shape
-    ``(batch_size, num_steps)`` (True = missing), and the returned data
-    keys contain the masked entries set to the
-    process's ``missing_value``. Instances are callable, so a
+    where ``data`` is a mapping of named summary arrays whose leading shape
+    is ``(batch_size, num_steps)``. ``mask`` is a boolean array of shape
+    ``(batch_size, num_steps)`` (True = missing), and every returned input
+    key contains masked entries set to the process's ``missing_value``.
+    Instances are callable, so a
     MissingProcess, a subclass, or a bare function with this signature
     are interchangeable.
     """
@@ -25,7 +25,7 @@ class MissingProcess(ABC):
         Parameters
         ----------
         data : mapping of np.ndarray
-            Simulated data to corrupt with missingness.
+            Simulated observations and context to corrupt with missingness.
         rng  : np.random.Generator or None, optional, default: None
             Random generator to use. If None, a fresh, unseeded generator
             is created via `_default_rng`, so calling `apply` directly is

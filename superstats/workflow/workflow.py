@@ -336,6 +336,7 @@ class Workflow:
         rng=None,
         data_idx: int | Sequence[int] | None = None,
         context: Mapping[str, np.ndarray] | None = None,
+        missing_mask: np.ndarray | None = None,
         num_steps: int | None = None,
         apply_missing: bool = False,
     ) -> dict[str, np.ndarray]:
@@ -362,6 +363,12 @@ class Workflow:
             have shape (datasets, steps, ...); they are selected with data_idx
             and repeated across posterior simulations. One shared trial sequence
             is also accepted. If omitted, Model generates its configured context.
+        missing_mask : np.ndarray or None, optional
+            Empirical Boolean mask with shape ``(datasets, steps)``. It is
+            selected with `data_idx`, repeated across posterior simulations,
+            and applied to the returned observation keys after simulation.
+            Formula resolution therefore still uses the original, unmasked
+            context. Mutually exclusive with `apply_missing=True`.
         num_steps : int or None, optional
             Trial count, needed when shared-only posterior draws do not retain
             a trial axis. Can also be inferred from explicit context.
@@ -385,6 +392,9 @@ class Workflow:
             number of dimensions, or if a parameter's shape can't be
             reshaped to collapse the sample axis into the batch axis.
         """
+        if missing_mask is not None and apply_missing:
+            raise ValueError("missing_mask and apply_missing=True are mutually exclusive.")
+
         rng = np.random.default_rng(rng)
 
         if not estimates:
@@ -422,6 +432,9 @@ class Workflow:
                     num_steps = context_array.shape[1] if context_array.ndim >= 2 else context_array.shape[0]
                 else:
                     num_steps = example.shape[2]
+            elif missing_mask is not None:
+                mask_array = np.asarray(missing_mask)
+                num_steps = mask_array.shape[1] if mask_array.ndim >= 2 else mask_array.shape[0]
             elif isinstance(getattr(self.model, "context_simulator", None), pd.DataFrame):
                 num_steps = len(self.model.context_simulator)
             elif isinstance(getattr(self.model, "context_simulator", None), Mapping):
@@ -431,6 +444,18 @@ class Workflow:
                 num_steps = example.shape[2]
         if not isinstance(num_steps, (int, np.integer)) or num_steps <= 0:
             raise ValueError("num_steps must be a positive integer.")
+
+        empirical_missing_mask = None
+        if missing_mask is not None:
+            mask_array = np.asarray(missing_mask)
+            expected_shape = (original_batch_size, num_steps)
+            if mask_array.shape != expected_shape:
+                raise ValueError(f"missing_mask must have shape {expected_shape}, got {mask_array.shape}.")
+            if mask_array.dtype != bool and not np.all(np.isin(mask_array, (0, 1))):
+                raise ValueError("missing_mask must contain only boolean or 0/1 values.")
+            selected_mask = mask_array.astype(bool, copy=False)[selected_indices]
+            empirical_missing_mask = np.repeat(selected_mask, num_sims, axis=0)
+
         simulation_context = None
         if context is not None:
             simulation_context = {}
@@ -527,6 +552,39 @@ class Workflow:
             **context_kwargs,
         )
 
+        if empirical_missing_mask is not None:
+            missing_value = getattr(getattr(self.model, "missing", None), "missing_value", None)
+            if missing_value is None:
+                raise ValueError("missing_mask requires a model missing process with a configured missing_value.")
+
+            data_keys = list(self.model.data_keys)
+            summary_keys = list(getattr(self.model, "summary_keys", data_keys))
+
+            def _missing_fill(key: str):
+                if isinstance(missing_value, Mapping):
+                    if key not in missing_value:
+                        raise ValueError(f"model missing_value mapping has no entry for {key!r}.")
+                    return missing_value[key]
+                value = np.asarray(missing_value)
+                if value.ndim == 0:
+                    return missing_value
+                if value.shape == (len(summary_keys),):
+                    return value[summary_keys.index(key)]
+                if value.shape == (len(data_keys),):
+                    return value[data_keys.index(key)]
+                raise ValueError(
+                    "model missing_value must be scalar, a mapping, or have one entry per data or summary key."
+                )
+
+            for key, value in raw_sim.items():
+                fill = _missing_fill(key)
+                try:
+                    value[empirical_missing_mask] = fill
+                except (TypeError, ValueError, OverflowError):
+                    value = value.astype(np.result_type(value.dtype, fill), copy=True)
+                    value[empirical_missing_mask] = fill
+                    raw_sim[key] = value
+
         return {name: value.reshape(batch_size, num_sims, num_steps) for name, value in raw_sim.items()}
 
     def prepare_data(
@@ -540,7 +598,8 @@ class Workflow:
         """Convert a long-format DataFrame into the model's dict-of-arrays format.
 
         Groups `df` by `id_col` and reshapes the columns named in
-        `data_mapping` into arrays of shape (batch_size, num_steps).
+        `data_mapping` into arrays of shape (batch_size, num_steps). This
+        includes both simulator outputs and model context variables.
 
         If `time_col` is given, it must contain discrete integer-like
         values. The actual labels may be negative or non-contiguous; they
@@ -563,8 +622,9 @@ class Workflow:
         data_mapping : Mapping[str, str]
             Maps a column name in `df` to the corresponding key expected by
             the model, e.g. `{"rt": "response_time", "correct":
-            "choice"}`. The set of values (not keys) must exactly match
-            `self.model.data_keys`.
+            "choice"}`. The set of values (not keys) must match either
+            `self.model.data_keys`, or `self.model.summary_keys` (the
+            observation keys plus every context key).
         missing_value : int or float
             Sentinel value marking a missing observation, and used to
             initialize/pad positions with no corresponding row.
@@ -576,10 +636,13 @@ class Workflow:
         Returns
         -------
         data : dict of np.ndarray
-            One entry per model data key, each of shape
+            One entry per mapped model key, each of shape
             (batch_size, num_steps), plus `"missing_mask"` (1 where any
-            mapped column equals `missing_value` at that step, 0 otherwise)
-            and `"time_steps"` (each row equal to `1..num_steps`).
+            observation column equals `missing_value` at that step, 0
+            otherwise) and `"time_steps"` (each row equal to
+            `1..num_steps`). Context values are not used to detect
+            missingness, but the resulting mask is applied to them so all
+            summary inputs share one missing representation.
         """
         model = getattr(self, "model", None)
         if model is None:
@@ -596,10 +659,18 @@ class Workflow:
             raise ValueError("prepare_data requires at least one row.")
 
         mapped_keys = list(data_mapping.values())
-        expected_keys = list(model.data_keys)
-        if sorted(mapped_keys) != sorted(expected_keys):
+        data_keys = list(model.data_keys)
+        summary_keys = list(getattr(model, "summary_keys", data_keys))
+        if sorted(mapped_keys) == sorted(summary_keys):
+            expected_keys = summary_keys
+        elif sorted(mapped_keys) == sorted(data_keys):
+            # Preserve the observation-only API for callers which attach
+            # context arrays separately.
+            expected_keys = data_keys
+        else:
             raise ValueError(
-                f"data_mapping values {sorted(mapped_keys)!r} do not match model.data_keys {sorted(expected_keys)!r}."
+                f"data_mapping values {sorted(mapped_keys)!r} do not match model.data_keys {sorted(data_keys)!r} "
+                f"or model.summary_keys {sorted(summary_keys)!r}."
             )
 
         if missing_value is None:
@@ -646,7 +717,7 @@ class Workflow:
                 data[data_key][i, col_idx] = _as_float_values(group, col)
 
         missing_mask = np.zeros((batch_size, num_steps), dtype=bool)
-        for data_key in expected_keys:
+        for data_key in data_keys:
             missing_mask |= pd.isna(data[data_key])
             if not pd.isna(missing_value):
                 missing_mask |= data[data_key] == missing_value
@@ -663,9 +734,10 @@ class Workflow:
                 return value[index]
             raise ValueError(f"model missing_value must be scalar, mapping, or shape ({len(expected_keys)},).")
 
-        # A missing value in any observed variable drops the whole time step.
-        for i, data_key in enumerate(expected_keys):
-            data[data_key][missing_mask] = _missing_fill(data_key, i)
+        # A missing value in any observed variable drops the whole summary
+        # time step, including its context variables.
+        for i, summary_key in enumerate(expected_keys):
+            data[summary_key][missing_mask] = _missing_fill(summary_key, i)
 
         data["missing_mask"] = missing_mask
         data["time_steps"] = np.broadcast_to(np.arange(1, num_steps + 1)[None, :], (batch_size, num_steps))

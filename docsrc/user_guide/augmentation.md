@@ -33,7 +33,7 @@ prior = sup.JointPrior(
 
 ## Missing Observations
 
-`RandomMissingProcess` implements missing completely at random (MCAR). For every simulated dataset, it draws a missingness probability and independently decides whether each time step is missing. When a time step is selected, every observed variable at that step is replaced by `missing_value`. For the DDM, response time and choice are therefore always missing together.
+`RandomMissingProcess` implements missing completely at random (MCAR). For every simulated dataset, it draws a missingness probability and independently decides whether each time step is missing. When a time step is selected, every summary variable at that step—including observations and context—is replaced by `missing_value`. For the DDM, response time and choice are therefore always missing together.
 
 By default, `Model` uses `missing="random"`, which constructs `RandomMissingProcess()` with the package's default prior for `p_missing`. Set `missing=None` to disable missingness. Here, we specify the process explicitly and use a Beta prior so that the missing proportion can differ across simulated datasets.
 
@@ -83,7 +83,7 @@ configured missingness process. Posterior resimulation then draws a fresh
 missingness probability from its prior because `p_missing` is never estimated.
 Direct calls to a missingness process must receive `probability` explicitly.
 
-`missing_value` may be one scalar for every observation variable, a mapping from observation names to values, or an array containing one value per observation variable. Choose sentinels that cannot be confused with valid observations.
+`missing_value` may be one scalar for every summary variable, a mapping from summary names to values, or an array containing one value per summary variable. Choose sentinels that cannot be confused with valid observations. Models with context therefore require context entries in mapping-based missing values, or positions for them in array-based missing values.
 
 ## Contaminated Responses
 

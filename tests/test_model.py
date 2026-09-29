@@ -456,6 +456,22 @@ def test_model_sample_includes_missing_mask_by_default():
     assert "p_missing" in result
 
 
+def test_model_missing_mask_is_applied_to_context():
+    context = {"condition": np.arange(NUM_STEPS, dtype=float)}
+    gm = _build_model(
+        p_missing=1.0,
+        context_simulator=context,
+        missing=RandomMissingProcess(missing_value=-999.0),
+    )
+
+    result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS, rng=np.random.default_rng(0))
+
+    assert np.all(result["missing_mask"])
+    assert np.all(result["response_time"] == -999.0)
+    assert np.all(result["choice"] == -999.0)
+    assert np.all(result["condition"] == -999.0)
+
+
 def test_model_random_missing_includes_mask():
     gm = _build_model(missing="random")
     result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS, rng=np.random.default_rng(0))

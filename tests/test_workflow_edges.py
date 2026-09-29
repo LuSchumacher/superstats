@@ -138,6 +138,17 @@ def test_resimulate_rejects_invalid_posterior_shapes(estimates, match):
         workflow.resimulate(estimates, num_sims=2, rng=0)
 
 
+def test_resimulate_rejects_empirical_and_generated_missingness_together():
+    workflow = bare_workflow()
+
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        workflow.resimulate(
+            {"theta": np.ones((1, 2, 1))},
+            missing_mask=np.zeros((1, 1), dtype=bool),
+            apply_missing=True,
+        )
+
+
 def test_plot_history_applies_defaults_and_tick_fontsize(monkeypatch):
     axes = [Mock(), Mock()]
     figure = SimpleNamespace(axes=axes)
@@ -433,6 +444,52 @@ def test_prepare_data_supports_per_variable_missing_values():
     np.testing.assert_array_equal(data["missing_mask"], [[False, True]])
     np.testing.assert_array_equal(data["x"], [[1.0, -10.0]])
     np.testing.assert_array_equal(data["y"], [[2.0, -20.0]])
+
+
+def test_prepare_data_includes_context_without_treating_its_values_as_missing():
+    model = SimpleNamespace(
+        data_keys=["response_time", "choice"],
+        context_keys=["stimulus", "validity"],
+        summary_keys=["response_time", "choice", "stimulus", "validity"],
+        missing=SimpleNamespace(missing_value=-999.0),
+    )
+    workflow = bare_workflow(model)
+    frame = pd.DataFrame(
+        {
+            "id": [1, 1, 2],
+            "rt": [0.4, -1.0, 0.6],
+            "resp": [1, -1, 0],
+            "stim": [-1, 1, -1],
+            "valid": [4, -4, 4],
+        }
+    )
+
+    data = workflow.prepare_data(
+        frame,
+        "id",
+        {
+            "rt": "response_time",
+            "resp": "choice",
+            "stim": "stimulus",
+            "valid": "validity",
+        },
+        missing_value=-1,
+    )
+
+    assert set(data) == {*model.summary_keys, "missing_mask", "time_steps"}
+    np.testing.assert_array_equal(data["missing_mask"], [[False, True], [False, True]])
+    np.testing.assert_array_equal(data["response_time"], [[0.4, -999.0], [0.6, -999.0]])
+    np.testing.assert_array_equal(data["choice"], [[1.0, -999.0], [0.0, -999.0]])
+    np.testing.assert_array_equal(data["stimulus"], [[-1.0, -999.0], [-1.0, -999.0]])
+    np.testing.assert_array_equal(data["validity"], [[4.0, -999.0], [4.0, -999.0]])
+
+    observations = workflow.prepare_data(
+        frame,
+        "id",
+        {"rt": "response_time", "resp": "choice"},
+        missing_value=-1,
+    )
+    assert set(observations) == {"response_time", "choice", "missing_mask", "time_steps"}
 
 
 def test_prepare_data_supports_array_missing_values_and_rejects_bad_shape():
