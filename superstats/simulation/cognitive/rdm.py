@@ -4,6 +4,13 @@ import numpy as np
 from numba import njit, prange
 
 
+@njit(inline="always")
+def stable_softplus(x):
+    if x > 0.0:
+        return x + np.log1p(np.exp(-x))
+    return np.log1p(np.exp(x))
+
+
 @njit(parallel=True, fastmath=True)
 def sample_rdm(
     v_base: np.ndarray,
@@ -25,8 +32,9 @@ def sample_rdm(
     response-specific boundaries. The first accumulator to cross its
     boundary determines the choice and response time.
 
-    Drift rates, boundaries, and noise scales are parameterized on the
-    log scale. On each trial, the accumulator selected by `boost_idx`
+    Drift rates and boundaries are obtained by applying a softplus link
+    to unconstrained latent predictors. Noise scales use a symmetric log-scale
+    contrast around `sigma_base`. On each trial, the accumulator selected by `boost_idx`
     receives the positive half-contrast for drift and noise; all other
     accumulators receive the negative half-contrast. The accumulator
     selected by `bias_idx` receives the positive half-contrast for the
@@ -34,14 +42,14 @@ def sample_rdm(
 
     Specifically:
 
-        v_boost = exp(v_base + v_diff / 2)
-        v_other = exp(v_base - v_diff / 2)
+        v_boost = softplus(v_base + v_diff / 2)
+        v_other = softplus(v_base - v_diff / 2)
 
         s_boost = sigma_base * exp(sigma_diff / 2)
         s_other = sigma_base * exp(-sigma_diff / 2)
 
-        a_bias  = exp(a_base + a_diff / 2)
-        a_other = exp(a_base - a_diff / 2)
+        a_bias  = softplus(a_base + a_diff / 2)
+        a_other = softplus(a_base - a_diff / 2)
 
     This contrast coding is unchanged when `num_accumulators > 2`: one
     accumulator receives the positive half-contrast and every remaining
@@ -50,25 +58,21 @@ def sample_rdm(
     Parameters
     ----------
     v_base           : np.ndarray of shape (num_trials,)
-        Trial-wise midpoint of the log drift rates. Its exponential is
-        the drift rate when `v_diff` is zero and the geometric mean of
-        the boosted and nonboosted drift rates otherwise.
+        Midpoint of the drift rate.
+        When `v_diff` is zero, both drift rates equal softplus(v_base).
     v_diff           : np.ndarray of shape (num_trials,)
-        Trial-wise log drift-rate difference between the boosted and
-        nonboosted accumulators.
+        Difference between the boosted and nonboosted drift rate
+        before applying the softplus link.
     a_base           : np.ndarray of shape (num_trials,)
-        Trial-wise midpoint of the log boundaries. Its exponential is
-        the boundary when `a_diff` is zero and the geometric mean of
-        the two boundary levels otherwise.
+        Midpoint of the latent boundary predictors.
+        When `a_diff` is zero, both boundaries equal softplus(a_base).
     a_diff           : np.ndarray of shape (num_trials,)
-        Trial-wise log-boundary difference between the accumulator
-        selected by `bias_idx` and all other accumulators. Positive
-        values give the selected accumulator a higher boundary.
+        Difference between the selected and nonselected latent boundary
+        predictors before applying the softplus link.
     tau              : np.ndarray of shape (num_trials,)
         Trial-wise nondecision time, added to the simulated decision time.
     sigma_diff       : np.ndarray of shape (num_trials,)
-        Trial-wise log-noise difference between the boosted and
-        nonboosted accumulators.
+        Log-noise difference between the boosted and nonboosted accumulators.
     boost_idx        : np.ndarray of shape (num_trials,), optional
         Index of the accumulator receiving the positive drift and noise
         contrasts on each trial. If omitted, accumulator 0 is boosted.
@@ -109,12 +113,12 @@ def sample_rdm(
         da = a_diff[i] * 0.5
         ds = sigma_diff[i] * 0.5
 
-        vc = np.exp(v_base[i] + dv) * dt
-        vi = np.exp(v_base[i] - dv) * dt
+        vc = stable_softplus(v_base[i] + dv) * dt
+        vi = stable_softplus(v_base[i] - dv) * dt
+        ar = stable_softplus(a_base[i] + da)
+        ao = stable_softplus(a_base[i] - da)
         sc = sigma_base * np.exp(ds) * sqrt_dt
         si = sigma_base * np.exp(-ds) * sqrt_dt
-        ar = np.exp(a_base[i] + da)
-        ao = np.exp(a_base[i] - da)
 
         x = np.zeros(num_accumulators, np.float32)
 
