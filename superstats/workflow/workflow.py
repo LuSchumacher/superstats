@@ -24,6 +24,18 @@ from superstats.defaults import (
     TITLE_FONTSIZE,
 )
 from superstats.simulation import Model
+from superstats.simulation.conditional import (
+    parameter_views,
+    parameter_display_names,
+    invariant_parameter_names,
+    raw_parameter_names,
+    posterior_parameters,
+    posterior_invariant_samples,
+    target_parameters,
+    varying_parameter_names,
+)
+from superstats.diagnostics.plots.conditional_parameters import plot_conditional_parameters
+from .categorical import EncodeCategorical
 from superstats.utils.dispatch import find_approximator
 from superstats.utils.indexing import normalize_data_indices
 from superstats.utils.logging import warning as log_warning
@@ -161,7 +173,11 @@ class Workflow:
         data_keys = model.data_keys
         summary_data_keys = getattr(model, "summary_keys", data_keys)
 
-        adapter = bf.Adapter().convert_dtype("float64", "float32").as_time_series(["time_steps", *summary_data_keys])
+        adapter = bf.Adapter()
+        categorical = getattr(model, "categorical", {})
+        if categorical:
+            adapter.append(EncodeCategorical(categorical))
+        adapter = adapter.convert_dtype("float64", "float32").as_time_series(["time_steps", *summary_data_keys])
         invariant_keys = hyper_keys + shared_keys
         if local_keys:
             adapter = adapter.concatenate(local_keys, into="inference_variables")
@@ -460,7 +476,8 @@ class Workflow:
         if context is not None:
             simulation_context = {}
             for name, value in context.items():
-                array = np.asarray(value)
+                categorical = getattr(self.model, "categorical", {})
+                array = np.asarray(value, dtype=object if name in categorical else None)
                 if array.ndim >= 2 and array.shape[:2] == (original_batch_size, num_steps):
                     simulation_context[name] = np.repeat(array[selected_indices], num_sims, axis=0)
                 else:
@@ -600,6 +617,9 @@ class Workflow:
         Groups `df` by `id_col` and reshapes the columns named in
         `data_mapping` into arrays of shape (batch_size, num_steps). This
         includes both simulator outputs and model context variables.
+        Categorical context declared by the model's Formula retains its raw
+        labels. Observed labels are validated against the fixed schema; the
+        default adapter converts them to one-hot features for inference.
 
         If `time_col` is given, it must contain discrete integer-like
         values. The actual labels may be negative or non-contiguous; they
@@ -694,7 +714,13 @@ class Workflow:
             num_steps = int(groups.size().max())
 
         batch_size = len(dataset_ids)
-        data = {data_key: np.full((batch_size, num_steps), missing_value, dtype=float) for data_key in expected_keys}
+        categorical = getattr(model, "categorical", {})
+        data = {
+            data_key: np.full(
+                (batch_size, num_steps), missing_value, dtype=object if data_key in categorical else float
+            )
+            for data_key in expected_keys
+        }
 
         def _col_idx(group: pd.DataFrame, dataset_id) -> np.ndarray:
             if time_col is None:
@@ -714,13 +740,18 @@ class Workflow:
             group = groups.get_group(dataset_id)
             col_idx = _col_idx(group, dataset_id)
             for col, data_key in data_mapping.items():
-                data[data_key][i, col_idx] = _as_float_values(group, col)
+                values = group[col].to_numpy(dtype=object) if data_key in categorical else _as_float_values(group, col)
+                data[data_key][i, col_idx] = values
 
         missing_mask = np.zeros((batch_size, num_steps), dtype=bool)
         for data_key in data_keys:
             missing_mask |= pd.isna(data[data_key])
             if not pd.isna(missing_value):
                 missing_mask |= data[data_key] == missing_value
+
+        for name, schema in categorical.items():
+            if name in data:
+                schema.indices(data[name], name=name, missing_mask=missing_mask)
 
         model_missing_value = getattr(getattr(model, "missing", None), "missing_value", missing_value)
 
@@ -1115,9 +1146,23 @@ class Workflow:
         tick_fontsize: int = TICK_FONTSIZE,
         figsize: tuple[float, float] | None = None,
         data_idx: int | Sequence[int] | None = None,
+        scale: Literal["both", "model", "raw"] = "both",
+        conditions: Mapping | Sequence[Mapping] | None = None,
+        context: Mapping | pd.DataFrame | None = None,
+        num_steps: int | None = None,
         **kwargs,
     ):
         """Plot time-varying posterior diagnostics.
+
+        Named draws show raw coefficients and implied parameters in separate
+        panels by default, using the same paired posterior draws. Identical
+        views share one panel. Predictors are held fixed across time.
+        ``conditions`` accepts a grid or selected scalar context
+        mappings; ``context`` provides reference values for automatic conditions.
+        ``num_steps`` must match any existing posterior trajectories. Use
+        ``scale="raw"`` or ``scale="model"`` to select one view. Condition
+        legends are hidden. Array inputs
+        are assumed to already be on their plotted scale.
 
         Parameters
         ----------
@@ -1203,6 +1248,45 @@ class Workflow:
         -------
         fig : plt.Figure - the figure instance for optional saving
         """
+        if scale not in {"both", "model", "raw"}:
+            raise ValueError("scale must be 'both', 'model', or 'raw'.")
+        if scale != "raw" and isinstance(estimates, Mapping) and isinstance(self.model, Model):
+            names = varying_parameter_names(self.model, variable_keys)
+            draws = posterior_parameters(
+                self.model,
+                estimates,
+                names,
+                conditions=conditions,
+                context=context,
+                num_steps=num_steps,
+                data_idx=data_idx,
+            )
+            truth = target_parameters(self.model, targets, names, draws)
+            if scale == "both":
+                raw_names = raw_parameter_names(self.model, names, kind="varying", selected=variable_keys is not None)
+                draws, truth = parameter_views(self.model, draws, raw_names, truth)
+                variable_names = parameter_display_names(names, variable_names, draws.parameters)
+            return plot_conditional_parameters(
+                draws,
+                targets=truth,
+                aggregation=aggregation,
+                uncertainty_fun=uncertainty_fun,
+                smoothing=smoothing,
+                smoothing_window=smoothing_window,
+                marginal=marginal,
+                dist_type=dist_type,
+                num_bins=num_bins,
+                dist_alpha=dist_alpha,
+                num_cols=num_cols,
+                alpha=alpha,
+                color=color,
+                title_fontsize=title_fontsize,
+                label_fontsize=label_fontsize,
+                tick_fontsize=tick_fontsize,
+                figsize=figsize,
+                variable_names=variable_names,
+                **kwargs,
+            )
         if variable_keys is None:
             variable_keys = self.model.local_keys
 
@@ -1244,6 +1328,13 @@ class Workflow:
         tick_fontsize: int = TICK_FONTSIZE,
         figsize: tuple[float, float] | None = None,
         data_idx: int | None = None,
+        scale: Literal["both", "model", "raw"] = "both",
+        conditions: Mapping | Sequence[Mapping] | None = None,
+        context: Mapping | pd.DataFrame | None = None,
+        variable_keys: Sequence[str] | None = None,
+        num_steps: int | None = None,
+        time_step: int | None = None,
+        time_aggregation: Callable | None = None,
         **kwargs,
     ):
         """Plot univariate marginals for one time-invariant posterior.
@@ -1251,6 +1342,16 @@ class Workflow:
         Posterior sample and step axes are flattened within the selected
         dataset and resampled without replacement to the original posterior
         draw count.
+
+        Named draws use ``scale="both"`` by default, with separate raw and
+        implied panels from the same draws; identical views share one panel.
+        Latent links and formulas are evaluated at fixed ``conditions`` using
+        reference ``context``. Condition legends are hidden. ``variable_keys`` can select resolved targets. Time-varying
+        targets require an explicit zero-based ``time_step`` or a callable
+        ``time_aggregation(values, axis=-1)``; trial and posterior uncertainty
+        are never silently pooled. ``num_steps`` sets a reconstruction horizon
+        when there are no posterior trajectories. Set ``scale="raw"`` or
+        ``scale="model"`` to select one view. Array inputs are already on their plotted scale.
 
         Parameters
         ----------
@@ -1308,16 +1409,40 @@ class Workflow:
         workflow's model. Use :meth:`plot_forest` to compare the same
         parameters across datasets.
         """
-        variable_keys = self.model.hyper_keys + self.model.shared_keys
+        if scale not in {"both", "model", "raw"}:
+            raise ValueError("scale must be 'both', 'model', or 'raw'.")
+        condition_names = {}
+        if scale != "raw" and isinstance(estimates, Mapping) and isinstance(self.model, Model):
+            selected_names = invariant_parameter_names(self.model, variable_keys)
+            estimates, targets, condition_names, variable_keys = posterior_invariant_samples(
+                self.model,
+                estimates,
+                targets,
+                variable_keys=variable_keys,
+                conditions=conditions,
+                context=context,
+                num_steps=num_steps,
+                time_step=time_step,
+                time_aggregation=time_aggregation,
+                scale=scale,
+            )
+            if scale == "both" and "variable_names" in kwargs:
+                kwargs["variable_names"] = parameter_display_names(
+                    selected_names, kwargs["variable_names"], variable_keys
+                )
+        elif variable_keys is None:
+            variable_keys = self.model.hyper_keys + self.model.shared_keys
         mixture_names = {
             name: param.names for name, param in self.model.prior.params.items() if hasattr(param, "names")
         }
+        mixture_names.update(condition_names)
 
         return plot_marginals(
             estimates=estimates,
             targets=targets,
             variable_keys=variable_keys,
             mixture_names=mixture_names,
+            condition_labels=condition_names,
             dist_type=dist_type,
             num_bins=num_bins,
             dist_alpha=dist_alpha,
@@ -1337,6 +1462,13 @@ class Workflow:
         targets: Mapping[str, np.ndarray] | np.ndarray | None = None,
         data_idx: int | None = None,
         dist_type: Literal["hist", "kde", "both"] = "hist",
+        scale: Literal["both", "model", "raw"] = "both",
+        conditions: Mapping | Sequence[Mapping] | None = None,
+        context: Mapping | pd.DataFrame | None = None,
+        variable_keys: Sequence[str] | None = None,
+        num_steps: int | None = None,
+        time_step: int | None = None,
+        time_aggregation: Callable | None = None,
         **kwargs,
     ):
         """Plot a traditional pairs plot for one time-invariant posterior.
@@ -1345,6 +1477,16 @@ class Workflow:
         and lower panels show bivariate densities. Posterior sample and step
         axes are flattened within the selected dataset and resampled to the
         original posterior draw count.
+
+        Named draws use ``scale="both"`` by default, with separate raw and
+        implied panels from the same draws; identical views share one panel.
+        Latent links and formulas are evaluated at fixed ``conditions`` using
+        reference ``context``. Condition legends are hidden. ``variable_keys`` can select resolved targets. Time-varying
+        targets require an explicit zero-based ``time_step`` or a callable
+        ``time_aggregation(values, axis=-1)``; trial and posterior uncertainty
+        are never silently pooled. ``num_steps`` sets a reconstruction horizon
+        when there are no posterior trajectories. Set ``scale="raw"`` or
+        ``scale="model"`` to select one view. Array inputs are already on their plotted scale.
 
         Parameters
         ----------
@@ -1384,10 +1526,33 @@ class Workflow:
         workflow's model. This method displays one posterior at a time; its
         sample and step axes are never pooled across datasets.
         """
-        variable_keys = self.model.hyper_keys + self.model.shared_keys
+        if scale not in {"both", "model", "raw"}:
+            raise ValueError("scale must be 'both', 'model', or 'raw'.")
+        condition_names = {}
+        if scale != "raw" and isinstance(estimates, Mapping) and isinstance(self.model, Model):
+            selected_names = invariant_parameter_names(self.model, variable_keys)
+            estimates, targets, condition_names, variable_keys = posterior_invariant_samples(
+                self.model,
+                estimates,
+                targets,
+                variable_keys=variable_keys,
+                conditions=conditions,
+                context=context,
+                num_steps=num_steps,
+                time_step=time_step,
+                time_aggregation=time_aggregation,
+                scale=scale,
+            )
+            if scale == "both" and "variable_names" in kwargs:
+                kwargs["variable_names"] = parameter_display_names(
+                    selected_names, kwargs["variable_names"], variable_keys
+                )
+        elif variable_keys is None:
+            variable_keys = self.model.hyper_keys + self.model.shared_keys
         mixture_names = {
             name: param.names for name, param in self.model.prior.params.items() if hasattr(param, "names")
         }
+        mixture_names.update(condition_names)
 
         return plot_pairs(
             estimates=estimates,
@@ -1406,6 +1571,13 @@ class Workflow:
         aggregation: Callable | None = None,
         uncertainty_fun: Literal["std", "ci", "mad", "hdi"] | Callable | None = "hdi",
         data_idx: int | Sequence[int] | None = None,
+        scale: Literal["both", "model", "raw"] = "both",
+        conditions: Mapping | Sequence[Mapping] | None = None,
+        context: Mapping | pd.DataFrame | None = None,
+        variable_keys: Sequence[str] | None = None,
+        num_steps: int | None = None,
+        time_step: int | None = None,
+        time_aggregation: Callable | None = None,
         **kwargs,
     ):
         """Compare time-invariant posteriors across datasets in a forest plot.
@@ -1413,6 +1585,16 @@ class Workflow:
         With ``aggregation=None``, each parameter has a panel whose rows are
         the selected datasets. A callable aggregates those datasets into one
         panel, with parameters on the y-axis.
+
+        Named draws use ``scale="both"`` by default, with separate raw and
+        implied panels from the same draws; identical views share one panel.
+        Latent links and formulas are evaluated at fixed ``conditions`` using
+        reference ``context``. Condition legends are hidden. ``variable_keys`` can select resolved targets. Time-varying
+        targets require an explicit zero-based ``time_step`` or a callable
+        ``time_aggregation(values, axis=-1)``; trial and posterior uncertainty
+        are never silently pooled. ``num_steps`` sets a reconstruction horizon
+        when there are no posterior trajectories. Set ``scale="raw"`` or
+        ``scale="model"`` to select one view. Array inputs are already on their plotted scale.
 
         Parameters
         ----------
@@ -1456,10 +1638,33 @@ class Workflow:
         resampled independently within each dataset before interval
         calculation.
         """
-        variable_keys = self.model.hyper_keys + self.model.shared_keys
+        if scale not in {"both", "model", "raw"}:
+            raise ValueError("scale must be 'both', 'model', or 'raw'.")
+        condition_names = {}
+        if scale != "raw" and isinstance(estimates, Mapping) and isinstance(self.model, Model):
+            selected_names = invariant_parameter_names(self.model, variable_keys)
+            estimates, targets, condition_names, variable_keys = posterior_invariant_samples(
+                self.model,
+                estimates,
+                targets,
+                variable_keys=variable_keys,
+                conditions=conditions,
+                context=context,
+                num_steps=num_steps,
+                time_step=time_step,
+                time_aggregation=time_aggregation,
+                scale=scale,
+            )
+            if scale == "both" and "variable_names" in kwargs:
+                kwargs["variable_names"] = parameter_display_names(
+                    selected_names, kwargs["variable_names"], variable_keys
+                )
+        elif variable_keys is None:
+            variable_keys = self.model.hyper_keys + self.model.shared_keys
         mixture_names = {
             name: param.names for name, param in self.model.prior.params.items() if hasattr(param, "names")
         }
+        mixture_names.update(condition_names)
 
         return plot_forest(
             estimates=estimates,

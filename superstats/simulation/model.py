@@ -9,6 +9,11 @@ import pandas as pd
 
 from superstats.prior.joint_prior import JointPrior
 from .link_function import LinkFunction
+from .conditional import (
+    joint_prior_groups,
+    parameter_bounds,
+    prior_plot_samples,
+)
 from matplotlib.figure import Figure
 from superstats.defaults import BASE_COLOR, LABEL_FONTSIZE, TICK_FONTSIZE, TITLE_FONTSIZE
 from superstats.diagnostics.plots.joint_prior import plot_joint_prior
@@ -55,7 +60,9 @@ class Model:
         forwarded through its context keyword argument.
     design_context    : sequence of str, optional, default: ()
         Context variable names routed to Formula. Variables can also be
-        included in simulator_context.
+        included in simulator_context. Every categorical predictor declared
+        by Formula must be selected here. Raw category labels remain in
+        sampled context; Workflow's default adapter encodes them for inference.
     latent_link_function : mapping, LinkFunction, callable, or None, optional
         Latent-parameter links applied to prior draws before parameter formulas
         are resolved. A mapping assigns a link per prior parameter; omitted
@@ -118,6 +125,10 @@ class Model:
         self.design_context = self._context_names(design_context, "design_context")
         self.simulator_context = self._context_names(simulator_context, "simulator_context")
         self.formula = formula
+        self.categorical = getattr(formula, "categorical", {})
+        undeclared_context = self.categorical.keys() - set(self.design_context)
+        if undeclared_context:
+            raise ValueError(f"Categorical predictors must be included in design_context: {sorted(undeclared_context)}")
         self.latent_link_function = self._normalize_link_functions(latent_link_function, "latent_link_function")
         self.formula_link_function = self._normalize_link_functions(formula_link_function, "formula_link_function")
         if self.formula is None and self.formula_link_function:
@@ -347,6 +358,14 @@ class Model:
         # representation for observations and context alike.
         missing_mask, missing_extra = None, {}
         if apply_missing:
+            # Preserve numeric missing sentinels alongside string labels. A
+            # fixed-width string array would stringify or truncate the fill.
+            generated_context = {
+                name: np.asarray(value, dtype=object)
+                if name in self.categorical and self.missing is not None
+                else value
+                for name, value in generated_context.items()
+            }
             summary_data = {**sim_data, **generated_context}
             summary_data, missing_mask, missing_extra = self._apply_missing(
                 summary_data, rng, model_params.get("p_missing")
@@ -412,8 +431,20 @@ class Model:
         label_fontsize: int = LABEL_FONTSIZE,
         tick_fontsize: int = TICK_FONTSIZE,
         figsize: tuple[float, float] | None = None,
+        scale: Literal["both", "model", "raw"] = "both",
+        conditions: Mapping | Sequence[Mapping] | None = None,
+        context: Mapping | pd.DataFrame | None = None,
+        variable_keys: Sequence[str] | None = None,
     ) -> Figure:
-        """Plot raw time-varying inference targets, without resolving formulas or context.
+        """Plot raw and implied time-varying prior draws under fixed predictor conditions.
+
+        The same ``num_trajectories`` individual draws and their average are
+        shown for each condition. Latent links precede ordered formulas;
+        formula links follow them. Conditions are held fixed over time, so
+        changing trial covariates do not introduce artificial switching.
+        By default, separate panels show raw coefficients and implied parameters
+        from the same draws. Identical views share one panel. Use ``scale="raw"``
+        or ``scale="model"`` to select one view. Condition legends are hidden.
 
         Parameters
         ----------
@@ -444,13 +475,57 @@ class Model:
         figsize          : tuple of two floats or None, optional, default: None
             Explicit figure size in inches.
 
+        scale : {"both", "model", "raw"}, default: "both"
+            Show raw and implied panels together, or select one view.
+            Transforms implemented inside the observation simulator are not inferred.
+        conditions : mapping or sequence of mappings, optional
+            Fixed predictor values per complete trajectory. A mapping forms a
+            grid; a list selects combinations. Defaults use categorical levels,
+            observed 0/1 dummy levels, and mean ± SD for continuous predictors.
+        context : mapping or pandas.DataFrame, optional
+            Reference design used to choose fixed conditions. Its trial order
+            is never plotted. Defaults to the model's configured context source.
+        variable_keys : sequence of str, optional
+            Select parameter names, including formula targets on the model scale.
+
         Returns
         -------
         fig : matplotlib.figure.Figure
             The generated figure.
         """
+        if scale not in {"both", "model", "raw"}:
+            raise ValueError("scale must be 'both', 'model', or 'raw'.")
+        if scale != "raw":
+            local, _, _, labels, _ = prior_plot_samples(
+                self,
+                num_draws=num_trajectories,
+                num_steps=num_steps,
+                conditions=conditions,
+                context=context,
+                variable_keys=variable_keys,
+                kind="varying",
+                scale=scale,
+            )
+            return plot_time_varying_prior(
+                local_params=local,
+                param_bounds=parameter_bounds(self, local),
+                condition_labels=labels,
+                num_cols=num_cols,
+                marginal=marginal,
+                dist_type=dist_type,
+                num_bins=num_bins,
+                dist_alpha=dist_alpha,
+                alpha=alpha,
+                color=color,
+                title_fontsize=title_fontsize,
+                label_fontsize=label_fontsize,
+                tick_fontsize=tick_fontsize,
+                figsize=figsize,
+            )
         samples = self._sample_inference_prior(batch_size=num_trajectories, num_steps=num_steps)
         local_params = samples["local_params"]
+        if variable_keys is not None:
+            local_params = {name: local_params[name] for name in variable_keys}
         return plot_time_varying_prior(
             local_params=local_params,
             param_bounds={},
@@ -480,8 +555,18 @@ class Model:
         label_fontsize: int = LABEL_FONTSIZE,
         tick_fontsize: int = TICK_FONTSIZE,
         figsize: tuple[float, float] | None = None,
+        scale: Literal["both", "model", "raw"] = "both",
+        conditions: Mapping | Sequence[Mapping] | None = None,
+        context: Mapping | pd.DataFrame | None = None,
+        variable_keys: Sequence[str] | None = None,
     ) -> Figure:
-        """Plot marginal distributions for time-invariant prior parameters.
+        """Plot raw and implied shared parameters, stationary formula targets, and hyperparameters.
+
+        Fixed predictor conditions are overlaid in separate colors. Hyperparameters
+        stay on their own scale and appear once. The default ``scale="both"``
+        adds separate raw and implied panels, collapsing identical views.
+        Use ``scale="raw"`` or ``scale="model"`` to select one view.
+        Condition legends are hidden.
 
         Parameters
         ----------
@@ -507,11 +592,52 @@ class Model:
         figsize        : tuple of two floats or None, optional, default: None
             Explicit figure size in inches.
 
+        scale : {"both", "model", "raw"}, default: "both"
+            Show raw and implied panels together, or select one view.
+            Transforms implemented inside the observation simulator are not inferred.
+        conditions : mapping or sequence of mappings, optional
+            Fixed predictor values per complete trajectory. A mapping forms a
+            grid; a list selects combinations. Defaults use categorical levels,
+            observed 0/1 dummy levels, and mean ± SD for continuous predictors.
+        context : mapping or pandas.DataFrame, optional
+            Reference design used to choose fixed conditions. Its trial order
+            is never plotted. Defaults to the model's configured context source.
+        variable_keys : sequence of str, optional
+            Select parameter names, including formula targets on the model scale.
+
         Returns
         -------
         fig : matplotlib.figure.Figure
             The generated figure.
         """
+        if scale not in {"both", "model", "raw"}:
+            raise ValueError("scale must be 'both', 'model', or 'raw'.")
+        if scale != "raw":
+            local, hyper, shared, condition_labels, owners = prior_plot_samples(
+                self,
+                num_draws=num_draws,
+                num_steps=num_steps,
+                conditions=conditions,
+                context=context,
+                variable_keys=variable_keys,
+                kind="invariant",
+                scale=scale,
+            )
+            return plot_time_invariant_prior(
+                hyper_params=hyper,
+                shared_params=shared,
+                condition_labels=condition_labels,
+                mixture_names={name: obj.names for name, obj in self.prior.params.items() if hasattr(obj, "names")},
+                dist_type=dist_type,
+                num_bins=num_bins,
+                dist_alpha=dist_alpha,
+                color=color,
+                num_cols=num_cols,
+                title_fontsize=title_fontsize,
+                label_fontsize=label_fontsize,
+                tick_fontsize=tick_fontsize,
+                figsize=figsize,
+            )
         samples = self._sample_inference_prior(batch_size=num_draws, num_steps=num_steps)
         return plot_time_invariant_prior(
             hyper_params=samples["hyper_params"],
@@ -543,13 +669,25 @@ class Model:
         tick_fontsize: int = TICK_FONTSIZE,
         alpha: float = 0.5,
         figsize: tuple[float, float] | None = None,
+        scale: Literal["both", "model", "raw"] = "both",
+        conditions: Mapping | Sequence[Mapping] | None = None,
+        context: Mapping | pd.DataFrame | None = None,
+        variable_keys: Sequence[str] | None = None,
     ) -> Figure:
-        """Plot raw stochastic and deterministic trajectories with invariant priors.
+        """Plot raw and implied prior trajectories, distributions, and hyperparameters.
 
         Deterministic trajectories are derived from their sampled curve
         coefficients and displayed alongside stochastic local trajectories.
-        All trajectories remain on their raw transition scale; formulas,
-        links, and simulator context are not resolved for this plot.
+        Each draw is resolved under fixed predictor conditions, preserving latent
+        links, ordered formulas, and formula links. The default ``scale="both"``
+        uses one row per observation-model parameter: its hyperparameters, raw
+        coefficients, and implied values, in that order. Panels are titled
+        "Raw" and "Implied", with the observation parameter as the row label.
+        Stationary coefficients use distributions. All panels reuse the same
+        draws; identical raw and implied views share a panel. Hyperparameters
+        appear once in their first owning row.
+        Use ``scale="raw"`` or ``scale="model"`` to select one view.
+        Condition legends are hidden.
 
         Parameters
         ----------
@@ -581,11 +719,57 @@ class Model:
         figsize          : tuple of two floats or None, optional, default: None
             Explicit figure size in inches.
 
+        scale : {"both", "model", "raw"}, default: "both"
+            Show raw and implied panels together, or select one view.
+            Transforms implemented inside the observation simulator are not inferred.
+        conditions : mapping or sequence of mappings, optional
+            Fixed predictor values per complete trajectory. A mapping forms a
+            grid; a list selects combinations. Defaults use categorical levels,
+            observed 0/1 dummy levels, and mean ± SD for continuous predictors.
+        context : mapping or pandas.DataFrame, optional
+            Reference design used to choose fixed conditions. Its trial order
+            is never plotted. Defaults to the model's configured context source.
+        variable_keys : sequence of str, optional
+            Select parameter names, including formula targets on the model scale.
+
         Returns
         -------
         fig : matplotlib.figure.Figure
             The generated figure.
         """
+        if scale not in {"both", "model", "raw"}:
+            raise ValueError("scale must be 'both', 'model', or 'raw'.")
+        if scale != "raw":
+            local, hyper, shared, condition_labels, owners = prior_plot_samples(
+                self,
+                num_draws=num_draws,
+                num_steps=num_steps,
+                conditions=conditions,
+                context=context,
+                variable_keys=variable_keys,
+                kind="joint",
+                scale=scale,
+            )
+            return plot_joint_prior(
+                local_params={name: value[:num_trajectories] for name, value in local.items()},
+                param_bounds=parameter_bounds(self, local),
+                hyper_params=hyper,
+                shared_params=shared,
+                condition_labels=condition_labels,
+                hyper_param_groups=owners,
+                parameter_groups=joint_prior_groups(self, local, hyper, shared, scale),
+                mixture_names={name: obj.names for name, obj in self.prior.params.items() if hasattr(obj, "names")},
+                marginal=marginal,
+                dist_type=dist_type,
+                num_bins=num_bins,
+                dist_alpha=dist_alpha,
+                color=color,
+                alpha=alpha,
+                title_fontsize=title_fontsize,
+                label_fontsize=label_fontsize,
+                tick_fontsize=tick_fontsize,
+                figsize=figsize,
+            )
         samples = self._sample_inference_prior(
             batch_size=num_draws,
             num_steps=num_steps,
@@ -600,6 +784,9 @@ class Model:
             param_bounds={},
             mixture_names={name: obj.names for name, obj in self.prior.params.items() if hasattr(obj, "names")},
             hyper_param_groups=samples["hyper_param_groups"],
+            parameter_groups=joint_prior_groups(
+                self, local_params, samples["hyper_params"], samples["shared_params"], scale
+            ),
             marginal=marginal,
             dist_type=dist_type,
             num_bins=num_bins,
@@ -830,8 +1017,8 @@ class Model:
         _, contexts = self._generate_context(batch_size, num_steps)
         return contexts
 
-    @staticmethod
     def _coerce_fixed_context(
+        self,
         context: Mapping[str, Any] | pd.DataFrame,
         batch_size: int,
         num_steps: int,
@@ -853,7 +1040,7 @@ class Model:
 
         result = {}
         for name, value in values.items():
-            array = np.asarray(value)
+            array = np.asarray(value, dtype=object if name in self.categorical else None)
             if array.ndim == 0:
                 result[name] = np.full((batch_size, num_steps), array.item(), dtype=array.dtype)
                 continue

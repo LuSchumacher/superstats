@@ -47,19 +47,27 @@ def plot_joint_prior(
     tick_fontsize: int = TICK_FONTSIZE,
     alpha: float = 0.5,
     figsize: tuple[float, float] | None = None,
+    condition_labels: Mapping[str, Sequence[str]] | None = None,
+    parameter_groups: Mapping[str, Mapping[str, Sequence[str]]] | None = None,
 ) -> plt.Figure:
     """Plot joint prior diagnostics.
 
     Combines hyperparameter distributions, shared-parameter distributions,
-    and time-varying trajectories. Time-varying parameters each have a
-    dedicated row; shared distributions fill equal-width panels across
-    subsequent rows, with parameter names as panel titles.
+    and time-varying trajectories. With `parameter_groups`, each observation-
+    model parameter has one row: hyperparameters first, then panels titled
+    "Raw" and "Implied". Several raw coefficients occupy adjacent panels in
+    the same row, with coefficient names below the axes. Stationary quantities
+    use distributions in place of trajectories.
+
+    Without grouping metadata, each trajectory retains its own row and shared
+    distributions fill subsequent rows.
 
     Parameters
     ----------
     local_params   : dict of np.ndarray
         Mapping from parameter names to trajectory arrays with shape
-        ``(num_trajectories, num_steps)``.
+        (num_trajectories, num_steps), or
+        (num_trajectories, num_conditions, num_steps).
     hyper_params   : dict of np.ndarray
         Mapping from hyperparameter names to sample arrays.
     shared_params  : dict of np.ndarray
@@ -92,6 +100,16 @@ def plot_joint_prior(
         Opacity of individual trajectories.
     figsize        : tuple of two floats or None, optional, default: None
         Optional figure size in inches.
+    condition_labels : mapping of str to sequence of str or None, optional, default: None
+        Labels identifying conditional trajectory and distribution groups.
+        Condition legends are hidden.
+    parameter_groups : mapping or None, optional, default: None
+        Observation-parameter row names mapped to dictionaries with "hyper",
+        "raw", and "implied" sample-key lists. Hyper keys refer to `hyper_params`;
+        view keys refer to `local_params` or `shared_params`. A key included in
+        both views is rendered once with title "Raw / Implied". All shared
+        samples included in groups are rendered in their owning parameter row.
+        Only sample keys referenced by the grouping metadata are plotted.
 
     Returns
     -------
@@ -104,232 +122,228 @@ def plot_joint_prior(
         If no plottable parameters are found or ``dist_type`` is invalid.
     """
 
-    hyper_owners = [name for name, keys in (hyper_param_groups or {}).items() if keys]
-    all_param_names = list(dict.fromkeys(list(local_params.keys()) + hyper_owners))
+    if parameter_groups is not None:
+        row_specs = []
+        for name, group in parameter_groups.items():
+            raw, implied = list(group.get("raw", ())), list(group.get("implied", ()))
+            panels = [(key, "Raw / Implied" if key in implied else "Raw", "raw") for key in raw]
+            panels += [(key, "Implied", "implied") for key in implied if key not in raw]
+            row_specs.append(
+                {
+                    "name": name,
+                    "hyper_cols": [(key, hyper_params[key]) for key in group.get("hyper", ())],
+                    "panels": panels,
+                }
+            )
+        shared_items = []
+    else:
+        hyper_owners = [name for name, keys in (hyper_param_groups or {}).items() if keys]
+        names = list(dict.fromkeys([*local_params, *hyper_owners]))
+        row_specs = []
+        for name in names:
+            keys = (
+                hyper_param_groups.get(name, ())
+                if hyper_param_groups is not None
+                else [key for key in hyper_params if key.startswith(name + "_")]
+            )
+            row_specs.append(
+                {
+                    "name": name,
+                    "hyper_cols": [(key, hyper_params[key]) for key in keys if key in hyper_params],
+                    "panels": [(name, "Trajectory", "implied")] if name in local_params else [],
+                }
+            )
+        shared_items = list(shared_params.items())
 
-    row_specs = []
-
-    for param_name in all_param_names:
-        if hyper_param_groups is not None:
-            owned_keys = hyper_param_groups.get(param_name, [])
-            hyper_cols = [(key, np.asarray(hyper_params[key])) for key in owned_keys if key in hyper_params]
-        else:
-            hyper_cols = [
-                (key, np.asarray(value)) for key, value in hyper_params.items() if key.startswith(param_name + "_")
-            ]
-
-        row_specs.append(
-            {
-                "name": param_name,
-                "hyper_cols": hyper_cols,
-                "local": (np.asarray(local_params[param_name]) if param_name in local_params else None),
-            }
-        )
-
-    if not row_specs and not shared_params:
+    if not row_specs and not shared_items:
         raise ValueError("No plottable parameters found.")
     max_hyper = max((len(row["hyper_cols"]) for row in row_specs), default=0)
-    num_cols = max_hyper + 1
-    # A trajectory cell has twice the width of a distribution cell.
-    shared_num_cols = num_cols + 1 if row_specs else get_default_num_cols(len(shared_params))
-    shared_num_rows = int(np.ceil(len(shared_params) / shared_num_cols))
+    max_raw = max((sum(role == "raw" for _, _, role in row["panels"]) for row in row_specs), default=0)
+    max_implied = max((sum(role == "implied" for _, _, role in row["panels"]) for row in row_specs), default=0)
+    if parameter_groups is None:
+        max_implied = 1
+    num_cols = max(max_hyper + max_raw + max_implied, 1)
+    widths = [1.0] * max_hyper
+    for role, count in (("raw", max_raw), ("implied", max_implied)):
+        role_widths = [1.0] * count
+        for row in row_specs:
+            keys = [key for key, _, panel_role in row["panels"] if panel_role == role]
+            for index, key in enumerate(keys):
+                if key in local_params:
+                    role_widths[index] = 2.0
+        widths.extend(role_widths)
+    if not widths:
+        widths = [1.0]
+    shared_num_cols = num_cols + 1 if row_specs else get_default_num_cols(len(shared_items))
+    shared_num_rows = int(np.ceil(len(shared_items) / shared_num_cols))
     num_rows = len(row_specs) + shared_num_rows
-
     plot_figsize, legend_bottom, legend_y = get_layout(
         num_rows,
         num_cols if row_specs else shared_num_cols,
         figsize,
         col_width=4.0,
-        row_height=BASE_ROW_HEIGHT,
+        row_height=BASE_ROW_HEIGHT + (0.4 if parameter_groups is not None else 0),
     )
-
-    if figsize is None and row_specs:
-        label_font = FontProperties(
-            family=plt.rcParams["font.family"],
-            size=label_fontsize,
-        )
+    max_label_width = 0.0
+    if row_specs:
+        label_font = FontProperties(family=plt.rcParams["font.family"], size=label_fontsize)
         max_label_width = (
-            max(
-                TextPath(
-                    (0.0, 0.0),
-                    row["name"],
-                    prop=label_font,
-                )
-                .get_extents()
-                .width
-                for row in row_specs
-            )
-            / 72.0
+            max(TextPath((0, 0), row["name"], prop=label_font).get_extents().width for row in row_specs) / 72
         )
-        plot_figsize = (
-            plot_figsize[0] + max_label_width + 0.25,
-            plot_figsize[1],
-        )
-
+        if figsize is None:
+            plot_figsize = (plot_figsize[0] + max_label_width + 0.25, plot_figsize[1])
     fig = plt.figure(figsize=plot_figsize)
+    label_columns = int(parameter_groups is not None)
+    grid_widths = [max_label_width / 2 + 0.15, *widths] if label_columns else widths
+    gs = gridspec.GridSpec(num_rows, num_cols + label_columns, width_ratios=grid_widths, figure=fig)
 
-    gs = gridspec.GridSpec(
-        num_rows,
-        num_cols,
-        width_ratios=[1.0] * (num_cols - 1) + [2.0],
-        figure=fig,
-    )
+    def plot_distribution(ax, name, values, owner):
+        """Draw scalar, conditional, or vector distributions in a prior panel.
 
-    axes = np.array(
-        [[fig.add_subplot(gs[row_i, col_i]) for col_i in range(num_cols)] for row_i in range(len(row_specs))]
-    )
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes
+            Axis receiving the distributions.
+        name : str
+            Sample key used to find condition or mixture-component labels.
+        values : np.ndarray
+            Scalar samples shaped (S,), or grouped samples shaped (S, K).
+        owner : str
+            Row parameter used as a fallback for mixture-component names.
 
-    for row_i, spec in enumerate(row_specs):
-        param_name = spec["name"]
-        hyper_cols = spec["hyper_cols"]
-        local_arr = spec["local"]
-        prefix = param_name + "_"
-
-        for col_i, (label, values) in enumerate(hyper_cols):
-            ax = axes[row_i, col_i]
-            arr = np.asarray(values)
-
-            if arr.ndim == 2 and arr.shape[1] > 1:
-                panel_dist_alpha = resolve_dist_alpha(dist_alpha, arr.shape[1])
-                component_names = (mixture_names.get(param_name) if mixture_names else None) or [
-                    f"component {k}" for k in range(arr.shape[1])
-                ]
-
-                for k in range(arr.shape[1]):
-                    plot_dist(
-                        arr[:, k],
-                        ax=ax,
-                        dist_type=dist_type,
-                        color=CATEGORICAL_PALETTE[k % len(CATEGORICAL_PALETTE)],
-                        num_bins=num_bins,
-                        alpha=panel_dist_alpha,
-                        label=component_names[k],
-                    )
-
-                ax.legend(
-                    fontsize=tick_fontsize,
-                    framealpha=0.0,
-                )
-            else:
-                panel_dist_alpha = resolve_dist_alpha(dist_alpha, 1)
-                plot_dist(
-                    arr.reshape(-1),
-                    ax=ax,
-                    dist_type=dist_type,
-                    color=color,
-                    num_bins=num_bins,
-                    alpha=panel_dist_alpha,
-                )
-
-            short_label = label[len(prefix) :] if label.startswith(prefix) else label
-
-            ax.set_title(
-                short_label,
-                fontsize=title_fontsize,
-                pad=15,
+        Notes
+        -----
+        Mixture legends are retained; fixed-condition legends are hidden.
+        """
+        values = np.asarray(values)
+        labels = (condition_labels or {}).get(name)
+        components = values.shape[1] if values.ndim == 2 else 1
+        mixture_owner = name.split("_mixture_weights")[0]
+        component_names = (
+            labels
+            or (mixture_names or {}).get(mixture_owner)
+            or (mixture_names or {}).get(owner)
+            or [f"component {i}" for i in range(components)]
+        )
+        for component in range(components):
+            component_color = (
+                color
+                if components == 1
+                else CATEGORICAL_PALETTE[component]
+                if components <= len(CATEGORICAL_PALETTE)
+                else plt.get_cmap("tab20")(component % 20)
             )
-            ax.set_xlabel("")
+            plot_dist(
+                values[:, component] if values.ndim == 2 else values.reshape(-1),
+                ax=ax,
+                dist_type=dist_type,
+                num_bins=num_bins,
+                color=component_color,
+                alpha=resolve_dist_alpha(dist_alpha, components),
+                label=component_names[component],
+            )
+        if components > 1 and not labels:
+            ax.legend(fontsize=tick_fontsize, framealpha=0.0)
+
+    for row_index, spec in enumerate(row_specs):
+        if label_columns:
+            label_ax = fig.add_subplot(gs[row_index, 0])
+            label_ax.axis("off")
+            label_ax.text(
+                1,
+                0.5,
+                spec["name"],
+                transform=label_ax.transAxes,
+                ha="right",
+                va="center",
+                fontsize=label_fontsize,
+            )
+        axes = [fig.add_subplot(gs[row_index, column + label_columns]) for column in range(num_cols)]
+        active = []
+        for column, (key, values) in enumerate(spec["hyper_cols"]):
+            ax = axes[column]
+            plot_distribution(ax, key, values, spec["name"])
+            prefix = spec["name"] + "_"
+            ax.set_title(key.removeprefix(prefix), fontsize=title_fontsize, pad=15)
+            active.append(ax)
+        positions = {"raw": max_hyper, "implied": max_hyper + max_raw}
+        used = set(range(len(spec["hyper_cols"])))
+        for key, title, role in spec["panels"]:
+            column = positions[role]
+            positions[role] += 1
+            used.add(column)
+            ax = axes[column]
+            if key in local_params:
+                marginal_ax = None
+                if marginal:
+                    sub = ax.get_subplotspec().subgridspec(1, 2, width_ratios=[4.2, 0.8], wspace=0)
+                    ax.axis("off")
+                    ax = fig.add_subplot(sub[0])
+                    marginal_ax = fig.add_subplot(sub[1])
+                values = np.asarray(local_params[key])
+                groups = values[:, None, :] if values.ndim == 2 else values
+                labels = (condition_labels or {}).get(key, [None] * groups.shape[1])
+                for group in range(groups.shape[1]):
+                    group_color = (
+                        color
+                        if groups.shape[1] == 1
+                        else CATEGORICAL_PALETTE[group]
+                        if groups.shape[1] <= len(CATEGORICAL_PALETTE)
+                        else plt.get_cmap("tab20")(group % 20)
+                    )
+                    for trajectory in groups[:, group]:
+                        ax.plot(trajectory, alpha=alpha, color=group_color, linewidth=1.5)
+                    ax.plot(groups[:, group].mean(axis=0), color=group_color, linewidth=2.5, label=labels[group])
+                    if marginal_ax is not None:
+                        plot_dist(
+                            groups[:, group],
+                            ax=marginal_ax,
+                            dist_type=dist_type,
+                            num_bins=num_bins,
+                            color=group_color,
+                            orientation="vertical",
+                            alpha=resolve_dist_alpha(dist_alpha, groups.shape[1]),
+                            hide_axis=True,
+                        )
+                if param_bounds and key in param_bounds:
+                    ax.set_ylim(param_bounds[key])
+                if marginal_ax is not None:
+                    marginal_ax.set_ylim(ax.get_ylim())
+            else:
+                plot_distribution(ax, key, shared_params[key], spec["name"])
+            ax.set_title(title, fontsize=title_fontsize, pad=15)
+            base = key.removesuffix(" [raw]").removesuffix(" [implied]")
+            ax.set_xlabel(
+                base if parameter_groups is not None and base != spec["name"] else "", fontsize=label_fontsize
+            )
+            active.append(ax)
+        for column, ax in enumerate(axes):
+            if column not in used:
+                ax.axis("off")
+        for ax in active:
             ax.set_ylabel("")
             ax.grid(alpha=0.3)
             ax.tick_params(labelsize=tick_fontsize)
-
-        ax_cell = axes[row_i, num_cols - 1]
-
-        if marginal:
-            sub = ax_cell.get_subplotspec().subgridspec(
-                1,
-                2,
-                width_ratios=[4.2, 0.8],
-                wspace=0.0,
-            )
-            ax_traj = fig.add_subplot(sub[0])
-            ax_marginal = fig.add_subplot(sub[1])
-            ax_cell.axis("off")
-        else:
-            ax_traj = ax_cell
-            ax_marginal = None
-
-        if local_arr is not None:
-            for trajectory in local_arr:
-                ax_traj.plot(
-                    trajectory,
-                    alpha=alpha,
-                    color=color,
-                    linewidth=1.5,
-                )
-
-            ax_traj.plot(
-                local_arr.mean(axis=0),
-                color=color,
-                linewidth=2.5,
-                alpha=1.0,
+        if active and not label_columns:
+            active[0].set_ylabel(
+                spec["name"],
+                rotation=0,
+                ha="right",
+                va="center",
+                fontsize=label_fontsize,
+                labelpad=Y_LABEL_PAD,
             )
 
-            if param_bounds and param_name in param_bounds:
-                ax_traj.set_ylim(param_bounds[param_name])
-
-            ax_traj.set_title(
-                "Trajectory",
-                fontsize=title_fontsize,
-                pad=15,
-            )
-            ax_traj.set_xlabel("")
-            ax_traj.grid(alpha=0.3)
-            ax_traj.tick_params(labelsize=tick_fontsize)
-
-            if ax_marginal is not None:
-                panel_dist_alpha = resolve_dist_alpha(dist_alpha, 1)
-                plot_dist(
-                    local_arr,
-                    ax=ax_marginal,
-                    dist_type=dist_type,
-                    color=color,
-                    orientation="vertical",
-                    num_bins=num_bins,
-                    alpha=panel_dist_alpha,
-                    hide_axis=True,
-                )
-                ax_marginal.set_ylim(ax_traj.get_ylim())
-        else:
-            ax_traj.axis("off")
-
-            if ax_marginal is not None:
-                ax_marginal.axis("off")
-
-        for col_i in range(
-            len(hyper_cols),
-            num_cols - 1,
-        ):
-            axes[row_i, col_i].axis("off")
-
-        row_label_ax = axes[row_i, 0] if hyper_cols else ax_traj
-        row_label_ax.set_ylabel(
-            param_name,
-            rotation=0,
-            ha="right",
-            va="center",
-            fontsize=label_fontsize,
-            labelpad=Y_LABEL_PAD,
-        )
-
-    shared_items = list(shared_params.items())
     for shared_row in range(shared_num_rows):
-        sub = gs[len(row_specs) + shared_row, :].subgridspec(1, shared_num_cols, wspace=2 * WSPACE)
-        for col_i in range(shared_num_cols):
-            ax = fig.add_subplot(sub[col_i])
-            index = shared_row * shared_num_cols + col_i
+        sub = gs[len(row_specs) + shared_row, label_columns:].subgridspec(1, shared_num_cols, wspace=2 * WSPACE)
+        for column in range(shared_num_cols):
+            ax = fig.add_subplot(sub[column])
+            index = shared_row * shared_num_cols + column
             if index >= len(shared_items):
                 ax.axis("off")
                 continue
             name, values = shared_items[index]
-            plot_dist(
-                np.asarray(values).reshape(-1),
-                ax=ax,
-                dist_type=dist_type,
-                color=color,
-                num_bins=num_bins,
-                alpha=resolve_dist_alpha(dist_alpha, 1),
-            )
+            plot_distribution(ax, name, values, name)
             ax.set_title(name, fontsize=title_fontsize, pad=15)
             ax.set_xlabel("")
             ax.set_ylabel("")
@@ -338,20 +352,8 @@ def plot_joint_prior(
 
     fig.legend(
         handles=[
-            mlines.Line2D(
-                [],
-                [],
-                color=color,
-                linewidth=2.5,
-                label="Average",
-            ),
-            mlines.Line2D(
-                [],
-                [],
-                color=color,
-                linewidth=2.0,
-                label="Individual",
-            ),
+            mlines.Line2D([], [], color=color, linewidth=2.5, label="Average"),
+            mlines.Line2D([], [], color=color, linewidth=2.0, label="Individual"),
         ],
         loc="lower center",
         ncol=2,
@@ -359,14 +361,11 @@ def plot_joint_prior(
         framealpha=0.0,
         bbox_to_anchor=(0.5, legend_y),
     )
-
     fig.tight_layout()
     fig.subplots_adjust(
         bottom=legend_bottom,
-        hspace=JOINT_HSPACE,
+        hspace=JOINT_HSPACE + (0.2 if parameter_groups is not None else 0),
         wspace=WSPACE,
     )
-
     sns.despine()
-
     return fig

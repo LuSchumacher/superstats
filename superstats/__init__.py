@@ -7,7 +7,7 @@ from .approximators import CompositeApproximator, MarginalApproximator, JointApp
 from .prior import JointPrior, Prior
 from .simulation import Model, LinkFunction
 from .workflow import Workflow
-from .simulation import ContextSimulator, Formula
+from .simulation import Categorical, ContextSimulator, Formula
 
 _logging.basicConfig(level=_logging.INFO)
 _logging.getLogger(__name__).setLevel(_logging.INFO)
@@ -29,6 +29,7 @@ __all__ = [
     "Workflow",
     "ContextSimulator",
     "Formula",
+    "Categorical",
 ]
 
 del _logging

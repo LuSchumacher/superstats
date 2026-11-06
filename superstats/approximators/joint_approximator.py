@@ -57,7 +57,6 @@ class JointApproximator(CompositeApproximator):
 
     def __init__(
         self,
-        *,
         varying_inference_network="coupling",
         invariant_inference_network="coupling",
         summary_network="recurrent",

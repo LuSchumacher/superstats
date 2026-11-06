@@ -10,6 +10,15 @@ from matplotlib.axes import Axes
 from superstats.defaults import DIST_ALPHA, OVERLAY_DIST_ALPHA
 
 
+def format_condition_label(condition: Mapping) -> str:
+    """Format fixed predictor values as a comma-separated plot label."""
+    parts = []
+    for name, value in condition.items():
+        label = f"{value:.3g}" if isinstance(value, (float, np.floating)) else str(value)
+        parts.append(f"{name}={label}")
+    return ", ".join(parts) or "Parameter"
+
+
 def prepare_time_invariant_data(
     estimates: Mapping[str, np.ndarray] | np.ndarray,
     targets: Mapping[str, np.ndarray] | np.ndarray | None,

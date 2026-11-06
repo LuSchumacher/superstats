@@ -9,6 +9,7 @@ from .cognitive.cdm import sample_cdm
 from .cognitive.cpt import sample_cpt
 from .context.context_simulator import ContextSimulator
 from .formula import Formula
+from .categorical import Categorical
 
 from superstats.simulation.link_function import LinkFunction
 
@@ -23,4 +24,5 @@ __all__ = [
     "sample_cpt",
     "ContextSimulator",
     "Formula",
+    "Categorical",
 ]
