@@ -8,7 +8,7 @@ This separation prevents a common mistake: a plausible posterior cannot rescue a
 
 | Stage | Question | Method |
 |---|---|---|
-| Before inference | Are stochastic trajectories plausible on the inference scale? | `model.plot_time_varying_prior()` |
+| Before inference | What parameter trajectories does the prior imply within each condition? | `model.plot_time_varying_prior()` |
 | Before inference | Are shared parameters and transition hyperparameters plausible? | `model.plot_time_invariant_prior()` |
 | Before inference | Are all inferred quantities jointly plausible? | `model.plot_joint_prior()` |
 | Before inference | Does the complete model produce plausible observations? | `model.plot_push_forward()` |
@@ -17,13 +17,14 @@ This separation prevents a common mistake: a plausible posterior cannot rescue a
 | After inference | What happens at selected steps? | `workflow.recovery_at_steps()`, `calibration_at_steps()`, `z_score_contraction_at_steps()` |
 | After inference | Are time-invariant parameters recovered and calibrated? | `workflow.verify_time_invariant()` |
 | After inference | What do fitted posteriors look like? | `workflow.plot_time_varying_posterior()`, `plot_marginals()`, `plot_pairs()`, `plot_forest()` |
+| After inference | What parameter trajectories does the posterior imply within each condition? | `workflow.plot_time_varying_posterior()` |
 | After inference | Can posterior draws reproduce the observations? | `workflow.resimulate()` and `sup.diagnostics.plot_posterior_resimulation()` |
 
 No single plot validates a model. Prior checks assess the specification, simulation-based checks assess amortized inference over the prior, posterior plots describe particular fitted datasets, and posterior predictive checks assess implications on the observation scale.
 
 ### A practical order
 
-1. Check raw trajectory and coefficient priors with the prior plotting methods.
+1. Check raw and implied parameter priors with the prior plotting methods.
 2. Check observable implications with `model.plot_push_forward()`.
 3. Train the approximator and inspect `workflow.plot_history()`.
 4. Run recovery and calibration on fresh prior-predictive simulations.
@@ -72,13 +73,97 @@ print("Time-varying targets:", model.local_keys)
 print("Time-invariant targets:", model.hyper_keys + model.shared_keys)
 ```
 
+## Parameter trajectories at fixed predictor values
+
+Use `model.plot_time_varying_prior()` to inspect raw coefficients alongside implied parameters. It preserves the prior
+plotting style: individual draws with a thicker average line, one color per
+condition. Every draw is reused across conditions. Marginal panels use the
+same resolved draws and colors.
+
+For `v = v_0 + b_v * difficulty` with a random-walk `v_0`, the following plots
+one set of trajectories for `v_0` and another for `v_0 + b_v`. Difficulty stays
+constant for each entire trajectory, so trial-to-trial changes in the design
+do not create artificial switches in the plotted parameter.
+
+```python
+fig = model.plot_time_varying_prior(
+    variable_keys=["v"],
+    num_trajectories=20,
+    num_steps=100,
+    conditions={"difficulty": [0, 1]},
+)
+```
+
+With `conditions=None`, relevant categorical predictors use all declared levels,
+numeric 0/1 dummies use both observed levels, and continuous predictors use their
+mean and mean ± one standard deviation, clipped to the reference range. Supply
+`context` as a mapping or DataFrame to choose those values from a particular
+design. Otherwise the model's configured context source is used. An optional
+`missing_mask` excludes masked reference values. The reference trial ordering is
+not plotted. Predictors unrelated to the selected parameter are held fixed.
+
+For interactions, a mapping forms a grid of conditions. To select only particular
+combinations, supply a list instead:
+
+```python
+fig = model.plot_time_varying_prior(
+    variable_keys=["v"],
+    conditions=[
+        {"difficulty": 0, "condition": "neutral"},
+        {"difficulty": 1, "condition": "accuracy"},
+    ],
+)
+```
+
+Omitted predictors are held at their categorical reference, zero for observed
+0/1 dummies, or their numeric mean. Conditions use different colors; condition legends are currently hidden.
+Automatic grids exceeding 12 groups require an explicit selection.
+
+Posterior plots use the same conditions and the same resolution order, showing
+medians and the existing uncertainty intervals (HDI by default). Optional individual draws can be
+overlaid. Draws remain paired across conditions; deterministic transitions are
+reconstructed from their posterior coefficient draws, without sampling new
+parameters or observations.
+
+```python
+fig = workflow.plot_time_varying_posterior(
+    estimates=posterior,
+    variable_keys=["v"],
+    conditions={"difficulty": [0, 1]},
+    data_idx=0,
+    num_trajectories=10,
+    uncertainty_fun="hdi",
+)
+```
+
+For continuous defaults, pass the same reference `context` to prior and posterior
+plots to compare the same conditions. Posterior trial counts come from local
+trajectories, then reference context, or an explicit `num_steps`. Trajectories
+are never extrapolated.
+
+Both methods apply latent links, ordered formulas, and formula links separately
+for every draw before plotting. The scale is the resolved simulator input:
+transformations inside an observation simulator are not inferred. For example,
+the RDM's `a_base` remains a boundary predictor because its softplus transform
+is internal to the RDM. All seven parameter plotting methods default to `scale="both"`:
+raw coefficients and implied parameters get separate panels labeled `[raw]` and
+`[implied]`, using the same draws. Identical views share a single panel.
+Hyperparameters appear once on their own scale. Use `scale="raw"` for coefficients
+alone or `scale="model"` for the implied view alone.
+
+For `mu = b0 + b1 * condition`, a dynamic `b1` therefore gets its own raw trajectory
+panel alongside the implied `mu` curves for fixed condition values. A latent link
+on `b1` is applied before the formula; a formula link on `mu` is applied afterward.
+The raw panel shows `b1` before either operation. Posterior targets follow the same
+transformations as their corresponding panels.
+
 ## Before inference: diagnose the model
 
-Run model diagnostics before spending time on training. The three prior plots show inference targets on their raw inference scale. They do not resolve formulas or context, apply `LinkFunction` objects, or call the observation simulator. The push-forward plot then checks the complete model after those operations have been applied.
+Run model diagnostics before spending time on training. The three prior plots show raw coefficients alongside implied parameters after configured links and formulas at fixed predictor conditions. They do not call the observation simulator. Set `scale="raw"` to inspect unlinked coefficients. The push-forward plot then checks the complete model after those operations have been applied.
 
 ### Time-varying prior trajectories
 
-`plot_time_varying_prior()` displays stochastic local trajectories and optional marginal distributions. Inspect their starting values, variability, smoothness, drift, jumps, and behavior near the beginning and end of the sequence. Because it shows the raw inference scale, bounded simulator values are checked later with `plot_push_forward()`.
+`plot_time_varying_prior()` displays raw and implied stochastic and deterministic trajectories, with individual draws, averages, and optional marginal distributions. Inspect their starting values, variability, smoothness, drift, jumps, and behavior near the beginning and end of the sequence. Each condition uses the same draws with predictors held constant over time; `plot_push_forward()` checks the resulting observations.
 
 ```python
 fig = model.plot_time_varying_prior(
@@ -89,7 +174,7 @@ fig = model.plot_time_varying_prior(
 
 ### Time-invariant priors
 
-`plot_time_invariant_prior()` displays shared parameters and inferred transition hyperparameters, such as the random-walk innovation scale.
+`plot_time_invariant_prior()` displays raw and linked shared parameters, stationary formula targets by condition, and inferred transition hyperparameters on their own scale.
 
 ```python
 fig = model.plot_time_invariant_prior(
@@ -100,7 +185,7 @@ fig = model.plot_time_invariant_prior(
 
 ### Joint inference prior
 
-`plot_joint_prior()` combines both views. It also constructs deterministic trajectories from sampled curve coefficients, making it the most complete check of the quantities learned by the posterior approximator. Formula-derived parameters, fixed parameters, simulator defaults, and context do not appear because they are not separate inference targets.
+`plot_joint_prior()` uses one row per observation-model parameter, labeled with its name (for example, `v`). Each row shows hyperparameter distributions first, then panels titled **Raw** and **Implied**. Formula coefficients stay in their target parameter's row; multiple coefficients have separate Raw panels labeled with their coefficient names. Stationary coefficients and targets use distributions in the same row. Fixed conditions use different colors, and all views reuse the same draws. Identical raw and implied views share a panel. Use `scale="raw"` or `scale="model"` to show only one view.
 
 ```python
 fig = model.plot_joint_prior(

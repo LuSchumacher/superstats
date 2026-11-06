@@ -10,6 +10,7 @@ The notebooks are stored in the repository's [examples directory](https://github
 |---|---|
 | [Workflow demo](https://github.com/LuSchumacher/superstats/blob/main/examples/minimal_workflow_demo.ipynb) | Short path from prior to posterior |
 | [Marginal versus joint smoothing](https://github.com/LuSchumacher/superstats/blob/main/examples/joint_vs_marginal.ipynb) | Compact comparison of the two trajectory approximations |
+| [Context and regressors](https://github.com/LuSchumacher/superstats/blob/main/examples/context_and_regression.ipynb) | Short examples of simulator context, design context, continuous and categorical formulas, and interactions |
 
 
 ## Case Studies

@@ -1,5 +1,9 @@
 # Context
 
+For short examples, see [Context and regressors](https://github.com/LuSchumacher/superstats/blob/main/examples/context_and_regression.ipynb).
+It shows simulator context, design context, continuous and categorical formulas,
+and their interactions.
+
 Context represents variables that are defined outside the model parameters but
 vary across trials, datasets, or experimental conditions. Examples include
 stimulus difficulty, reward, condition labels, available options, and the index
@@ -253,10 +257,113 @@ not $\beta_0$, and coefficient priors should be chosen accordingly.
 
 Interactions can be written directly, for example
 `"a = a_0 + b_a * difficulty + b_interaction * difficulty * reward"`.
-Categorical predictors must be supplied as named, pre-encoded dummy columns
-with a fixed reference level. Superstats does not implicitly standardize
-predictors or generate random design columns. Use the same coding and scaling
-during simulation and inference.
+Categorical predictors can be declared with `sup.Categorical` and used through
+`C(...)` terms, as shown below. Superstats does not implicitly standardize
+predictors or generate random design columns. Use the same scaling during
+simulation and inference.
+
+### Categorical predictors
+
+Supply one context variable with its original category labels. A fixed schema
+declares every possible level and the reference category; `C(...)` associates
+each non-reference level with an effect. No dummy columns need to be created.
+Numeric 0/1 dummy predictors still work directly, for example
+`"v = v_0 + b_dummy * dummy"`, without `C(...)` or a categorical declaration.
+
+```python
+condition_formula = sup.Formula(
+    ["v = v_0 + C(condition, low=b_low, high=b_high)"],
+    categorical={
+        "condition": sup.Categorical(
+            levels=["control", "low", "high"],
+            reference="control",
+        ),
+    },
+)
+
+condition_prior = sup.JointPrior(
+    v_0=sup.Prior("normal", loc=0.0, scale=1.0),
+    b_low=sup.Prior("normal", loc=0.0, scale=0.5),
+    b_high=sup.Prior("normal", loc=0.0, scale=0.5),
+)
+
+condition_model = sup.Model(
+    prior=condition_prior,
+    simulator=lambda v: {"observation": v},
+    formula=condition_formula,
+    context_simulator={"condition": ["control", "low", "high", "low"]},
+    design_context=("condition",),
+    missing=None,
+)
+```
+
+The resulting predictor is `v_0` for control trials, `v_0 + b_low` for low
+trials, and `v_0 + b_high` for high trials. Treatment coding is currently the
+supported regression coding: the reference contributes zero, and every other
+level requires exactly one effect. `C(...)` evaluates to the selected effect
+at each trial. With a formula link, these differences are on the predictor
+scale, before the link is applied.
+
+Effects can be numeric constants or arithmetic expressions involving named
+coefficients. Specify coefficients in `JointPrior` as usual: they can be fixed,
+inferred once per dataset, or time-varying transitions independently for each
+level. Effects can differ between targets while sharing the same predictor
+schema, for example:
+
+```python
+condition_formula = sup.Formula(
+    [
+        "v = v_0 + C(condition, low=b_v_low, high=b_v_high)",
+        "a = a_0 + C(condition, low=b_a_low, high=b_a_high)",
+    ],
+    categorical={
+        "condition": sup.Categorical(["control", "low", "high"], reference="control"),
+    },
+)
+```
+
+For numeric labels, Boolean labels, or strings that are not Python keyword
+argument names, pass a literal mapping instead:
+
+```python
+numeric_formula = sup.Formula(
+    ["v = v_0 + C(condition, {-1: b_low, 2: b_high})"],
+    categorical={"condition": sup.Categorical([-1, 0, 2], reference=0)},
+)
+```
+
+Numeric labels are treated as nominal categories. Levels must be at least two
+distinct strings, finite numbers, or Booleans of the same kind. The schema is
+immutable, its reference is explicit, and its level ordering stays fixed even
+when a batch contains only a subset of levels. Unknown or missing labels raise
+an error; they are never silently treated as the reference. Declared categorical
+predictors must appear in `design_context` and must be used through `C(...)`
+in formulas. Each declaration must be used, and formula targets cannot
+overwrite categorical context.
+
+Ordinary arithmetic composes with categorical terms. For example,
+`"v = v_0 + C(condition, low=b_low, high=b_high) * difficulty"` specifies
+condition-specific slopes relative to a zero reference slope. Multiplying two
+`C(...)` terms gives a product of their effects. To estimate unrestricted
+interactions, give the level combinations independent coefficients, for example
+`C(a, treatment=C(b, active=b_interaction))` for two binary predictors. This
+does not implicitly add main effects.
+
+`Model.sample()` returns raw category labels under the original context key.
+`Workflow.prepare_data()` accepts and validates those same labels in empirical
+DataFrame columns. The default adapter supplies the network with a full one-hot
+vector in declared level order, including the reference level; these features
+are separate from the treatment-coded regression effects. Adapter checkpoints
+preserve the schema. A custom adapter must provide its own categorical encoding.
+
+When observations are missing, context labels at those trials are masked using
+the model's missing-value convention. The default adapter ignores labels only
+at explicitly masked positions and encodes them as all-zero vectors. Unknown
+labels on observed trials remain errors. For posterior prediction, pass the
+original, unmasked category labels through `Workflow.resimulate(context=...)`;
+pass an empirical `missing_mask` separately if it should be reproduced.
+
+### Multiple regression targets
 
 The example below assigns one regressor to DDM drift and another to boundary
 separation:
