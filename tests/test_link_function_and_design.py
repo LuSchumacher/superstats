@@ -382,7 +382,7 @@ def test_model_validates_context_selectors(selector):
         Model(JointPrior(a=1), simulator, **{selector: ("x",)})
 
 
-def test_prior_plots_show_regression_targets_without_context_or_links(monkeypatch):
+def test_raw_prior_plots_skip_context_and_links(monkeypatch):
     import superstats.simulation.model as model_module
 
     model = Model(
@@ -403,7 +403,7 @@ def test_prior_plots_show_regression_targets_without_context_or_links(monkeypatc
 
     model._resolve_parameters = forbidden
     model._generate_context = forbidden
-    model.plot_joint_prior(num_steps=5, num_draws=3, num_trajectories=2)
+    model.plot_joint_prior(num_steps=5, num_draws=3, num_trajectories=2, scale="raw")
     assert set(captured["local_params"]) == {"v_diff_0"}
     assert set(captured["shared_params"]) == {"b_difficulty"}
     assert set(captured["hyper_params"]) == {"v_diff_0_sigma"}

@@ -375,7 +375,8 @@ def test_posterior_plot_wrappers_supply_model_defaults(monkeypatch):
 def test_time_invariant_plot_wrappers_derive_parameter_metadata_from_model():
     for method in (Workflow.plot_marginals, Workflow.plot_pairs, Workflow.plot_forest):
         parameters = inspect.signature(method).parameters
-        assert "variable_keys" not in parameters
+        assert parameters["variable_keys"].default is None
+        assert parameters["scale"].default == "both"
         assert "variable_names" not in parameters
         assert "mixture_names" not in parameters
 
