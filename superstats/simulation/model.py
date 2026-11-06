@@ -1205,7 +1205,7 @@ class Model:
         """Bind context variables that match simulator arguments.
 
         This lets context generators provide conventional simulator inputs
-        such as ``correct_idx`` for :func:`sample_rdm`. Any remaining context
+        such as ``boost_idx`` for :func:`sample_rdm`. Any remaining context
         is forwarded as a ``context`` keyword to simulators that support it.
         """
         parameter_context = {name: value for name, value in context.items() if name in self.param_order}

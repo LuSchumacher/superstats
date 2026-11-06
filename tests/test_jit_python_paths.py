@@ -55,13 +55,13 @@ def test_python_cdm_covers_crossing_and_timeout():
     np.testing.assert_allclose(result["choice"], [np.pi / 2, -5.0])
 
 
-def test_python_rdm_covers_default_correct_accumulator_and_timeout():
+def test_python_rdm_covers_default_boosted_accumulator_and_timeout():
     result = sample_rdm.py_func(
         v_base=np.array([2.0, 0.0]),
         v_diff=np.array([2.0, 0.0]),
         a_base=np.array([1.0, 1e6]),
+        a_diff=np.zeros(2),
         tau=np.array([0.1, 0.0]),
-        bias=np.ones(2),
         sigma_diff=np.zeros(2),
         sigma_base=0.0,
         dt=1.0,
@@ -69,24 +69,28 @@ def test_python_rdm_covers_default_correct_accumulator_and_timeout():
     )
 
     np.testing.assert_array_equal(result["choice"], [0.0, -1.0])
-    np.testing.assert_allclose(result["response_time"], [1.1, -1.0])
+    crossing_time = np.logaddexp(0.0, 1.0) / np.logaddexp(0.0, 3.0)
+    np.testing.assert_allclose(result["response_time"], [0.1 + crossing_time, -1.0])
 
 
-def test_python_rdm_respects_explicit_correct_accumulator():
+def test_python_rdm_selects_earliest_crossing_with_explicit_boosted_accumulator():
     result = sample_rdm.py_func(
-        v_base=np.array([0.0]),
-        v_diff=np.array([4.0]),
+        v_base=np.array([4.0]),
+        v_diff=np.array([2.0]),
         a_base=np.array([1.0]),
+        a_diff=np.zeros(1),
         tau=np.array([0.0]),
-        bias=np.ones(1),
         sigma_diff=np.zeros(1),
-        correct_idx=np.array([1.0]),
+        boost_idx=np.array([1], dtype=np.int32),
         sigma_base=0.0,
         dt=1.0,
         max_steps=1,
     )
 
+    # Both accumulators cross in this step; accumulator 1 crosses first.
     np.testing.assert_array_equal(result["choice"], [1.0])
+    crossing_time = np.logaddexp(0.0, 1.0) / np.logaddexp(0.0, 5.0)
+    np.testing.assert_allclose(result["response_time"], [crossing_time])
 
 
 def test_python_transition_rollouts_follow_zero_noise_equations():
