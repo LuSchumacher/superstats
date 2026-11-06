@@ -195,6 +195,25 @@ def parameter_base_name(name):
     return name.removesuffix(" [raw]").removesuffix(" [implied]")
 
 
+def parameter_view_groups(model, names, panels):
+    """Group raw coefficients and implied views by selected parameter.
+
+    Shared coefficients can occur in multiple rows. Identical views appear
+    once in each row, and any remaining panels retain their own row.
+    """
+    groups, assigned = [], set()
+    for name in names:
+        dependencies = parameter_dependencies(model, [name])
+        raw = [key for key in panels if not key.endswith(" [implied]") and parameter_base_name(key) in dependencies]
+        implied = [key for key in panels if not key.endswith(" [raw]") and parameter_base_name(key) == name]
+        group = list(dict.fromkeys([*raw, *implied]))
+        if group:
+            groups.append(group)
+            assigned.update(group)
+    groups.extend([key] for key in panels if key not in assigned)
+    return groups
+
+
 def parameter_display_names(names, display_names, panels):
     """Expand custom parameter labels to match raw and implied panels.
 

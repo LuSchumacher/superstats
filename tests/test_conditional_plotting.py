@@ -485,6 +485,83 @@ def test_both_posterior_trajectory_views_have_raw_truth_and_fixed_condition_trut
     plt.close(fig)
 
 
+@pytest.mark.parametrize("marginal", [False, True])
+@pytest.mark.parametrize("aggregation", [None, np.mean])
+def test_posterior_groups_each_parameters_views_and_keeps_teal_legend_on_one_line(marginal, aggregation):
+    from matplotlib.colors import to_rgba
+
+    from superstats.defaults import BASE_COLOR
+
+    workflow = Workflow.__new__(Workflow)
+    workflow.model = Model(
+        JointPrior(v0=RandomWalk(), bv=RandomWalk(), a0=RandomWalk()),
+        lambda v, a: {"observation": v + a},
+        formula=Formula(["v = v0 + bv * x", "a = a0"]),
+        latent_link_function={"a0": LinkFunction("exp")},
+        design_context=("x",),
+        context_simulator={"x": [0, 1]},
+        missing=None,
+    )
+    values = np.arange(24, dtype=float).reshape(2, 3, 4, 1) / 20
+    estimates = {"v0": values, "bv": values + 1, "a0": values + 2}
+    targets = {name: samples[:, 0] for name, samples in estimates.items()}
+    fig = workflow.plot_time_varying_posterior(
+        estimates, targets, marginal=marginal, aggregation=aggregation, data_idx=[1, 0]
+    )
+    axes = [ax for ax in fig.axes if ax.get_visible() and ax.get_title()]
+    dataset_indices = [None] if aggregation is not None else [1, 0]
+    expected_row = 0
+    for group in [["v0 [raw]", "bv [raw]", "v [implied]"], ["a0 [raw]", "a [implied]"]]:
+        for dataset in dataset_indices:
+            for column, name in enumerate(group):
+                title = name if dataset is None else f"{name} — Dataset {dataset}"
+                ax = next(ax for ax in axes if ax.get_title() == title)
+                spec = ax.get_subplotspec().get_topmost_subplotspec()
+                assert (spec.rowspan.start, spec.colspan.start) == (expected_row, column)
+                if name == "v0 [raw]":
+                    expected = (
+                        values[..., 0].mean(axis=0).mean(axis=0)
+                        if dataset is None
+                        else values[dataset, ..., 0].mean(axis=0)
+                    )
+                    np.testing.assert_allclose(ax.lines[0].get_ydata(), expected)
+            expected_row += 1
+
+    fig.canvas.draw()
+    legend = fig.legends[0]
+    assert [text.get_text() for text in legend.get_texts()] == ["Median", "Target", "95% HDI", "65% HDI"]
+    center, target, outer, inner = legend.legend_handles
+    assert to_rgba(center.get_color()) == to_rgba(BASE_COLOR)
+    assert to_rgba(target.get_color()) == to_rgba("black")
+    assert outer.get_facecolor() == to_rgba(BASE_COLOR, 0.25)
+    assert inner.get_facecolor() == to_rgba(BASE_COLOR, 0.5)
+    assert np.ptp([text.get_window_extent().y0 for text in legend.get_texts()]) < 1
+    plt.close(fig)
+
+
+def test_single_column_posterior_legend_fits_with_individual_draws_and_custom_color():
+    workflow = Workflow.__new__(Workflow)
+    workflow.model = regression_model()
+    estimates = {"v_0": np.arange(12).reshape(1, 3, 4, 1)}
+    targets = {"v_0": np.arange(4).reshape(1, 4, 1)}
+    fig = workflow.plot_time_varying_posterior(
+        estimates,
+        targets,
+        scale="model",
+        conditions={"difficulty": [0]},
+        marginal=False,
+        num_trajectories=1,
+        color="#008080",
+    )
+    fig.canvas.draw()
+    legend = fig.legends[0]
+    box = legend.get_window_extent()
+    assert 0 <= box.x0 < box.x1 <= fig.bbox.width
+    assert np.ptp([text.get_window_extent().y0 for text in legend.get_texts()]) < 1
+    assert legend.legend_handles[0].get_color() == "#008080"
+    plt.close(fig)
+
+
 def test_both_joint_prior_shows_hyperparameters_only_with_the_raw_process(monkeypatch):
     from superstats.simulation import model as model_module
 

@@ -26,6 +26,7 @@ from superstats.defaults import (
 from superstats.simulation import Model
 from superstats.simulation.conditional import (
     parameter_views,
+    parameter_view_groups,
     parameter_display_names,
     invariant_parameter_names,
     raw_parameter_names,
@@ -1155,8 +1156,9 @@ class Workflow:
         """Plot time-varying posterior diagnostics.
 
         Named draws show raw coefficients and implied parameters in separate
-        panels by default, using the same paired posterior draws. Identical
-        views share one panel. Predictors are held fixed across time.
+        panels on the same parameter row by default, using the same paired
+        posterior draws. Identical views share one panel. Predictors are held
+        fixed across time.
         ``conditions`` accepts a grid or selected scalar context
         mappings; ``context`` provides reference values for automatic conditions.
         ``num_steps`` must match any existing posterior trajectories. Use
@@ -1220,9 +1222,9 @@ class Workflow:
             Opacity of marginal distributions. If None, uses 1.0 for a
             single distribution and 0.5 when targets are overlaid.
         num_cols           : int or None, optional, default: None
-            Exact number of grid columns. If None, non-aggregated plots
-            use one column per selected dataset and aggregated plots use
-            the shared compact dynamic layout.
+            Exact number of grid columns. If None, combined raw and implied
+            views use one row per parameter and dataset, with adjacent views.
+            Model-only plots use one column per selected dataset.
         alpha              : float, optional, default: 0.5
             Opacity of the darker inner uncertainty ribbon. The outer
             ribbon uses half this opacity.
@@ -1262,9 +1264,11 @@ class Workflow:
                 data_idx=data_idx,
             )
             truth = target_parameters(self.model, targets, names, draws)
+            parameter_groups = None
             if scale == "both":
                 raw_names = raw_parameter_names(self.model, names, kind="varying", selected=variable_keys is not None)
                 draws, truth = parameter_views(self.model, draws, raw_names, truth)
+                parameter_groups = parameter_view_groups(self.model, names, draws.parameters)
                 variable_names = parameter_display_names(names, variable_names, draws.parameters)
             return plot_conditional_parameters(
                 draws,
@@ -1285,6 +1289,7 @@ class Workflow:
                 tick_fontsize=tick_fontsize,
                 figsize=figsize,
                 variable_names=variable_names,
+                parameter_groups=parameter_groups,
                 **kwargs,
             )
         if variable_keys is None:
