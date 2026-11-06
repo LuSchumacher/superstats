@@ -8,10 +8,22 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from superstats.prior.joint_prior import JointPrior
+from .link_function import LinkFunction
+from .conditional import (
+    joint_prior_groups,
+    parameter_bounds,
+    prior_plot_samples,
+)
+from matplotlib.figure import Figure
+from superstats.defaults import BASE_COLOR, LABEL_FONTSIZE, TICK_FONTSIZE, TITLE_FONTSIZE
+from superstats.diagnostics.plots.joint_prior import plot_joint_prior
+from superstats.diagnostics.plots.time_invariant_prior import plot_time_invariant_prior
+from superstats.diagnostics.plots.time_varying_prior import plot_time_varying_prior
+from .augmentation.random_choice_contamination import RandomChoiceContamination
 from superstats.diagnostics.plots.prior_push_forward import plot_push_forward
+from superstats.simulation.augmentation.random_missing import RandomMissingProcess
 from superstats.simulation.augmentation.missing import MissingProcess
 from superstats.simulation.augmentation.contamination import ContaminationProcess
-from superstats.simulation.context.context_mapping import ContextMapping
 from superstats.simulation.context.context_simulator import ContextSimulator
 from superstats.utils.dispatch import find_contamination, find_missing
 
@@ -27,69 +39,111 @@ class Model:
 
     Parameters
     ----------
-    prior           : JointPrior
+    prior             : JointPrior
         The joint prior distribution over simulator parameters, which may
         include both time-varying transitions and time-invariant priors.
-    simulator       : Callable
+    simulator         : Callable
         The simulation function that takes parameter values and returns
         simulated data. The function signature determines the expected
         parameter names and order.
-    missing         : MissingProcess, Callable, "random", or None, optional, default: "random"
+    formula           : callable or object with ``resolve``, optional, default: None
+        Parameter resolver called as ``resolve(parameters=..., context=...)``
+        before the simulator runs.
+    context_simulator : ContextSimulator, callable, Mapping, pandas.DataFrame, or None, optional, default: None
+        Source of externally defined context variables. A batched callable
+        accepting batch_size and num_steps is wrapped as a ContextSimulator.
+        A ``ContextSimulator`` generates new context for every sample. A
+        mapping or DataFrame is treated as fixed trial-level context and
+        repeated across the batch; DataFrame columns become context variables.
+    simulator_context : sequence of str, optional, default: ()
+        Context variable names bound to matching simulator parameters or
+        forwarded through its context keyword argument.
+    design_context    : sequence of str, optional, default: ()
+        Context variable names routed to Formula. Variables can also be
+        included in simulator_context. Every categorical predictor declared
+        by Formula must be selected here. Raw category labels remain in
+        sampled context; Workflow's default adapter encodes them for inference.
+    latent_link_function : mapping, LinkFunction, callable, or None, optional
+        Latent-parameter links applied to prior draws before parameter formulas
+        are resolved. A mapping assigns a link per prior parameter; omitted
+        entries use identity. A single link applies to every sampled prior
+        parameter. Returned inference targets remain on their raw, unlinked
+        scale.
+    formula_link_function : mapping, LinkFunction, callable, or None, optional
+        Links applied to formula targets after the complete formula has been
+        resolved. A mapping assigns a link per final formula target. A single
+        link applies to every declared formula target passed to the simulator.
+    missing           : MissingProcess, Callable, "random", or None, optional, default: "random"
         Process applied to simulated data to introduce missingness.
         - Not provided (default) or `"random"`: uses `RandomMissingProcess()`,
           the default MCAR missingness process.
+        The nuisance probability `p_missing` belongs in `JointPrior`; Model
+        adds the default beta prior when omitted, without mutating the caller's
+        prior. It and its transition hyperparameters are never inferred.
         - `None`: disables missingness augmentation and `sample` will not
           include a `"missing_mask"` entry in its result.
         - `MissingProcess` instance: used as-is.
         - Plain `Callable`: must follow the same contract as
           `MissingProcess.__call__`, i.e.
           `(data_mapping, rng=None) -> filled_mapping | {"missing_mask": mask}`.
-    contamination   : ContaminationProcess, Callable, "random_choice", or None, optional, default: None
+    contamination     : ContaminationProcess, Callable, "random_choice", or None, optional, default: None
         Process applied to simulated observations before missingness. A
         `RandomChoiceContamination` configured with `infer=True` contributes
-        its probability and transition parameters to this model's parameter
-        categories.
-    context         : ContextSimulator, Mapping, pandas.DataFrame, or None, optional, default: None
-        Source of externally defined context variables. A ``ContextSimulator``
-        generates new context for every sample. A mapping or DataFrame is
-        treated as fixed trial-level context and repeated across the batch;
-        DataFrame columns become context variables.
-    context_mapping : ContextMapping or None, optional, default: None
-        Names of context variables consumed by the optional formula and the
-        simulator.
-    formula : callable or object with ``resolve``, optional, default: None
-        Parameter resolver called as ``resolve(parameters=..., context=...)``
-        before the simulator runs.
-
+        the probability specified as `p_contaminated` in `JointPrior` and
+        its sampled transition hyperparameters to inference targets. The
+        process defaults to `infer=False`. If omitted from the prior, the
+        default beta probability prior is added without mutating the caller's
+        prior. Nuisance probabilities are redrawn during resimulation.
     Raises
     ------
     TypeError
-        If `simulator` is not callable, or if `missing` is neither
-        `None`, `"random"`, nor callable.
+        If `simulator` is not callable, `context_simulator` has an unsupported
+        type, or `missing` is neither `None`, `"random"`, nor callable.
+    ValueError
+        If context selectors are configured without `context_simulator`, or a
+        link configuration targets an unknown parameter.
     """
 
     def __init__(
         self,
         prior: JointPrior,
         simulator: Callable,
+        formula: Any | None = None,
+        context_simulator: ContextSimulator | Callable | Mapping[str, Any] | pd.DataFrame | None = None,
+        simulator_context: Sequence[str] = (),
+        design_context: Sequence[str] = (),
+        latent_link_function: Mapping[str, LinkFunction | Callable] | LinkFunction | Callable | None = None,
+        formula_link_function: Mapping[str, LinkFunction | Callable] | LinkFunction | Callable | None = None,
         missing: MissingProcess | Callable | Literal["random"] | None = "random",
         contamination: ContaminationProcess | Callable | Literal["random_choice"] | None = None,
-        context: ContextSimulator | Mapping[str, Any] | pd.DataFrame | None = None,
-        context_mapping: ContextMapping | None = None,
-        formula: Any | None = None,
-        design_matrix: Any | None = None,
     ):
         self.prior = prior
         self.simulator = simulator
-        self.context = context
-        self.context_mapping = context_mapping or ContextMapping()
+        if callable(context_simulator) and not isinstance(context_simulator, ContextSimulator):
+            context_simulator = ContextSimulator(context_simulator)
+        self.context_simulator = context_simulator
+        self.design_context = self._context_names(design_context, "design_context")
+        self.simulator_context = self._context_names(simulator_context, "simulator_context")
         self.formula = formula
-        self.design_matrix = design_matrix
-
-        if context_mapping is not None and context is None:
-            raise ValueError("context_mapping requires context.")
-        if context is not None and not isinstance(context, (ContextSimulator, Mapping, pd.DataFrame)):
-            raise TypeError("context must be a ContextSimulator, mapping, pandas DataFrame, or None.")
+        self.categorical = getattr(formula, "categorical", {})
+        undeclared_context = self.categorical.keys() - set(self.design_context)
+        if undeclared_context:
+            raise ValueError(f"Categorical predictors must be included in design_context: {sorted(undeclared_context)}")
+        self.latent_link_function = self._normalize_link_functions(latent_link_function, "latent_link_function")
+        self.formula_link_function = self._normalize_link_functions(formula_link_function, "formula_link_function")
+        if self.formula is None and self.formula_link_function:
+            raise ValueError("formula_link_function requires formula.")
+        if self.formula_link_function and not isinstance(self.formula_link_function, Mapping):
+            if getattr(self.formula, "targets", None) is None:
+                raise TypeError("A single formula link requires formula to declare targets.")
+        if (self.design_context or self.simulator_context) and context_simulator is None:
+            raise ValueError("Context selectors require context_simulator.")
+        if context_simulator is not None and not isinstance(
+            context_simulator, (ContextSimulator, Mapping, pd.DataFrame)
+        ):
+            raise TypeError(
+                "context_simulator must be a ContextSimulator, callable, mapping, pandas DataFrame, or None."
+            )
 
         self.missing = find_missing(missing)
 
@@ -99,10 +153,40 @@ class Model:
             self.has_mask = False
 
         self.contamination = find_contamination(contamination)
+        if isinstance(self.contamination, RandomChoiceContamination) and "p_contaminated" not in self.prior.params:
+            from superstats.defaults import DEFAULT_P_CONTAMINATED_PRIOR
+
+            # Preserve the caller's prior while retaining the convenient default.
+            self.prior = JointPrior(**self.prior.params, p_contaminated=DEFAULT_P_CONTAMINATED_PRIOR)
+
+        if isinstance(self.missing, RandomMissingProcess) and "p_missing" not in self.prior.params:
+            from superstats.defaults import DEFAULT_P_MISSING_PRIOR
+
+            self.prior = JointPrior(**self.prior.params, p_missing=DEFAULT_P_MISSING_PRIOR)
 
         # Inspect simulator signature
         self.signature = inspect.signature(simulator)
         self.param_order = [name for name in self.signature.parameters if name != "context"]
+
+        if isinstance(self.latent_link_function, Mapping):
+            unknown = set(self.latent_link_function) - set(self.prior.params)
+            if unknown:
+                raise ValueError(f"Unknown latent_link_function targets: {sorted(unknown)}")
+            if "p_contaminated" in self.latent_link_function and not isinstance(
+                self.contamination, RandomChoiceContamination
+            ):
+                raise ValueError("p_contaminated link requires RandomChoiceContamination.")
+            if "p_missing" in self.latent_link_function and not isinstance(self.missing, RandomMissingProcess):
+                raise ValueError("p_missing link requires RandomMissingProcess.")
+        if isinstance(self.formula_link_function, Mapping):
+            unknown = set(self.formula_link_function) - set(self.param_order)
+            if unknown:
+                raise ValueError(f"Unknown formula_link_function targets: {sorted(unknown)}")
+            declared_targets = getattr(self.formula, "targets", None)
+            if declared_targets is not None:
+                unknown = set(self.formula_link_function) - set(declared_targets)
+                if unknown:
+                    raise ValueError(f"formula_link_function targets are not produced by formula: {sorted(unknown)}")
 
         # Run a pilot draw to determine key groups once
         pilot_context, pilot_contexts = self._generate_context(batch_size=1, num_steps=1, pilot=True)
@@ -116,25 +200,28 @@ class Model:
         self.fixed_keys = list(pilot["fixed_params"].keys()) if pilot.get("fixed_params") else []
 
         self._contamination_parameter_groups = {}
-        if self.contamination is not None and hasattr(self.contamination, "parameter_groups"):
-            self._contamination_parameter_groups = self.contamination.parameter_groups()
-            model_groups = {
-                "local_params": self.local_keys,
-                "deterministic_params": self.deterministic_keys,
-                "hyper_params": self.hyper_keys,
-                "shared_params": self.shared_keys,
-                "fixed_params": self.fixed_keys,
+        self._nuisance_keys = set()
+        if isinstance(self.contamination, RandomChoiceContamination):
+            owned_keys = {"p_contaminated"}
+            owned_keys.update(self.prior._last_hyper_param_groups.get("p_contaminated", ()))
+            owned_keys.update(self.prior._last_fixed_param_groups.get("p_contaminated", ()))
+            self._contamination_parameter_groups = {
+                group: [key for key in values if key in owned_keys] for group, values in pilot.items()
             }
-            existing_keys = set().union(*model_groups.values())
-            contamination_keys = {key for keys in self._contamination_parameter_groups.values() for key in keys}
-            overlap = existing_keys & contamination_keys
-            if overlap:
-                raise ValueError(f"Contamination parameter names conflict with prior parameters: {sorted(overlap)}")
-            for group, keys in self._contamination_parameter_groups.items():
-                model_groups[group].extend(keys)
+            if not self.contamination.infer:
+                self._nuisance_keys = {key for keys in self._contamination_parameter_groups.values() for key in keys}
+        if "p_missing" in self.prior.params:
+            self._nuisance_keys.add("p_missing")
+            self._nuisance_keys.update(self.prior._last_hyper_param_groups.get("p_missing", ()))
+            self._nuisance_keys.update(self.prior._last_fixed_param_groups.get("p_missing", ()))
+        for attribute in ("local_keys", "deterministic_keys", "hyper_keys", "shared_keys", "fixed_keys"):
+            setattr(self, attribute, [key for key in getattr(self, attribute) if key not in self._nuisance_keys])
 
         self.data_keys = self._infer_data_keys(pilot, pilot_contexts)
         self.context_keys = list(pilot_context)
+        # Derived fields never replace raw parameters, observations, or generated context.
+        protected_keys = set(self.data_keys) | set(self.context_keys) | {"time_steps", "missing_mask"}
+        self.formula_keys = [name for name in self.formula_keys if name not in protected_keys]
         overlapping_keys = set(self.data_keys) & set(self.context_keys)
         if overlapping_keys:
             raise ValueError(f"Generated context keys conflict with simulator output keys: {sorted(overlapping_keys)}")
@@ -147,6 +234,7 @@ class Model:
         include_fixed: bool = False,
         tile_to_steps: bool = False,
         rng: np.random.Generator | None = None,
+        apply_missing: bool = True,
     ) -> Dict[str, np.ndarray]:
         """Sample parameters from the prior and generate simulated data.
 
@@ -174,6 +262,10 @@ class Model:
             None, the missing process falls back to its own default
             (an unseeded generator).
 
+        apply_missing : bool, optional, default: True
+            Apply the configured missing process. False returns complete
+            observations without missingness metadata.
+
         Returns
         -------
         result : dict - flat dictionary with the following entries:
@@ -181,7 +273,8 @@ class Model:
             shape (batch_size, num_steps), corrupted by
             `self.missing` if one is configured.
             - one entry per generated context variable, retaining the
-            leading batch and time dimensions.
+            leading batch and time dimensions. When missingness is applied,
+            context and observations are masked at the same time steps.
             - `"time_steps"`: shape (batch_size, num_steps), each row
             equal to `1..num_steps`.
             - `"missing_mask"`: included only if `self.missing`
@@ -201,9 +294,15 @@ class Model:
               params have shape (batch_size, 1), or (batch_size, num_steps, 1)
               when `tile_to_steps` is True.
             - fixed params are included only when `include_fixed` is True.
+            - new formula targets consumed by the simulator are returned at their
+              final linked values with shape (batch_size, num_steps, dim), where
+              dim is 1 for scalar parameters. These fields are recorded in
+              `formula_keys` and are not inference targets or summary inputs.
+              Existing raw parameter, observation, and context names retain
+              their original values.
 
             The instance attributes `local_keys`, `hyper_keys`,
-            `shared_keys`, `fixed_keys`, and `data_keys` record which
+            `shared_keys`, `fixed_keys`, `formula_keys`, and `data_keys` record which
             keys belong to which group.
 
         Raises
@@ -229,9 +328,7 @@ class Model:
         # not consumed by the simulator are ignored by `_ordered_model_args`.
         combined_params.update(fixed_params)
 
-        model_params = self._resolve_formula(combined_params, contexts["formula_context"])
-        model_params = self._resolve_design_matrix(model_params, contexts["design_context"])
-        model_params, simulator_context = self._apply_simulator_context(model_params, contexts["simulator_context"])
+        model_params, simulator_context = self._resolve_parameters(combined_params, contexts)
         ordered_params = self._ordered_model_args(
             model_params,
             batch_size=batch_size,
@@ -239,26 +336,42 @@ class Model:
             missing_context="prior and has no default",
         )
 
+        # Capture final linked formula parameters in the same shape as local trajectories.
+        formula_params = {
+            name: np.asarray(value).reshape(batch_size, num_steps, -1).copy()
+            for name, value in zip(self.param_order, ordered_params)
+            if name in self.formula_keys
+        }
+
         # Run simulator
         model_output = self._call_simulator(ordered_params, simulator_context)
         sim_data = self._reshape_model_output(model_output, batch_size, num_steps, expected_data_keys=self.data_keys)
 
         # Apply contamination augmentation, if configured
-        sim_data, contamination_extra = self._apply_contamination(sim_data, rng)
+        sim_data, contamination_extra = self._apply_contamination(sim_data, rng, model_params.get("p_contaminated"))
+        if isinstance(self.contamination, RandomChoiceContamination) and self.contamination.infer:
+            contamination_extra.pop("p_contaminated", None)  # Keep the raw inference target.
+        self._exclude_nuisance(prior_draws)
 
-        for group, keys in self._contamination_parameter_groups.items():
-            destination = {
-                "local_params": local_params,
-                "deterministic_params": deterministic_params,
-                "hyper_params": prior_draws["hyper_params"],
-                "shared_params": shared_params,
-                "fixed_params": fixed_params,
-            }[group]
-            for key in keys:
-                destination[key] = contamination_extra.pop(key)
-
-        # Apply missingness augmentation, if configured
-        sim_data, missing_mask, missing_extra = self._apply_missing(sim_data, rng)
+        # Apply missingness augmentation, if configured. Context is part of
+        # the summary input, so masked time steps must use the same missing
+        # representation for observations and context alike.
+        missing_mask, missing_extra = None, {}
+        if apply_missing:
+            # Preserve numeric missing sentinels alongside string labels. A
+            # fixed-width string array would stringify or truncate the fill.
+            generated_context = {
+                name: np.asarray(value, dtype=object)
+                if name in self.categorical and self.missing is not None
+                else value
+                for name, value in generated_context.items()
+            }
+            summary_data = {**sim_data, **generated_context}
+            summary_data, missing_mask, missing_extra = self._apply_missing(
+                summary_data, rng, model_params.get("p_missing")
+            )
+            sim_data = {key: summary_data[key] for key in self.data_keys}
+            generated_context = {key: summary_data[key] for key in self.context_keys}
 
         local_params = self._normalize_local_params(local_params, batch_size, num_steps)
         deterministic_params = self._normalize_local_params(deterministic_params, batch_size, num_steps)
@@ -296,8 +409,395 @@ class Model:
             result.update(shared_params)
         if include_fixed and fixed_params:
             result.update(fixed_params)
+        collisions = set(formula_params) & result.keys()
+        if collisions:
+            raise ValueError(f"Formula parameter names conflict with returned fields: {sorted(collisions)}")
+        result.update(formula_params)
 
         return result
+
+    def plot_time_varying_prior(
+        self,
+        num_steps: int = 200,
+        num_trajectories: int = 20,
+        num_cols: int | None = None,
+        marginal: bool = True,
+        dist_type: Literal["hist", "kde", "both"] = "hist",
+        num_bins: int | None = None,
+        dist_alpha: float = 1.0,
+        alpha: float = 0.5,
+        color: str = BASE_COLOR,
+        title_fontsize: int = TITLE_FONTSIZE,
+        label_fontsize: int = LABEL_FONTSIZE,
+        tick_fontsize: int = TICK_FONTSIZE,
+        figsize: tuple[float, float] | None = None,
+        scale: Literal["both", "model", "raw"] = "both",
+        conditions: Mapping | Sequence[Mapping] | None = None,
+        context: Mapping | pd.DataFrame | None = None,
+        variable_keys: Sequence[str] | None = None,
+    ) -> Figure:
+        """Plot raw and implied time-varying prior draws under fixed predictor conditions.
+
+        The same ``num_trajectories`` individual draws and their average are
+        shown for each condition. Latent links precede ordered formulas;
+        formula links follow them. Conditions are held fixed over time, so
+        changing trial covariates do not introduce artificial switching.
+        By default, separate panels show raw coefficients and implied parameters
+        from the same draws. Identical views share one panel. Use ``scale="raw"``
+        or ``scale="model"`` to select one view. Condition legends are hidden.
+
+        Parameters
+        ----------
+        num_steps        : int, optional, default: 200
+            Number of time steps to sample per trajectory.
+        num_trajectories : int, optional, default: 20
+            Number of trajectories to draw.
+        num_cols         : int or None, optional, default: None
+            Number of panel columns. If None, uses the compact dynamic layout.
+        marginal         : bool, optional, default: True
+            Whether to display a marginal distribution beside each trajectory.
+        dist_type        : {"hist", "kde", "both"}, optional, default: "hist"
+            Distribution type used for marginal panels.
+        num_bins         : int or None, optional, default: None
+            Number of histogram bins. If None, Seaborn selects the bins.
+        dist_alpha       : float, optional, default: 1.0
+            Opacity of marginal distributions.
+        alpha            : float, optional, default: 0.5
+            Opacity of individual trajectories.
+        color            : str, optional, default: BASE_COLOR
+            Color used for trajectories and marginal distributions.
+        title_fontsize   : int, optional, default: 22
+            Font size for panel titles.
+        label_fontsize   : int, optional, default: 18
+            Font size for axis labels and the figure legend.
+        tick_fontsize    : int, optional, default: 16
+            Font size for tick labels.
+        figsize          : tuple of two floats or None, optional, default: None
+            Explicit figure size in inches.
+
+        scale : {"both", "model", "raw"}, default: "both"
+            Show raw and implied panels together, or select one view.
+            Transforms implemented inside the observation simulator are not inferred.
+        conditions : mapping or sequence of mappings, optional
+            Fixed predictor values per complete trajectory. A mapping forms a
+            grid; a list selects combinations. Defaults use categorical levels,
+            observed 0/1 dummy levels, and mean ± SD for continuous predictors.
+        context : mapping or pandas.DataFrame, optional
+            Reference design used to choose fixed conditions. Its trial order
+            is never plotted. Defaults to the model's configured context source.
+        variable_keys : sequence of str, optional
+            Select parameter names, including formula targets on the model scale.
+
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+            The generated figure.
+        """
+        if scale not in {"both", "model", "raw"}:
+            raise ValueError("scale must be 'both', 'model', or 'raw'.")
+        if scale != "raw":
+            local, _, _, labels, _ = prior_plot_samples(
+                self,
+                num_draws=num_trajectories,
+                num_steps=num_steps,
+                conditions=conditions,
+                context=context,
+                variable_keys=variable_keys,
+                kind="varying",
+                scale=scale,
+            )
+            return plot_time_varying_prior(
+                local_params=local,
+                param_bounds=parameter_bounds(self, local),
+                condition_labels=labels,
+                num_cols=num_cols,
+                marginal=marginal,
+                dist_type=dist_type,
+                num_bins=num_bins,
+                dist_alpha=dist_alpha,
+                alpha=alpha,
+                color=color,
+                title_fontsize=title_fontsize,
+                label_fontsize=label_fontsize,
+                tick_fontsize=tick_fontsize,
+                figsize=figsize,
+            )
+        samples = self._sample_inference_prior(batch_size=num_trajectories, num_steps=num_steps)
+        local_params = samples["local_params"]
+        if variable_keys is not None:
+            local_params = {name: local_params[name] for name in variable_keys}
+        return plot_time_varying_prior(
+            local_params=local_params,
+            param_bounds={},
+            num_cols=num_cols,
+            marginal=marginal,
+            dist_type=dist_type,
+            num_bins=num_bins,
+            dist_alpha=dist_alpha,
+            alpha=alpha,
+            color=color,
+            title_fontsize=title_fontsize,
+            label_fontsize=label_fontsize,
+            tick_fontsize=tick_fontsize,
+            figsize=figsize,
+        )
+
+    def plot_time_invariant_prior(
+        self,
+        num_draws: int = 1000,
+        num_steps: int = 1,
+        dist_type: Literal["hist", "kde", "both"] = "hist",
+        num_bins: int | None = None,
+        dist_alpha: float | None = None,
+        color: str = BASE_COLOR,
+        num_cols: int | None = None,
+        title_fontsize: int = TITLE_FONTSIZE,
+        label_fontsize: int = LABEL_FONTSIZE,
+        tick_fontsize: int = TICK_FONTSIZE,
+        figsize: tuple[float, float] | None = None,
+        scale: Literal["both", "model", "raw"] = "both",
+        conditions: Mapping | Sequence[Mapping] | None = None,
+        context: Mapping | pd.DataFrame | None = None,
+        variable_keys: Sequence[str] | None = None,
+    ) -> Figure:
+        """Plot raw and implied shared parameters, stationary formula targets, and hyperparameters.
+
+        Fixed predictor conditions are overlaid in separate colors. Hyperparameters
+        stay on their own scale and appear once. The default ``scale="both"``
+        adds separate raw and implied panels, collapsing identical views.
+        Use ``scale="raw"`` or ``scale="model"`` to select one view.
+        Condition legends are hidden.
+
+        Parameters
+        ----------
+        num_draws      : int, optional, default: 1000
+            Number of draws used to sample `hyper_params` and `shared_params`.
+        dist_type      : {"hist", "kde", "both"}, optional, default: "both"
+            Distribution plot type.
+        num_bins       : int or None, optional, default: None
+            Number of histogram bins. If None, Seaborn selects the bins.
+        dist_alpha     : float or None, optional, default: None
+            Opacity of parameter distributions. If None, uses 1.0 for one
+            distribution and 0.5 for overlays.
+        color          : str, optional, default: BASE_COLOR
+            Color used for non-mixture distributions.
+        num_cols       : int or None, optional, default: None
+            Number of panel columns. If None, uses up to four columns.
+        title_fontsize : int, optional, default: 22
+            Font size for panel titles.
+        label_fontsize : int, optional, default: 18
+            Font size for axis labels.
+        tick_fontsize  : int, optional, default: 16
+            Font size for tick labels and legends.
+        figsize        : tuple of two floats or None, optional, default: None
+            Explicit figure size in inches.
+
+        scale : {"both", "model", "raw"}, default: "both"
+            Show raw and implied panels together, or select one view.
+            Transforms implemented inside the observation simulator are not inferred.
+        conditions : mapping or sequence of mappings, optional
+            Fixed predictor values per complete trajectory. A mapping forms a
+            grid; a list selects combinations. Defaults use categorical levels,
+            observed 0/1 dummy levels, and mean ± SD for continuous predictors.
+        context : mapping or pandas.DataFrame, optional
+            Reference design used to choose fixed conditions. Its trial order
+            is never plotted. Defaults to the model's configured context source.
+        variable_keys : sequence of str, optional
+            Select parameter names, including formula targets on the model scale.
+
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+            The generated figure.
+        """
+        if scale not in {"both", "model", "raw"}:
+            raise ValueError("scale must be 'both', 'model', or 'raw'.")
+        if scale != "raw":
+            local, hyper, shared, condition_labels, owners = prior_plot_samples(
+                self,
+                num_draws=num_draws,
+                num_steps=num_steps,
+                conditions=conditions,
+                context=context,
+                variable_keys=variable_keys,
+                kind="invariant",
+                scale=scale,
+            )
+            return plot_time_invariant_prior(
+                hyper_params=hyper,
+                shared_params=shared,
+                condition_labels=condition_labels,
+                mixture_names={name: obj.names for name, obj in self.prior.params.items() if hasattr(obj, "names")},
+                dist_type=dist_type,
+                num_bins=num_bins,
+                dist_alpha=dist_alpha,
+                color=color,
+                num_cols=num_cols,
+                title_fontsize=title_fontsize,
+                label_fontsize=label_fontsize,
+                tick_fontsize=tick_fontsize,
+                figsize=figsize,
+            )
+        samples = self._sample_inference_prior(batch_size=num_draws, num_steps=num_steps)
+        return plot_time_invariant_prior(
+            hyper_params=samples["hyper_params"],
+            shared_params=samples["shared_params"],
+            mixture_names={name: obj.names for name, obj in self.prior.params.items() if hasattr(obj, "names")},
+            dist_type=dist_type,
+            num_bins=num_bins,
+            dist_alpha=dist_alpha,
+            color=color,
+            num_cols=num_cols,
+            title_fontsize=title_fontsize,
+            label_fontsize=label_fontsize,
+            tick_fontsize=tick_fontsize,
+            figsize=figsize,
+        )
+
+    def plot_joint_prior(
+        self,
+        num_steps: int = 200,
+        num_trajectories: int = 20,
+        num_draws: int = 1000,
+        marginal: bool = True,
+        dist_type: Literal["hist", "kde", "both"] = "hist",
+        num_bins: int | None = None,
+        dist_alpha: float | None = None,
+        color: str = BASE_COLOR,
+        title_fontsize: int = TITLE_FONTSIZE,
+        label_fontsize: int = LABEL_FONTSIZE,
+        tick_fontsize: int = TICK_FONTSIZE,
+        alpha: float = 0.5,
+        figsize: tuple[float, float] | None = None,
+        scale: Literal["both", "model", "raw"] = "both",
+        conditions: Mapping | Sequence[Mapping] | None = None,
+        context: Mapping | pd.DataFrame | None = None,
+        variable_keys: Sequence[str] | None = None,
+    ) -> Figure:
+        """Plot raw and implied prior trajectories, distributions, and hyperparameters.
+
+        Deterministic trajectories are derived from their sampled curve
+        coefficients and displayed alongside stochastic local trajectories.
+        Each draw is resolved under fixed predictor conditions, preserving latent
+        links, ordered formulas, and formula links. The default ``scale="both"``
+        uses one row per observation-model parameter: its hyperparameters, raw
+        coefficients, and implied values, in that order. Panels are titled
+        "Raw" and "Implied", with the observation parameter as the row label.
+        Stationary coefficients use distributions. All panels reuse the same
+        draws; identical raw and implied views share a panel. Hyperparameters
+        appear once in their first owning row.
+        Use ``scale="raw"`` or ``scale="model"`` to select one view.
+        Condition legends are hidden.
+
+        Parameters
+        ----------
+        num_steps        : int, optional, default: 200
+            Number of time steps for local trajectory sampling.
+        num_trajectories : int, optional, default: 20
+            Number of stochastic and deterministic trajectories to plot.
+        num_draws        : int, optional, default: 1000
+            Number of draws used for time-invariant parameter sampling.
+        marginal         : bool, optional, default: True
+            Whether to display a marginal distribution beside trajectories.
+        dist_type        : {"hist", "kde", "both"}, optional, default: "hist"
+            Distribution type used for marginal panels.
+        num_bins         : int or None, optional, default: None
+            Number of histogram bins. If None, Seaborn selects the bins.
+        dist_alpha       : float or None, optional, default: None
+            Opacity of all marginal and time-invariant distributions. If None,
+            uses 1.0 for one distribution and 0.5 for overlays.
+        color            : str, optional, default: BASE_COLOR
+            Color used for trajectories and distributions.
+        title_fontsize   : int, optional, default: 22
+            Font size for panel titles.
+        label_fontsize   : int, optional, default: 18
+            Font size for row labels and the figure legend.
+        tick_fontsize    : int, optional, default: 16
+            Font size for tick labels.
+        alpha            : float, optional, default: 0.5
+            Opacity of individual trajectories.
+        figsize          : tuple of two floats or None, optional, default: None
+            Explicit figure size in inches.
+
+        scale : {"both", "model", "raw"}, default: "both"
+            Show raw and implied panels together, or select one view.
+            Transforms implemented inside the observation simulator are not inferred.
+        conditions : mapping or sequence of mappings, optional
+            Fixed predictor values per complete trajectory. A mapping forms a
+            grid; a list selects combinations. Defaults use categorical levels,
+            observed 0/1 dummy levels, and mean ± SD for continuous predictors.
+        context : mapping or pandas.DataFrame, optional
+            Reference design used to choose fixed conditions. Its trial order
+            is never plotted. Defaults to the model's configured context source.
+        variable_keys : sequence of str, optional
+            Select parameter names, including formula targets on the model scale.
+
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+            The generated figure.
+        """
+        if scale not in {"both", "model", "raw"}:
+            raise ValueError("scale must be 'both', 'model', or 'raw'.")
+        if scale != "raw":
+            local, hyper, shared, condition_labels, owners = prior_plot_samples(
+                self,
+                num_draws=num_draws,
+                num_steps=num_steps,
+                conditions=conditions,
+                context=context,
+                variable_keys=variable_keys,
+                kind="joint",
+                scale=scale,
+            )
+            return plot_joint_prior(
+                local_params={name: value[:num_trajectories] for name, value in local.items()},
+                param_bounds=parameter_bounds(self, local),
+                hyper_params=hyper,
+                shared_params=shared,
+                condition_labels=condition_labels,
+                hyper_param_groups=owners,
+                parameter_groups=joint_prior_groups(self, local, hyper, shared, scale),
+                mixture_names={name: obj.names for name, obj in self.prior.params.items() if hasattr(obj, "names")},
+                marginal=marginal,
+                dist_type=dist_type,
+                num_bins=num_bins,
+                dist_alpha=dist_alpha,
+                color=color,
+                alpha=alpha,
+                title_fontsize=title_fontsize,
+                label_fontsize=label_fontsize,
+                tick_fontsize=tick_fontsize,
+                figsize=figsize,
+            )
+        samples = self._sample_inference_prior(
+            batch_size=num_draws,
+            num_steps=num_steps,
+            include_deterministic=True,
+        )
+        all_local_params = {**samples["local_params"], **samples["deterministic_params"]}
+        local_params = {k: v[:num_trajectories] for k, v in all_local_params.items()}
+        return plot_joint_prior(
+            local_params=local_params,
+            hyper_params=samples["hyper_params"],
+            shared_params=samples["shared_params"],
+            param_bounds={},
+            mixture_names={name: obj.names for name, obj in self.prior.params.items() if hasattr(obj, "names")},
+            hyper_param_groups=samples["hyper_param_groups"],
+            parameter_groups=joint_prior_groups(
+                self, local_params, samples["hyper_params"], samples["shared_params"], scale
+            ),
+            marginal=marginal,
+            dist_type=dist_type,
+            num_bins=num_bins,
+            dist_alpha=dist_alpha,
+            color=color,
+            title_fontsize=title_fontsize,
+            label_fontsize=label_fontsize,
+            tick_fontsize=tick_fontsize,
+            alpha=alpha,
+            figsize=figsize,
+        )
 
     def plot_push_forward(
         self,
@@ -313,6 +813,7 @@ class Model:
         dist_alpha: float | None = None,
         spaghetti: bool = False,
         num_cols: int | None = None,
+        apply_missing: bool = False,
         **kwargs,
     ) -> plt.Figure:
         """Render prior push-forward diagnostics for the generative simulator.
@@ -333,7 +834,7 @@ class Model:
             `aggregation(x, axis=...)` (e.g. np.mean, np.median).
             If None, individual datasets are shown in separate panels.
             If specified, all datasets are aggregated into a single panel.
-        uncertainty_fun : {"std", "95ci", "mad", "95hdi"} or callable or None, optional, default: None
+        uncertainty_fun : {"std", "ci", "mad", "hdi"} or callable or None, optional, default: None
             Uncertainty function for aggregate time-series plots. Forwarded
             directly to `plot_push_forward`, so the accepted values must
             match that function's own supported set.
@@ -353,11 +854,15 @@ class Model:
         **kwargs
             Forwarded to `plot_push_forward`.
 
+        apply_missing : bool, optional, default: False
+            Apply configured missingness to the plotted observations. By
+            default, show complete observations, as in posterior resimulation.
+
         Returns
         -------
         fig : plt.Figure - the figure containing the requested plot
         """
-        sample = self.sample(batch_size=batch_size, num_steps=num_steps)
+        sample = self.sample(batch_size=batch_size, num_steps=num_steps, apply_missing=apply_missing)
         data = {key: sample[key] for key in self.data_keys}
         return plot_push_forward(
             data=data,
@@ -378,16 +883,16 @@ class Model:
         """Return deterministic fixed parameters from the prior for simulator simulation.
 
         Draws a single pilot sample from `self.prior` and keeps only the
-        fixed-parameter entries that the simulator actually consumes.
+        fixed-parameter entries, including auxiliary regression coefficients.
 
         Returns
         -------
         fixed_params : dict of np.ndarray - mapping from parameter name
-            to its fixed value, restricted to names in `self.param_order`
+            to its raw fixed value, including regression coefficients
         """
         prior_draws = self.prior.sample(batch_size=1, num_steps=1)
         fixed_params = prior_draws.get("fixed_params", {})
-        return {name: np.asarray(value) for name, value in fixed_params.items() if name in self.param_order}
+        return {name: np.asarray(value) for name, value in fixed_params.items()}
 
     def simulate_from_parameters(
         self,
@@ -395,8 +900,10 @@ class Model:
         batch_size: int,
         num_steps: int,
         context: Mapping[str, Any] | None = None,
+        rng: np.random.Generator | None = None,
+        apply_missing: bool = False,
     ) -> Dict[str, np.ndarray]:
-        """Simulate simulator outputs for given parameter values.
+        """Simulate outputs and contamination for given raw parameter values.
 
         Parameters
         ----------
@@ -413,6 +920,11 @@ class Model:
             fixed trial sequence with shape ``(num_steps, ...)``. A DataFrame
             is interpreted as one fixed sequence and repeated across batches.
             If omitted, the model's configured context source is used.
+        rng : np.random.Generator or None
+            Generator used for contamination and missingness masks.
+        apply_missing : bool, optional, default: False
+            Apply configured missingness with a fresh nuisance probability
+            from JointPrior. By default, return complete observations.
 
         Returns
         -------
@@ -430,12 +942,23 @@ class Model:
             contexts = self._sample_context(batch_size, num_steps)
         else:
             raw_context = self._coerce_fixed_context(context, batch_size, num_steps, allow_batched=True)
-            contexts = self.context_mapping.split(raw_context)
-        combined_params = self._resolve_formula(dict(params), contexts["formula_context"])
-        combined_params = self._resolve_design_matrix(combined_params, contexts["design_context"])
-        combined_params, simulator_context = self._apply_simulator_context(
-            combined_params, contexts["simulator_context"]
-        )
+            contexts = self._split_context(raw_context)
+        raw_params = dict(params)
+        if isinstance(self.contamination, RandomChoiceContamination):
+            if not self.contamination.infer:
+                nuisance = JointPrior(p_contaminated=self.prior.params["p_contaminated"]).sample(batch_size, num_steps)
+                for group in ("local_params", "deterministic_params", "shared_params", "fixed_params"):
+                    raw_params.update(nuisance[group])
+            elif "p_contaminated" not in raw_params:
+                specification = self.prior.params["p_contaminated"]
+                if not np.isscalar(specification):
+                    raise ValueError("Posterior p_contaminated is required when infer=True.")
+                raw_params["p_contaminated"] = specification
+        if apply_missing and isinstance(self.missing, RandomMissingProcess):
+            nuisance = JointPrior(p_missing=self.prior.params["p_missing"]).sample(batch_size, num_steps)
+            for group in ("local_params", "deterministic_params", "shared_params", "fixed_params"):
+                raw_params.update(nuisance[group])
+        combined_params, simulator_context = self._resolve_parameters(raw_params, contexts)
 
         ordered_params = self._ordered_model_args(
             combined_params,
@@ -445,7 +968,30 @@ class Model:
         )
 
         model_output = self._call_simulator(ordered_params, simulator_context)
-        return self._reshape_model_output(model_output, batch_size, num_steps, expected_data_keys=self.data_keys)
+        sim_data = self._reshape_model_output(model_output, batch_size, num_steps, expected_data_keys=self.data_keys)
+        sim_data, _ = self._apply_contamination(sim_data, rng, combined_params.get("p_contaminated"))
+        if apply_missing:
+            sim_data, _, _ = self._apply_missing(sim_data, rng, combined_params.get("p_missing"))
+        return sim_data
+
+    @staticmethod
+    def _context_names(names, selector):
+        if isinstance(names, str) or not isinstance(names, Sequence):
+            raise TypeError(f"{selector} must be a sequence of context variable names.")
+        if any(not isinstance(name, str) or not name for name in names):
+            raise ValueError(f"{selector} names must be non-empty strings.")
+        return tuple(dict.fromkeys(names))
+
+    def _split_context(self, context):
+        """Route one context draw to regression and simulator consumers."""
+        if not isinstance(context, Mapping):
+            raise TypeError("Context generators must return a mapping of named variables.")
+        requested = {"design_context": self.design_context, "simulator_context": self.simulator_context}
+        missing = set(self.design_context) | set(self.simulator_context)
+        missing -= context.keys()
+        if missing:
+            raise KeyError(f"Context variables requested by the model but not generated: {sorted(missing)}")
+        return {consumer: {name: context[name] for name in names} for consumer, names in requested.items()}
 
     def _generate_context(
         self,
@@ -454,26 +1000,25 @@ class Model:
         pilot: bool = False,
     ) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
         """Generate context and split it for the model's consumers."""
-        if self.context is None:
+        if self.context_simulator is None:
             return {}, {
                 "simulator_context": {},
-                "formula_context": {},
                 "design_context": {},
             }
 
-        if isinstance(self.context, ContextSimulator):
-            context = self.context.sample(batch_size=batch_size, num_steps=num_steps)
+        if isinstance(self.context_simulator, ContextSimulator):
+            context = self.context_simulator.sample(batch_size=batch_size, num_steps=num_steps)
         else:
-            context = self._coerce_fixed_context(self.context, batch_size, num_steps, pilot=pilot)
-        return context, self.context_mapping.split(context)
+            context = self._coerce_fixed_context(self.context_simulator, batch_size, num_steps, pilot=pilot)
+        return context, self._split_context(context)
 
     def _sample_context(self, batch_size: int, num_steps: int) -> dict[str, dict[str, Any]]:
         """Generate and split context when the raw output is not needed."""
         _, contexts = self._generate_context(batch_size, num_steps)
         return contexts
 
-    @staticmethod
     def _coerce_fixed_context(
+        self,
         context: Mapping[str, Any] | pd.DataFrame,
         batch_size: int,
         num_steps: int,
@@ -495,7 +1040,7 @@ class Model:
 
         result = {}
         for name, value in values.items():
-            array = np.asarray(value)
+            array = np.asarray(value, dtype=object if name in self.categorical else None)
             if array.ndim == 0:
                 result[name] = np.full((batch_size, num_steps), array.item(), dtype=array.dtype)
                 continue
@@ -521,6 +1066,104 @@ class Model:
             parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in signature.parameters.values()
         )
 
+    @staticmethod
+    def _normalize_link_functions(links, argument_name):
+        """Normalize one link configuration to a mapping or LinkFunction."""
+        if links is None:
+            return {}
+        if isinstance(links, Mapping):
+            return {
+                name: link if isinstance(link, LinkFunction) else LinkFunction(link) for name, link in links.items()
+            }
+        if callable(links):
+            return links if isinstance(links, LinkFunction) else LinkFunction(links)
+        raise TypeError(f"{argument_name} must be a mapping, LinkFunction, callable, or None.")
+
+    @staticmethod
+    def _apply_links(parameters, links, default_targets):
+        resolved = dict(parameters)
+        targets = links if isinstance(links, Mapping) else default_targets
+        for name in targets:
+            if name not in resolved:
+                continue  # Simulator defaults are handled separately.
+            link = links[name] if isinstance(links, Mapping) else links
+            resolved[name] = link(resolved[name])
+        return resolved
+
+    def _resolve_parameters(self, parameters, contexts):
+        """Apply latent links, resolve formulas, then apply formula links."""
+        linked_parameters = self._apply_links(parameters, self.latent_link_function, parameters)
+        resolved = self._resolve_formula(linked_parameters, contexts["design_context"])
+        formula_targets = (
+            self.formula_link_function
+            if isinstance(self.formula_link_function, Mapping)
+            else [name for name in self.formula.targets if name in self.param_order]
+        )
+        missing_targets = set(formula_targets) - set(resolved)
+        if missing_targets:
+            raise ValueError(f"Formula did not produce linked targets: {sorted(missing_targets)}")
+        resolved = self._apply_links(resolved, self.formula_link_function, formula_targets)
+        resolved, simulator_context = self._apply_simulator_context(resolved, contexts["simulator_context"])
+        return resolved, simulator_context
+
+    def sample_prior(self, batch_size=20, num_steps=200, context=None):
+        """Draw raw coefficient groups and derived cognitive parameters without simulating.
+
+        ``model_params`` contains linked parameters shaped (batch, steps).
+        ``model_time_varying_keys`` identifies trial-level derived parameters.
+        Other groups retain the raw inference scale. Explicit context may be
+        supplied to inspect the induced prior under a particular design.
+        """
+        if context is None:
+            contexts = self._sample_context(batch_size, num_steps)
+        else:
+            raw = self._coerce_fixed_context(context, batch_size, num_steps, allow_batched=True)
+            contexts = self._split_context(raw)
+        draws = self.prior.sample(batch_size=batch_size, num_steps=num_steps)
+        combined = {}
+        for group in ("local_params", "deterministic_params", "shared_params", "fixed_params"):
+            combined.update(draws.get(group, {}))
+        resolved, _ = self._resolve_parameters(combined, contexts)
+        # Include defaults for inspection, but do not present them as prior draws.
+        draws["model_default_keys"] = [name for name in self.param_order if name not in resolved]
+        for name in self.param_order:
+            if name not in resolved and self.signature.parameters[name].default is not inspect.Parameter.empty:
+                resolved[name] = self.signature.parameters[name].default
+        cognitive = {name: resolved[name] for name in self.param_order if name in resolved}
+        flat = self._prepare_flat_params(cognitive, batch_size, num_steps)
+        draws["model_params"] = {
+            name: value.reshape(batch_size, num_steps, *value.shape[1:]) for name, value in flat.items()
+        }
+        draws["model_time_varying_keys"] = [
+            name
+            for name, value in cognitive.items()
+            if np.asarray(value).ndim >= 2 and np.asarray(value).shape[1] == num_steps
+        ]
+        self._exclude_nuisance(draws)
+        return draws
+
+    def _exclude_nuisance(self, draws):
+        for group in ("local_params", "deterministic_params", "hyper_params", "shared_params", "fixed_params"):
+            for key in self._nuisance_keys:
+                draws.get(group, {}).pop(key, None)
+
+    def _sample_inference_prior(self, batch_size, num_steps, include_deterministic=False):
+        """Draw raw prior groups without formulas, links, or simulator context.
+
+        Deterministic trajectories are derived rather than inferred directly,
+        so they are omitted unless ``include_deterministic`` is True.
+        """
+        draws = self.prior.sample(batch_size=batch_size, num_steps=num_steps)
+        groups = dict(self.prior._last_hyper_param_groups)
+        self._exclude_nuisance(draws)
+        for name in list(groups):
+            if name in self._nuisance_keys:
+                groups.pop(name)
+        if not include_deterministic:
+            draws["deterministic_params"] = {}
+        draws["hyper_param_groups"] = groups
+        return draws
+
     def _resolve_formula(
         self,
         parameters: Dict[str, np.ndarray],
@@ -530,28 +1173,20 @@ class Model:
         if self.formula is None:
             return parameters
 
+        # Posterior scalar trajectories use (batch, steps, 1), whereas
+        # design context and prior trajectories use (batch, steps).
+        parameters = {
+            name: np.asarray(value)[..., 0]
+            if np.asarray(value).ndim == 3 and np.asarray(value).shape[-1] == 1
+            else value
+            for name, value in parameters.items()
+        }
         resolver = getattr(self.formula, "resolve", self.formula)
         if not callable(resolver):
             raise TypeError("formula must be callable or provide a callable resolve method.")
         resolved = resolver(parameters=parameters, context=context)
         if not isinstance(resolved, Mapping):
             raise TypeError("formula must return a mapping of simulator parameters.")
-        return dict(resolved)
-
-    def _resolve_design_matrix(
-        self,
-        parameters: Dict[str, np.ndarray],
-        context: Mapping[str, Any],
-    ) -> Dict[str, np.ndarray]:
-        """Resolve model parameters through the optional design matrix."""
-        if self.design_matrix is None:
-            return parameters
-        resolver = getattr(self.design_matrix, "resolve", self.design_matrix)
-        if not callable(resolver):
-            raise TypeError("design_matrix must be callable or provide a callable resolve method.")
-        resolved = resolver(parameters=parameters, context=context)
-        if not isinstance(resolved, Mapping):
-            raise TypeError("design_matrix must return a mapping of simulator parameters.")
         return dict(resolved)
 
     def _call_simulator(self, ordered_params: list, context: Mapping[str, Any]) -> Mapping[str, np.ndarray]:
@@ -570,7 +1205,7 @@ class Model:
         """Bind context variables that match simulator arguments.
 
         This lets context generators provide conventional simulator inputs
-        such as ``correct_idx`` for :func:`sample_rdm`. Any remaining context
+        such as ``boost_idx`` for :func:`sample_rdm`. Any remaining context
         is forwarded as a ``context`` keyword to simulators that support it.
         """
         parameter_context = {name: value for name, value in context.items() if name in self.param_order}
@@ -649,9 +1284,22 @@ class Model:
         combined_params.update(prior_draws.get("fixed_params", {}))
 
         contexts = contexts or self._sample_context(batch_size=1, num_steps=1)
-        model_params = self._resolve_formula(combined_params, contexts["formula_context"])
-        model_params = self._resolve_design_matrix(model_params, contexts["design_context"])
-        model_params, simulator_context = self._apply_simulator_context(model_params, contexts["simulator_context"])
+        model_params, simulator_context = self._resolve_parameters(combined_params, contexts)
+        sampled_keys = set().union(
+            *(
+                prior_draws.get(group, {}).keys()
+                for group in ("local_params", "deterministic_params", "shared_params", "hyper_params", "fixed_params")
+            )
+        )
+        sampled_keys.update(key for keys in self._contamination_parameter_groups.values() for key in keys)
+        self.formula_keys = [
+            name
+            for name in self.param_order
+            if self.formula is not None
+            and name in model_params
+            and name not in sampled_keys
+            and name not in self.simulator_context
+        ]
         ordered_params = self._ordered_model_args(
             model_params,
             batch_size=1,
@@ -848,6 +1496,7 @@ class Model:
         self,
         sim_data: Dict[str, np.ndarray],
         rng: np.random.Generator | None,
+        probability: np.ndarray | float | None = None,
     ) -> tuple[Dict[str, np.ndarray], Dict[str, np.ndarray]]:
         """Run `self.contamination` on `sim_data`, if configured.
 
@@ -876,7 +1525,9 @@ class Model:
         if self.contamination is None:
             return sim_data, {}
 
-        if isinstance(self.contamination, ContaminationProcess):
+        if isinstance(self.contamination, RandomChoiceContamination):
+            out = self.contamination.apply(sim_data, rng=rng, probability=probability)
+        elif isinstance(self.contamination, ContaminationProcess):
             out = self.contamination.apply(sim_data, rng=rng)
         else:
             out = self.contamination(sim_data, rng=rng)
@@ -892,14 +1543,15 @@ class Model:
         self,
         sim_data: Dict[str, np.ndarray],
         rng: np.random.Generator | None,
+        probability: np.ndarray | float | None = None,
     ) -> tuple[Dict[str, np.ndarray], Optional[np.ndarray], Dict[str, np.ndarray]]:
-        """Run `self.missing` on `sim_data`, if configured.
+        """Run `self.missing` on the supplied summary data, if configured.
 
         Parameters
         ----------
         sim_data : dict of np.ndarray
-            Named simulated variables to potentially corrupt with
-            missingness. Each value must have shape
+            Named simulated observations and context to potentially corrupt
+            with missingness. Each value must have leading shape
             (batch_size, num_steps).
         rng      : np.random.Generator or None
             Generator forwarded to the missing process, if it accepts one.
@@ -907,11 +1559,11 @@ class Model:
         Returns
         -------
         sim_data     : dict of np.ndarray - the (possibly corrupted)
-            named simulated variables
+            named summary variables
         missing_mask : np.ndarray or None - mask from the process, or
             None if `self.missing` is None
         extra        : dict of np.ndarray - any additional entries the
-            process returned beyond the simulator data keys and
+            process returned beyond the supplied summary keys and
             `"missing_mask"` (e.g. `RandomMissingProcess` also returns
             `"p_missing"`); empty dict if `self.missing` is None
             or the process returned no extra keys
@@ -925,9 +1577,13 @@ class Model:
         except (TypeError, ValueError):
             accepts_rng = False
 
-        result = self.missing(sim_data, rng=rng) if accepts_rng else self.missing(sim_data)
+        if isinstance(self.missing, RandomMissingProcess):
+            result = self.missing.apply(sim_data, rng=rng, probability=probability)
+        else:
+            result = self.missing(sim_data, rng=rng) if accepts_rng else self.missing(sim_data)
 
-        sim_data = {key: result[key] for key in self.data_keys}
+        input_keys = list(sim_data)
+        sim_data = {key: result[key] for key in input_keys}
         missing_mask = result["missing_mask"]
-        extra = {k: v for k, v in result.items() if k not in (*self.data_keys, "missing_mask")}
+        extra = {k: v for k, v in result.items() if k not in (*input_keys, "missing_mask")}
         return sim_data, missing_mask, extra

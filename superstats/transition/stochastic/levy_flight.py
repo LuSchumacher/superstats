@@ -1,12 +1,10 @@
 """Lévy-flight transition models."""
 
 from typing import Dict, Any
-from collections.abc import Sequence
 import numpy as np
 from numba import njit, prange
 
 from .stochastic_transition import StochasticTransition, Prior
-from superstats.utils.transformations import scaled_sigmoid
 
 
 @njit
@@ -56,7 +54,6 @@ def _sample_levy_flight(
     delta: np.ndarray,
     alpha: np.ndarray,
     beta: np.ndarray,
-    bounds: np.ndarray,
 ) -> np.ndarray:
     """Vectorized Lévy-flight rollout across a batch, filled in place.
 
@@ -73,22 +70,18 @@ def _sample_levy_flight(
         Stability index in (0, 2], per trajectory.
     beta         : np.ndarray of shape (batch_size,)
         Skewness in [-1, 1], per trajectory.
-    bounds       : np.ndarray of shape (2,)
-        (lower, upper) bounds passed to `scaled_sigmoid`.
 
     Returns
     -------
     local_params : np.ndarray of shape (batch_size, steps) - the same
-        array, filled with the bounded Lévy-flight rollout
+        array, filled with the raw Lévy-flight rollout
     """
     batch_size, steps = local_params.shape
-    lower, upper = bounds[0], bounds[1]
 
     for b in prange(batch_size):
         for t in range(1, steps):
             increment = delta[b] + _sample_alpha_stable(alpha[b], beta[b], sigma[b])
             local_params[b, t] = local_params[b, t - 1] + increment
-        local_params[b, :] = scaled_sigmoid(local_params[b, :], lower, upper)
 
     return local_params
 
@@ -133,8 +126,6 @@ class LevyFlight(StochasticTransition):
 
     Parameters
     ----------
-    bounds        : tuple or None, optional, default: None
-        Lower and upper bounds for the latent state.
     initial_prior : Prior or None, optional, default: None
         Prior for the initial latent state.
     sigma         : float or Prior or None, optional, default: None
@@ -155,14 +146,13 @@ class LevyFlight(StochasticTransition):
 
     def __init__(
         self,
-        bounds: Sequence[float, float] | None = None,
         initial_prior: Prior | None = None,
         sigma: float | Prior | None = None,
         delta: float | Prior | None = None,
         alpha: float | Prior | None = None,
         beta: float | Prior | None = None,
     ):
-        super().__init__(bounds, initial_prior)
+        super().__init__(initial_prior)
 
         self.hyper_specs = {
             "sigma": sigma,
@@ -213,7 +203,6 @@ class LevyFlight(StochasticTransition):
             delta,
             alpha,
             beta,
-            self.bounds,
         )
 
         return {

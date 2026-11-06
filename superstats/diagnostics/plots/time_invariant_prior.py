@@ -41,6 +41,7 @@ def plot_time_invariant_prior(
     label_fontsize: int = LABEL_FONTSIZE,
     tick_fontsize: int = TICK_FONTSIZE,
     figsize: tuple[float, float] | None = None,
+    condition_labels: Mapping[str, Sequence[str]] | None = None,
 ) -> plt.Figure:
     """Plot time-invariant hyperparameter and shared-parameter distributions.
 
@@ -120,27 +121,32 @@ def plot_time_invariant_prior(
 
         if arr.ndim == 2 and arr.shape[1] > 1:
             panel_dist_alpha = resolve_dist_alpha(dist_alpha, arr.shape[1])
-            param_name = label.split("_mixture_weights")[0].strip()
+            base_name = label.rsplit("  [", 1)[0]
+            param_name = base_name.split("_mixture_weights")[0].strip()
 
-            component_names = (mixture_names.get(param_name) if mixture_names else None) or [
-                f"component {k}" for k in range(arr.shape[1])
-            ]
+            component_names = (
+                (condition_labels or {}).get(base_name)
+                or (mixture_names.get(param_name) if mixture_names else None)
+                or [f"component {k}" for k in range(arr.shape[1])]
+            )
 
             for k in range(arr.shape[1]):
                 plot_dist(
                     arr[:, k],
                     ax=ax,
                     dist_type=dist_type,
-                    color=CATEGORICAL_PALETTE[k % len(CATEGORICAL_PALETTE)],
+                    color=(
+                        CATEGORICAL_PALETTE[k]
+                        if arr.shape[1] <= len(CATEGORICAL_PALETTE)
+                        else plt.get_cmap("tab20")(k % 20)
+                    ),
                     num_bins=num_bins,
                     alpha=panel_dist_alpha,
                     label=component_names[k],
                 )
 
-            ax.legend(
-                fontsize=tick_fontsize,
-                framealpha=0.0,
-            )
+            if base_name not in (condition_labels or {}):
+                ax.legend(fontsize=tick_fontsize, framealpha=0.0)
         else:
             panel_dist_alpha = resolve_dist_alpha(dist_alpha, 1)
             plot_dist(

@@ -3,7 +3,7 @@
 Superstats estimates models whose parameters may change across ordered observations.
 A model has two layers:
 
-- An **observation model** $\mathcal{G}$ generates an observation $x_t$ from parameters $\theta_t$ at step $t$.
+- An **observation model** $\mathcal{G}$ generates an observation $x_t$ from the observation history $x_{1:t-1}$ and parameters $\theta_t$ at step $t$.
 - A **transition model** $\mathcal{T}$ describes how those parameters evolve across steps.
 
 In compact form,
@@ -11,7 +11,7 @@ In compact form,
 $$
 \theta_t = \mathcal{T}(\theta_{0:t-1}; \eta),
 \qquad
-x_t = \mathcal{G}(\theta_t; \lambda),
+x_t = \mathcal{G}(x_{1:t-1}; \theta_t, \lambda),
 $$
 
 where $\eta$ contains transition hyperparameters and $\lambda$ contains time-invariant observation-model parameters.

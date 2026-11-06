@@ -162,9 +162,8 @@ def test_sample_gaussian_process_preserves_float32_dtype():
 
     start = np.zeros(BATCH_SIZE, dtype=np.float32)
     local_params = np.empty((BATCH_SIZE, NUM_STEPS), dtype=np.float32)
-    bounds = np.array([0.0, 1.0], dtype=np.float32)
 
-    out = sample_gaussian_process(local_params, start, kernel_mat, bounds)
+    out = sample_gaussian_process(local_params, start, kernel_mat)
 
     assert out.dtype == np.float32
     assert local_params.dtype == np.float32
@@ -172,19 +171,18 @@ def test_sample_gaussian_process_preserves_float32_dtype():
     assert out is local_params
 
 
-def test_sample_gaussian_process_respects_bounds():
+def test_sample_gaussian_process_returns_raw_values():
     length_scale = np.full(BATCH_SIZE, 0.1)
     amplitude = np.full(BATCH_SIZE, 3.0)  # large amplitude, would overshoot without squashing
     kernel_mat = get_rbf_kernel(NUM_STEPS, length_scale, amplitude)
 
     start = np.zeros(BATCH_SIZE)
     local_params = np.empty((BATCH_SIZE, NUM_STEPS))
-    bounds = np.array([-1.0, 2.0])
 
-    out = sample_gaussian_process(local_params, start, kernel_mat, bounds)
+    out = sample_gaussian_process(local_params, start, kernel_mat)
 
-    assert np.all(out >= -1.0 - 1e-6)
-    assert np.all(out <= 2.0 + 1e-6)
+    assert np.all(np.isfinite(out))
+    assert np.any((out < -1) | (out > 2))
 
 
 def test_rbf_kernel_default_hyperparam_names_unprefixed():
@@ -416,9 +414,7 @@ def test_gaussian_process_sample_shape_and_keys(gp, expected_hyper_keys, expecte
     assert local_params.shape == (BATCH_SIZE, NUM_STEPS)
     assert local_params.dtype == np.float32
 
-    lower, upper = gp.bounds
-    assert np.all(local_params >= lower - 1e-4)
-    assert np.all(local_params <= upper + 1e-4)
+    assert np.all(np.isfinite(local_params))
 
     assert set(result["hyper_params"].keys()) == expected_hyper_keys
     for values in result["hyper_params"].values():
@@ -434,11 +430,10 @@ def test_gaussian_process_default_amplitude_is_fixed_at_one():
 
 
 def test_gaussian_process_custom_bounds_respected():
-    gp = GaussianProcess(bounds=(-2.0, 5.0))
+    gp = GaussianProcess()
     result = gp.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS)
     local_params = result["local_params"]
-    assert np.all(local_params >= -2.0 - 1e-4)
-    assert np.all(local_params <= 5.0 + 1e-4)
+    assert np.all(np.isfinite(local_params))
 
 
 def test_gaussian_process_kernel_params_override_default_prior():

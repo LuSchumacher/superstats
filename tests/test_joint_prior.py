@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 
-import superstats.prior.joint_prior as joint_prior_module
+import superstats.simulation.model as joint_prior_module
 from superstats.defaults import BASE_COL_WIDTH
 from superstats.prior import JointPrior, Prior
 from superstats.simulation import Model
@@ -236,17 +236,18 @@ def test_joint_prior_time_varying_plot_forwards_transition_bounds(monkeypatch):
 
     monkeypatch.setattr(joint_prior_module, "plot_time_varying_prior", fake_plot)
     prior = _build_joint_prior()
-    prior.plot_time_varying_prior(num_steps=2, num_trajectories=1)
+    Model(
+        prior=prior, simulator=lambda v=0, a=1, tau=0.2, bias=0: {"observation": np.atleast_1d(v)}, missing=None
+    ).plot_time_varying_prior(num_steps=2, num_trajectories=1)
 
-    assert "v" in captured["param_bounds"]
-    np.testing.assert_allclose(captured["param_bounds"]["v"], prior.params["v"].bounds)
+    assert captured["param_bounds"] == {}
 
 
 def test_joint_prior_plot_methods_have_no_var_keyword_arguments():
     for method in (
-        JointPrior.plot_time_varying_prior,
-        JointPrior.plot_time_invariant_prior,
-        JointPrior.plot_joint_prior,
+        Model.plot_time_varying_prior,
+        Model.plot_time_invariant_prior,
+        Model.plot_joint_prior,
     ):
         assert all(
             parameter.kind is not inspect.Parameter.VAR_KEYWORD
@@ -257,7 +258,9 @@ def test_joint_prior_plot_methods_have_no_var_keyword_arguments():
 def test_joint_prior_time_invariant_plot_uses_three_columns_for_six_params():
     prior = JointPrior(**{f"p{i}": Prior("normal") for i in range(6)})
 
-    fig = prior.plot_time_invariant_prior(num_draws=30, dist_type="hist")
+    fig = Model(
+        prior=prior, simulator=lambda v=0, a=1, tau=0.2, bias=0: {"observation": np.atleast_1d(v)}, missing=None
+    ).plot_time_invariant_prior(num_draws=30, dist_type="hist")
 
     assert len(fig.axes) == 6
     assert fig.get_size_inches()[0] == pytest.approx(BASE_COL_WIDTH * 3)
@@ -267,9 +270,11 @@ def test_joint_prior_time_invariant_plot_uses_three_columns_for_six_params():
 def test_joint_prior_time_varying_plot_accepts_default_distribution_alpha():
     prior = _build_joint_prior()
 
-    assert inspect.signature(JointPrior.plot_time_varying_prior).parameters["dist_alpha"].default == 1.0
+    assert inspect.signature(Model.plot_time_varying_prior).parameters["dist_alpha"].default == 1.0
 
-    fig = prior.plot_time_varying_prior(
+    fig = Model(
+        prior=prior, simulator=lambda v=0, a=1, tau=0.2, bias=0: {"observation": np.atleast_1d(v)}, missing=None
+    ).plot_time_varying_prior(
         num_steps=8,
         num_trajectories=4,
     )
@@ -290,7 +295,9 @@ def test_joint_prior_time_varying_plot_forwards_all_arguments(monkeypatch):
     monkeypatch.setattr(joint_prior_module, "plot_time_varying_prior", fake_plot)
     prior = _build_joint_prior()
 
-    result = prior.plot_time_varying_prior(
+    result = Model(
+        prior=prior, simulator=lambda v=0, a=1, tau=0.2, bias=0: {"observation": np.atleast_1d(v)}, missing=None
+    ).plot_time_varying_prior(
         num_steps=8,
         num_trajectories=4,
         num_cols=1,
@@ -333,7 +340,9 @@ def test_joint_prior_time_invariant_plot_forwards_all_arguments(monkeypatch):
     monkeypatch.setattr(joint_prior_module, "plot_time_invariant_prior", fake_plot)
     prior = _build_joint_prior()
 
-    result = prior.plot_time_invariant_prior(
+    result = Model(
+        prior=prior, simulator=lambda v=0, a=1, tau=0.2, bias=0: {"observation": np.atleast_1d(v)}, missing=None
+    ).plot_time_invariant_prior(
         num_draws=10,
         dist_type="kde",
         num_bins=13,
@@ -371,7 +380,9 @@ def test_joint_prior_joint_plot_forwards_all_arguments(monkeypatch):
     monkeypatch.setattr(joint_prior_module, "plot_joint_prior", fake_plot)
     prior = _build_joint_prior()
 
-    result = prior.plot_joint_prior(
+    result = Model(
+        prior=prior, simulator=lambda v=0, a=1, tau=0.2, bias=0: {"observation": np.atleast_1d(v)}, missing=None
+    ).plot_joint_prior(
         num_steps=8,
         num_trajectories=4,
         num_draws=10,

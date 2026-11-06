@@ -16,6 +16,7 @@ from superstats.defaults import (
     LABEL_PAD,
     TICK_FONTSIZE,
     TITLE_FONTSIZE,
+    UNCERTAINTY_LABELS,
 )
 from superstats.utils.indexing import format_dataset_label, normalize_data_indices
 from superstats.utils.plotting import (
@@ -23,7 +24,6 @@ from superstats.utils.plotting import (
     flatten_time_invariant_parameters,
     get_default_num_cols,
     get_layout,
-    get_uncertainty_interval_labels,
     prepare_time_invariant_data,
 )
 
@@ -181,7 +181,9 @@ def plot_forest(
         if uncertainty_fun is None:
             outer_label = inner_label = None
         else:
-            outer_label, inner_label = get_uncertainty_interval_labels(uncertainty_fun)
+            outer_label, inner_label = (
+                ("Uncertainty", None) if callable(uncertainty_fun) else UNCERTAINTY_LABELS[uncertainty_fun]
+            )
 
     num_panels = 1 if aggregation is not None else len(parameter_names)
     if aggregation is not None:

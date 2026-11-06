@@ -21,14 +21,13 @@ from superstats.defaults import (
     TITLE_FONTSIZE,
     WSPACE,
     Y_LABEL_PAD,
+    UNCERTAINTY_LABELS,
 )
 from superstats.utils.indexing import format_dataset_label
 from superstats.utils.plotting import (
     compute_uncertainty_bands,
     get_default_num_cols,
     get_layout,
-    get_uncertainty_band_alphas,
-    get_uncertainty_bound_labels,
     plot_dist,
     plot_uncertainty_bands,
     resolve_dist_alpha,
@@ -107,8 +106,8 @@ def plot_push_forward(
     tick_fontsize       : int, optional, default: 16
         The font size of the axis tick labels.
     figsize            : tuple of two floats or None, optional, default: None
-        Explicit figure size in inches. If None, the default layout size
-        is used.
+        Explicit figure size in inches. If None, individual-panel grids
+        use 3.5 inches of height per row.
     max_discrete_values : int, optional, default: 30
         Maximum number of discrete categories to treat the data as discrete.
 
@@ -268,8 +267,12 @@ def plot_push_forward(
                 mlines.Line2D([], [], color=color, linewidth=2.5, label=aggregate_label),
             ]
             if show_uncertainty:
-                lower_label, upper_label = get_uncertainty_bound_labels(uncertainty_fun)
-                lower_alpha, upper_alpha = get_uncertainty_band_alphas(0.4)
+                lower_label, upper_label = (
+                    UNCERTAINTY_LABELS[uncertainty_fun]
+                    if isinstance(uncertainty_fun, str)
+                    else ("Lower Uncertainty", "Upper Uncertainty")
+                )
+                lower_alpha, upper_alpha = 0.4, 0.2
                 handles.extend(
                     [
                         mpatches.Patch(facecolor=color, alpha=lower_alpha, edgecolor="none", label=lower_label),
@@ -336,7 +339,7 @@ def plot_push_forward(
 
     elif kind == "time_series":
         num_rows = int(np.ceil(batch_size / num_cols))
-        default_figsize = (BASE_COL_WIDTH * num_cols, BASE_ROW_HEIGHT * num_rows)
+        default_figsize = (BASE_COL_WIDTH * num_cols, (BASE_ROW_HEIGHT + 0.5) * num_rows)
         fig, axes = plt.subplots(num_rows, num_cols, figsize=figsize if figsize is not None else default_figsize)
         axes = np.atleast_1d(axes).ravel()
         t = np.arange(steps)
@@ -401,7 +404,7 @@ def plot_push_forward(
 
     else:
         num_rows = int(np.ceil(batch_size / num_cols))
-        default_figsize = (BASE_COL_WIDTH * num_cols, BASE_ROW_HEIGHT * num_rows)
+        default_figsize = (BASE_COL_WIDTH * num_cols, (BASE_ROW_HEIGHT + 0.5) * num_rows)
         fig, axes = plt.subplots(num_rows, num_cols, figsize=figsize if figsize is not None else default_figsize)
         axes = np.atleast_1d(axes).ravel()
 

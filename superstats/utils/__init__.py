@@ -2,12 +2,8 @@
 
 from .transformations import scaled_sigmoid
 from .plotting import (
-    UNCERTAINTY_BAND_LABELS,
     compute_uncertainty_band,
     compute_uncertainty_bands,
-    get_uncertainty_band_label,
-    get_uncertainty_band_alphas,
-    get_uncertainty_bound_labels,
     get_layout,
     plot_dist,
     plot_uncertainty_band,
@@ -27,12 +23,8 @@ from .logging import error, info, logger, warn_once, warning
 
 __all__ = [
     "scaled_sigmoid",
-    "UNCERTAINTY_BAND_LABELS",
     "compute_uncertainty_band",
     "compute_uncertainty_bands",
-    "get_uncertainty_band_label",
-    "get_uncertainty_band_alphas",
-    "get_uncertainty_bound_labels",
     "prepare_plot_data",
     "get_layout",
     "plot_dist",

@@ -1,6 +1,7 @@
 from collections.abc import Mapping
 
 import numpy as np
+import pytest
 
 from superstats.simulation import sample_rdm
 
@@ -10,11 +11,11 @@ def test_sample_rdm_shape_and_dtype():
     v_base = np.random.normal(0.0, 1.0, size=num_trials).astype(np.float32)
     v_diff = np.random.normal(0.0, 1.0, size=num_trials).astype(np.float32)
     a_base = np.full(num_trials, 1.0, dtype=np.float32)
+    a_diff = np.zeros(num_trials, dtype=np.float32)
     tau = np.full(num_trials, 0.2, dtype=np.float32)
-    bias = np.full(num_trials, 1.0, dtype=np.float32)
-    sigma_diff = np.full(num_trials, 1.0, dtype=np.float32)
+    sigma_diff = np.zeros(num_trials, dtype=np.float32)
 
-    data = sample_rdm(v_base, v_diff, a_base, tau, bias, sigma_diff)
+    data = sample_rdm(v_base, v_diff, a_base, a_diff, tau, sigma_diff)
 
     assert isinstance(data, Mapping)
     assert set(data) == {"response_time", "choice"}
@@ -30,21 +31,21 @@ def test_sample_rdm_shape_and_dtype():
     assert np.all(np.isin(choice, [-1.0, 0.0, 1.0]))
 
 
-def test_sample_rdm_correct_accumulator_wins_with_strong_drift_advantage():
+def test_sample_rdm_boosted_accumulator_wins_with_strong_drift_advantage():
     num_trials = 5
     v_base = np.zeros(num_trials, dtype=np.float32)
-    v_diff = np.full(num_trials, 1e6, dtype=np.float32)  # huge advantage to correct
+    v_diff = np.full(num_trials, 1e6, dtype=np.float32)
     a_base = np.full(num_trials, 0.001, dtype=np.float32)
+    a_diff = np.zeros(num_trials, dtype=np.float32)
     tau = np.zeros(num_trials, dtype=np.float32)
-    bias = np.full(num_trials, 1.0, dtype=np.float32)
-    sigma_diff = np.full(num_trials, 1.0, dtype=np.float32)
-    correct_idx = np.ones(num_trials, dtype=np.float32)  # accumulator 1 is correct
+    sigma_diff = np.zeros(num_trials, dtype=np.float32)
+    boost_idx = np.array([1, 0, 1, 0, 1], dtype=np.int32)
 
-    data = sample_rdm(v_base, v_diff, a_base, tau, bias, sigma_diff, correct_idx=correct_idx)
+    data = sample_rdm(v_base, v_diff, a_base, a_diff, tau, sigma_diff, boost_idx=boost_idx, sigma_base=0.0)
 
-    # the correct accumulator has an overwhelming drift advantage, so it should win
-    assert np.all(data["choice"] == 1.0)
-    assert np.all(data["response_time"] > 0)
+    np.testing.assert_array_equal(data["choice"], boost_idx)
+    expected_rt = np.logaddexp(0.0, a_base) / np.logaddexp(0.0, v_base + v_diff / 2)
+    np.testing.assert_allclose(data["response_time"], expected_rt, rtol=1e-6)
 
 
 def test_sample_rdm_times_out_when_max_steps_too_small():
@@ -52,29 +53,55 @@ def test_sample_rdm_times_out_when_max_steps_too_small():
     v_base = np.zeros(num_trials, dtype=np.float32)
     v_diff = np.zeros(num_trials, dtype=np.float32)
     a_base = np.full(num_trials, 1e6, dtype=np.float32)
+    a_diff = np.zeros(num_trials, dtype=np.float32)
     tau = np.zeros(num_trials, dtype=np.float32)
-    bias = np.full(num_trials, 1.0, dtype=np.float32)
-    sigma_diff = np.full(num_trials, 1.0, dtype=np.float32)
+    sigma_diff = np.zeros(num_trials, dtype=np.float32)
 
-    data = sample_rdm(v_base, v_diff, a_base, tau, bias, sigma_diff, max_steps=1)
+    data = sample_rdm(v_base, v_diff, a_base, a_diff, tau, sigma_diff, sigma_base=0.0, max_steps=1)
 
     assert np.all(data["response_time"] == -1.0)
     assert np.all(data["choice"] == -1.0)
 
 
 def test_sample_rdm_preserves_trialwise_parameter_alignment():
-    # A zero-noise, zero-drift process with a tiny boundary should always
-    # time out, independently for every trial.
+    # Equal drift and boundary predictors give a decision time of exactly one
+    # second; the trial-specific nondecision times must remain aligned.
     n = 4
+    predictors = np.array([-2.0, -0.5, 0.5, 2.0], dtype=np.float32)
+    tau = np.array([0.0, 0.1, 0.2, 0.3], dtype=np.float32)
     data = sample_rdm(
+        predictors,
         np.zeros(n, dtype=np.float32),
+        predictors,
         np.zeros(n, dtype=np.float32),
-        np.full(n, 1e6, dtype=np.float32),
+        tau,
         np.zeros(n, dtype=np.float32),
-        np.full(n, 0.5, dtype=np.float32),
-        np.zeros(n, dtype=np.float32),
-        max_steps=2,
+        sigma_base=0.0,
+        dt=2.0,
+        max_steps=1,
     )
 
-    assert np.array_equal(data["response_time"], np.full(n, -1.0, dtype=np.float32))
-    assert np.array_equal(data["choice"], np.full(n, -1.0, dtype=np.float32))
+    np.testing.assert_allclose(data["response_time"], tau + 1.0)
+    np.testing.assert_array_equal(data["choice"], np.zeros(n, dtype=np.float32))
+
+
+@pytest.mark.parametrize("contrast", [-2.0, 2.0])
+def test_sample_rdm_boundary_bias_is_independent_of_drift_boost(contrast):
+    bias_idx = np.array([0, 1], dtype=np.int32)
+    data = sample_rdm(
+        v_base=np.full(2, 2.0, dtype=np.float32),
+        v_diff=np.zeros(2, dtype=np.float32),
+        a_base=np.zeros(2, dtype=np.float32),
+        a_diff=np.full(2, contrast, dtype=np.float32),
+        tau=np.full(2, 0.2, dtype=np.float32),
+        sigma_diff=np.zeros(2, dtype=np.float32),
+        bias_idx=bias_idx,
+        sigma_base=0.0,
+        dt=1.0,
+        max_steps=1,
+    )
+
+    expected_choice = bias_idx if contrast < 0 else 1 - bias_idx
+    np.testing.assert_array_equal(data["choice"], expected_choice)
+    expected_rt = 0.2 + np.logaddexp(0.0, -1.0) / np.logaddexp(0.0, 2.0)
+    np.testing.assert_allclose(data["response_time"], expected_rt)
