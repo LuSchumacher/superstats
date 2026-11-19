@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 from superstats.prior import JointPrior, Prior
-from superstats.simulation import ContextMapping, ContextSimulator, Model, sample_ddm
+from superstats.simulation import ContextSimulator, Model, sample_ddm
 from superstats.simulation.augmentation import (
     ContaminationProcess,
     MissingProcess,
@@ -40,11 +40,14 @@ class _DeterministicTestTransition(DeterministicTransition):
 
 def _build_model(**kwargs):
     prior = JointPrior(
-        v=RandomWalk(bounds=(-3.0, 3.0), initial_prior=Prior("normal", loc=0.0, scale=0.5), sigma=0.05, delta=0.0),
+        v=RandomWalk(initial_prior=Prior("normal", loc=0.0, scale=0.5), sigma=0.05, delta=0.0),
         a=Prior("halfnormal", scale=1.0),
         tau=0.2,
         bias=0.0,
     )
+    for name in ("p_contaminated", "p_missing"):
+        if name in kwargs:
+            prior.params[name] = kwargs.pop(name)
     return Model(prior=prior, simulator=sample_ddm, **kwargs)
 
 
@@ -97,7 +100,7 @@ def test_model_routes_context_to_design_and_simulator():
             "simulator_offset": np.full(shape, 3.0),
         }
 
-    class DesignMatrix:
+    class ParameterFormula:
         def __init__(self):
             self.contexts = []
 
@@ -111,25 +114,23 @@ def test_model_routes_context_to_design_and_simulator():
         simulator_contexts.append(context)
         return {"observation": v + context["simulator_offset"].reshape(-1)}
 
-    design_matrix = DesignMatrix()
+    formula = ParameterFormula()
     model = Model(
         prior=JointPrior(v=1.0),
         simulator=simulator,
         missing=None,
-        context=ContextSimulator(generate_context),
-        context_mapping=ContextMapping(
-            design_context=("design_offset",),
-            simulator_context=("simulator_offset",),
-        ),
-        design_matrix=design_matrix,
+        context_simulator=ContextSimulator(generate_context),
+        design_context=("design_offset",),
+        simulator_context=("simulator_offset",),
+        formula=formula,
     )
 
-    design_matrix.contexts.clear()
+    formula.contexts.clear()
     simulator_contexts.clear()
     result = model.sample(batch_size=2, num_steps=3)
 
     assert context_calls == [(1, 1), (2, 3)]
-    assert set(design_matrix.contexts[0]) == {"design_offset"}
+    assert set(formula.contexts[0]) == {"design_offset"}
     assert set(simulator_contexts[0]) == {"simulator_offset"}
     np.testing.assert_allclose(result["observation"], 6.0)
 
@@ -151,8 +152,8 @@ def test_model_binds_simulator_context_matching_a_simulator_argument():
         prior=JointPrior(v=Prior("normal", loc=0.0, scale=1.0)),
         simulator=simulator,
         missing=None,
-        context=ContextSimulator(generate_context),
-        context_mapping=ContextMapping(simulator_context=("correct_idx",)),
+        context_simulator=ContextSimulator(generate_context),
+        simulator_context=("correct_idx",),
     )
 
     received_correct_idx.clear()
@@ -266,7 +267,7 @@ def test_deterministic_trajectories_are_simulated_but_not_inferred():
 
 def test_resimulate_reconstructs_linear_deterministic_parameter():
     prior = JointPrior(
-        v=RandomWalk(bounds=(-3.0, 3.0), initial_prior=Prior("normal", loc=0.0, scale=0.5), sigma=0.0, delta=0.0),
+        v=RandomWalk(initial_prior=Prior("normal", loc=0.0, scale=0.5), sigma=0.0, delta=0.0),
         a=Linear(intercept=0.5, slope=0.5),
         tau=0.2,
         bias=0.0,
@@ -414,7 +415,7 @@ def test_workflow_prepare_data_rejects_continuous_time():
 
 
 def test_workflow_prepare_data_uses_model_missing_value():
-    gm = _build_model(missing=RandomMissingProcess(p_missing=0.0, missing_value=-999.0))
+    gm = _build_model(p_missing=0.0, missing=RandomMissingProcess(missing_value=-999.0))
     workflow = object.__new__(Workflow)
     workflow.model = gm
     df = pd.DataFrame(
@@ -455,6 +456,22 @@ def test_model_sample_includes_missing_mask_by_default():
     assert "p_missing" in result
 
 
+def test_model_missing_mask_is_applied_to_context():
+    context = {"condition": np.arange(NUM_STEPS, dtype=float)}
+    gm = _build_model(
+        p_missing=1.0,
+        context_simulator=context,
+        missing=RandomMissingProcess(missing_value=-999.0),
+    )
+
+    result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS, rng=np.random.default_rng(0))
+
+    assert np.all(result["missing_mask"])
+    assert np.all(result["response_time"] == -999.0)
+    assert np.all(result["choice"] == -999.0)
+    assert np.all(result["condition"] == -999.0)
+
+
 def test_model_random_missing_includes_mask():
     gm = _build_model(missing="random")
     result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS, rng=np.random.default_rng(0))
@@ -477,7 +494,7 @@ def test_model_missing_none_disables_mask():
 
 def test_model_missing_none_leaves_data_unmodified():
     gm_no_missing = _build_model(missing=None)
-    gm_with_missing = _build_model(missing=RandomMissingProcess(p_missing=1.0, missing_value=-999.0))
+    gm_with_missing = _build_model(p_missing=1.0, missing=RandomMissingProcess(missing_value=-999.0))
 
     rng = np.random.default_rng(1)
     result_none = gm_no_missing.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS, rng=np.random.default_rng(1))
@@ -492,8 +509,8 @@ def test_model_missing_none_leaves_data_unmodified():
 
 
 def test_model_accepts_custom_missing_instance():
-    custom = RandomMissingProcess(p_missing=0.0, missing_value=-1.0, shared_across_batch=True)
-    gm = _build_model(missing=custom)
+    custom = RandomMissingProcess(missing_value=-1.0, shared_across_batch=True)
+    gm = _build_model(p_missing=0.0, missing=custom)
 
     assert gm.missing is custom
 
@@ -508,7 +525,7 @@ def test_model_missing_receives_rng_for_reproducibility():
     # so only the missingness draw -- not the underlying simulated data --
     # is guaranteed reproducible here. We isolate that by masking the same
     # fixed array twice rather than asserting on `sample()`'s full output.
-    process = RandomMissingProcess(p_missing=0.5)
+    process = RandomMissingProcess()
     rng = np.random.default_rng(0)
     data_a = {
         "response_time": rng.normal(size=(BATCH_SIZE, NUM_STEPS)).astype(np.float32),
@@ -516,8 +533,8 @@ def test_model_missing_receives_rng_for_reproducibility():
     }
     data_b = {key: value.copy() for key, value in data_a.items()}
 
-    result_a = process.apply(data_a, rng=np.random.default_rng(42))
-    result_b = process.apply(data_b, rng=np.random.default_rng(42))
+    result_a = process.apply(data_a, rng=np.random.default_rng(42), probability=0.5)
+    result_b = process.apply(data_b, rng=np.random.default_rng(42), probability=0.5)
 
     assert np.array_equal(result_a["missing_mask"], result_b["missing_mask"])
     for key in data_a:
@@ -558,10 +575,9 @@ def test_model_random_choice_contamination():
 
 def test_model_registers_inferred_contamination_prior_as_shared():
     contamination = RandomChoiceContamination(
-        p_contaminated=Prior("beta", a=2, b=8),
         infer=True,
     )
-    gm = _build_model(contamination=contamination, missing=None)
+    gm = _build_model(p_contaminated=Prior("beta", a=2, b=8), contamination=contamination, missing=None)
 
     result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS)
 
@@ -574,14 +590,19 @@ def test_model_registers_inferred_contamination_prior_as_shared():
 
 def test_model_registers_inferred_contamination_transition_as_local():
     contamination = RandomChoiceContamination(
+        infer=True,
+    )
+    gm = _build_model(
         p_contaminated=RandomWalk(
-            bounds=(0.0, 1.0),
             sigma=Prior("halfnormal", scale=0.05),
             delta=0.0,
         ),
-        infer=True,
+        contamination=contamination,
+        missing=None,
     )
-    gm = _build_model(contamination=contamination, missing=None)
+    from superstats import LinkFunction
+
+    gm.latent_link_function = {"p_contaminated": LinkFunction()}
 
     result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS, tile_to_steps=True)
 
@@ -594,10 +615,9 @@ def test_model_registers_inferred_contamination_transition_as_local():
 
 def test_model_does_not_register_contamination_when_infer_is_false():
     contamination = RandomChoiceContamination(
-        p_contaminated=Prior("beta", a=2, b=8),
         infer=False,
     )
-    gm = _build_model(contamination=contamination, missing=None)
+    gm = _build_model(p_contaminated=Prior("beta", a=2, b=8), contamination=contamination, missing=None)
 
     result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS)
 
@@ -606,8 +626,8 @@ def test_model_does_not_register_contamination_when_infer_is_false():
 
 
 def test_model_registers_inferred_fixed_contamination_as_fixed():
-    contamination = RandomChoiceContamination(p_contaminated=0.1, infer=True)
-    gm = _build_model(contamination=contamination, missing=None)
+    contamination = RandomChoiceContamination(infer=True)
+    gm = _build_model(p_contaminated=0.1, contamination=contamination, missing=None)
 
     result = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS)
     result_with_fixed = gm.sample(batch_size=BATCH_SIZE, num_steps=NUM_STEPS, include_fixed=True)

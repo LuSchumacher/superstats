@@ -1,6 +1,6 @@
 """Prior sample visualization helpers."""
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Literal
 
 import matplotlib.lines as mlines
@@ -12,6 +12,7 @@ from superstats.defaults import (
     BASE_COLOR,
     BASE_COL_WIDTH,
     BASE_ROW_HEIGHT,
+    CATEGORICAL_PALETTE,
     HSPACE,
     LABEL_FONTSIZE,
     LABEL_PAD,
@@ -41,6 +42,7 @@ def plot_time_varying_prior(
     label_fontsize: int = LABEL_FONTSIZE,
     tick_fontsize: int = TICK_FONTSIZE,
     figsize: tuple[float, float] | None = None,
+    condition_labels: Mapping[str, Sequence[str]] | None = None,
 ) -> plt.Figure:
     """Plot time-varying parameter trajectories.
 
@@ -127,20 +129,32 @@ def plot_time_varying_prior(
         if param_bounds and name in param_bounds:
             ax_traj.set_ylim(param_bounds[name])
 
-        for trajectory in values_plot:
-            ax_traj.plot(
-                trajectory,
-                alpha=alpha,
-                color=color,
-                linewidth=1.5,
+        groups = values_plot[:, None, :] if values_plot.ndim == 2 else values_plot
+        labels = (condition_labels or {}).get(name, [None] * groups.shape[1])
+        for group in range(groups.shape[1]):
+            group_color = (
+                color
+                if groups.shape[1] == 1
+                else (
+                    CATEGORICAL_PALETTE[group]
+                    if groups.shape[1] <= len(CATEGORICAL_PALETTE)
+                    else plt.get_cmap("tab20")(group % 20)
+                )
             )
-
-        ax_traj.plot(
-            values_plot.mean(axis=0),
-            color=color,
-            linewidth=2.5,
-            alpha=1.0,
-        )
+            for trajectory in groups[:, group, :]:
+                ax_traj.plot(trajectory, alpha=alpha, color=group_color, linewidth=1.5)
+            ax_traj.plot(groups[:, group, :].mean(axis=0), color=group_color, linewidth=2.5, label=labels[group])
+            if ax_marginal is not None:
+                plot_dist(
+                    groups[:, group, :],
+                    ax=ax_marginal,
+                    dist_type=dist_type,
+                    color=group_color,
+                    orientation="vertical",
+                    num_bins=num_bins,
+                    alpha=dist_alpha,
+                    hide_axis=True,
+                )
 
         ax_traj.set_title(
             name,
@@ -168,16 +182,6 @@ def plot_time_varying_prior(
         ax_traj.tick_params(labelsize=tick_fontsize)
 
         if ax_marginal is not None:
-            plot_dist(
-                values_plot,
-                ax=ax_marginal,
-                dist_type=dist_type,
-                color=color,
-                orientation="vertical",
-                num_bins=num_bins,
-                alpha=dist_alpha,
-                hide_axis=True,
-            )
             ax_marginal.set_ylim(ax_traj.get_ylim())
 
     for j in range(len(local_params), len(axes)):

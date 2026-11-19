@@ -1,0 +1,416 @@
+# Diagnostics
+
+Diagnostics follow the two stages of a Superstats analysis. Before inference, the question is whether the generative assumptions are sensible. These checks are methods of `Model`, because they require only the prior, transitions, links, and simulator. After inference, the question is whether the learned posterior is accurate, calibrated, informative, and capable of reproducing the data. These checks are methods of `Workflow`, which knows the model, posterior approximator, and division between time-varying and time-invariant parameters.
+
+This separation prevents a common mistake: a plausible posterior cannot rescue an implausible generative model, and a plausible prior predictive distribution does not establish that the posterior approximation is reliable. Both stages need to be checked.
+
+## Diagnostic overview
+
+| Stage | Question | Method |
+|---|---|---|
+| Before inference | What parameter trajectories does the prior imply within each condition? | `model.plot_time_varying_prior()` |
+| Before inference | Are shared parameters and transition hyperparameters plausible? | `model.plot_time_invariant_prior()` |
+| Before inference | Are all inferred quantities jointly plausible? | `model.plot_joint_prior()` |
+| Before inference | Does the complete model produce plausible observations? | `model.plot_push_forward()` |
+| After inference | Did optimization converge without a validation gap? | `workflow.plot_history()` |
+| After inference | Are time-varying parameters recovered across the sequence? | `workflow.verify_time_varying()` |
+| After inference | What happens at selected steps? | `workflow.recovery_at_steps()`, `calibration_at_steps()`, `z_score_contraction_at_steps()` |
+| After inference | Are time-invariant parameters recovered and calibrated? | `workflow.verify_time_invariant()` |
+| After inference | What do fitted posteriors look like? | `workflow.plot_time_varying_posterior()`, `plot_marginals()`, `plot_pairs()`, `plot_forest()` |
+| After inference | What parameter trajectories does the posterior imply within each condition? | `workflow.plot_time_varying_posterior()` |
+| After inference | Can posterior draws reproduce the observations? | `workflow.resimulate()` and `sup.diagnostics.plot_posterior_resimulation()` |
+
+No single plot validates a model. Prior checks assess the specification, simulation-based checks assess amortized inference over the prior, posterior plots describe particular fitted datasets, and posterior predictive checks assess implications on the observation scale.
+
+### A practical order
+
+1. Check raw and implied parameter priors with the prior plotting methods.
+2. Check observable implications with `model.plot_push_forward()`.
+3. Train the approximator and inspect `workflow.plot_history()`.
+4. Run recovery and calibration on fresh prior-predictive simulations.
+5. Inspect posteriors for representative and difficult datasets.
+6. Run posterior predictive checks on every important observed variable.
+7. Revise the model, prior, links, or training setup when a check fails, then repeat the sequence.
+
+## Example model
+
+The runnable example uses a DDM with a stochastic drift trajectory and invariant boundary separation and non-decision time. Transitions produce raw trajectories; the model links the final parameters into valid simulator ranges. The small simulation and training budgets keep the notebook practical, but they should be increased for a substantive analysis.
+
+```python
+import numpy as np
+import superstats as sup
+
+SEED = 2026
+NUM_STEPS = 100
+np.random.seed(SEED)
+```
+
+```python
+prior = sup.JointPrior(
+    v=sup.transition.RandomWalk(
+        initial_prior=sup.Prior("normal", loc=0.0, scale=0.5),
+        sigma=sup.Prior("halfnormal", scale=0.15),
+        delta=0.0,
+    ),
+    a=sup.Prior("normal", loc=0.0, scale=0.5),
+    tau=sup.Prior("normal", loc=-1.0, scale=0.4),
+    bias=0.5,
+)
+
+model = sup.Model(
+    prior=prior,
+    simulator=sup.simulation.sample_ddm,
+    latent_link_function={
+        "v": sup.LinkFunction("scaled_sigmoid", bounds=(-3.0, 3.0)),
+        "a": sup.LinkFunction("scaled_sigmoid", bounds=(0.6, 2.2)),
+        "tau": sup.LinkFunction("scaled_sigmoid", bounds=(0.1, 0.6)),
+    },
+    missing=None,
+    contamination=None,
+)
+
+print("Time-varying targets:", model.local_keys)
+print("Time-invariant targets:", model.hyper_keys + model.shared_keys)
+```
+
+## Parameter trajectories at fixed predictor values
+
+Use `model.plot_time_varying_prior()` to inspect raw coefficients alongside implied parameters. It preserves the prior
+plotting style: individual draws with a thicker average line, one color per
+condition. Every draw is reused across conditions. Marginal panels use the
+same resolved draws and colors.
+
+For `v = v_0 + b_v * difficulty` with a random-walk `v_0`, the following plots
+one set of trajectories for `v_0` and another for `v_0 + b_v`. Difficulty stays
+constant for each entire trajectory, so trial-to-trial changes in the design
+do not create artificial switches in the plotted parameter.
+
+```python
+fig = model.plot_time_varying_prior(
+    variable_keys=["v"],
+    num_trajectories=20,
+    num_steps=100,
+    conditions={"difficulty": [0, 1]},
+)
+```
+
+With `conditions=None`, relevant categorical predictors use all declared levels,
+numeric 0/1 dummies use both observed levels, and continuous predictors use their
+mean and mean ± one standard deviation, clipped to the reference range. Supply
+`context` as a mapping or DataFrame to choose those values from a particular
+design. Otherwise the model's configured context source is used. An optional
+`missing_mask` excludes masked reference values. The reference trial ordering is
+not plotted. Predictors unrelated to the selected parameter are held fixed.
+
+For interactions, a mapping forms a grid of conditions. To select only particular
+combinations, supply a list instead:
+
+```python
+fig = model.plot_time_varying_prior(
+    variable_keys=["v"],
+    conditions=[
+        {"difficulty": 0, "condition": "neutral"},
+        {"difficulty": 1, "condition": "accuracy"},
+    ],
+)
+```
+
+Omitted predictors are held at their categorical reference, zero for observed
+0/1 dummies, or their numeric mean. Conditions use different colors; condition legends are currently hidden.
+Automatic grids exceeding 12 groups require an explicit selection.
+
+Posterior plots use the same conditions and the same resolution order, showing
+medians and the existing uncertainty intervals (HDI by default). Optional individual draws can be
+overlaid. Draws remain paired across conditions; deterministic transitions are
+reconstructed from their posterior coefficient draws, without sampling new
+parameters or observations.
+
+```python
+fig = workflow.plot_time_varying_posterior(
+    estimates=posterior,
+    variable_keys=["v"],
+    conditions={"difficulty": [0, 1]},
+    data_idx=0,
+    num_trajectories=10,
+    uncertainty_fun="hdi",
+)
+```
+
+For continuous defaults, pass the same reference `context` to prior and posterior
+plots to compare the same conditions. Posterior trial counts come from local
+trajectories, then reference context, or an explicit `num_steps`. Trajectories
+are never extrapolated.
+
+Both methods apply latent links, ordered formulas, and formula links separately
+for every draw before plotting. The scale is the resolved simulator input:
+transformations inside an observation simulator are not inferred. For example,
+the RDM's `a_base` remains a boundary predictor because its softplus transform
+is internal to the RDM. All seven parameter plotting methods default to `scale="both"`:
+raw coefficients and implied parameters get separate panels labeled `[raw]` and
+`[implied]`, using the same draws. Identical views share a single panel.
+Hyperparameters appear once on their own scale. Use `scale="raw"` for coefficients
+alone or `scale="model"` for the implied view alone.
+
+For `mu = b0 + b1 * condition`, a dynamic `b1` therefore gets its own raw trajectory
+panel alongside the implied `mu` curves for fixed condition values. A latent link
+on `b1` is applied before the formula; a formula link on `mu` is applied afterward.
+The raw panel shows `b1` before either operation. Posterior targets follow the same
+transformations as their corresponding panels.
+
+## Before inference: diagnose the model
+
+Run model diagnostics before spending time on training. The three prior plots show raw coefficients alongside implied parameters after configured links and formulas at fixed predictor conditions. They do not call the observation simulator. Set `scale="raw"` to inspect unlinked coefficients. The push-forward plot then checks the complete model after those operations have been applied.
+
+### Time-varying prior trajectories
+
+`plot_time_varying_prior()` displays raw and implied stochastic and deterministic trajectories, with individual draws, averages, and optional marginal distributions. Inspect their starting values, variability, smoothness, drift, jumps, and behavior near the beginning and end of the sequence. Each condition uses the same draws with predictors held constant over time; `plot_push_forward()` checks the resulting observations.
+
+```python
+fig = model.plot_time_varying_prior(
+    num_steps=NUM_STEPS,
+    num_trajectories=20,
+)
+```
+
+### Time-invariant priors
+
+`plot_time_invariant_prior()` displays raw and linked shared parameters, stationary formula targets by condition, and inferred transition hyperparameters on their own scale.
+
+```python
+fig = model.plot_time_invariant_prior(
+    num_draws=1_000,
+    num_steps=NUM_STEPS,
+)
+```
+
+### Joint inference prior
+
+`plot_joint_prior()` uses one row per observation-model parameter, labeled with its name (for example, `v`). Each row shows hyperparameter distributions first, then panels titled **Raw** and **Implied**. Formula coefficients stay in their target parameter's row; multiple coefficients have separate Raw panels labeled with their coefficient names. Stationary coefficients and targets use distributions in the same row. Fixed conditions use different colors, and all views reuse the same draws. Identical raw and implied views share a panel. Use `scale="raw"` or `scale="model"` to show only one view.
+
+```python
+fig = model.plot_joint_prior(
+    num_steps=NUM_STEPS,
+    num_trajectories=20,
+    num_draws=1_000,
+)
+```
+
+### Prior push-forward checks
+
+`plot_push_forward()` samples the complete generative model. It resolves transitions, formulas, and context, applies model-level links, calls the simulator, and applies configured contamination. Use it to assess observable implications such as response-time ranges, category frequencies, temporal trends, and between-dataset variation. Missingness is omitted by default; pass `apply_missing=True` when the missing-data pattern is itself part of the check.
+
+```python
+fig = model.plot_push_forward(
+    batch_size=8,
+    num_steps=NUM_STEPS,
+    data_dim="response_time",
+    kind="dist",
+    num_cols=4,
+)
+```
+
+```python
+fig = model.plot_push_forward(
+    batch_size=100,
+    num_steps=NUM_STEPS,
+    data_dim="choice",
+    kind="time_series",
+    aggregation=np.mean,
+    uncertainty_fun="ci",
+)
+```
+
+## During training: inspect optimization
+
+The workflow owns all post-model diagnostics. This example uses marginal smoothing with separate posterior heads for the drift trajectory and invariant parameters.
+
+```python
+workflow = sup.Workflow(
+    model=model,
+    approximator="marginal",
+    mode="smoothing",
+)
+
+train_data = model.sample(batch_size=20_000, num_steps=NUM_STEPS)
+validation_data = model.sample(batch_size=200, num_steps=NUM_STEPS)
+```
+
+```python
+history = workflow.fit_offline(
+    data=train_data,
+    validation_data=validation_data,
+    epochs=50,
+    batch_size=32,
+)
+```
+
+`plot_history()` shows the training and validation losses. Look for stable optimization and a validation curve that does not progressively separate from training. Loss curves do not establish recovery or calibration.
+
+```python
+fig = workflow.plot_history(history)
+```
+
+## After inference: validate on held-out simulations
+
+Recovery and calibration require known ground truth. Generate fresh simulations that were not used for training, then infer their parameters. These checks evaluate performance over the prior predictive distribution and should be repeated for scientifically important subsets when necessary.
+
+```python
+targets = model.sample(batch_size=200, num_steps=NUM_STEPS)
+estimates = workflow.sample(
+    data=targets,
+    num_samples=300,
+    batch_size=5,
+)
+```
+
+### Time-varying verification
+
+`verify_time_varying()` plots four quantities at every step: correlation across simulations, normalized RMSE relative to a prior-only baseline, posterior contraction relative to prior variance, and calibration error from empirical credible-interval coverage. Strong contraction is useful only when recovery and calibration are also adequate.
+
+```python
+fig = workflow.verify_time_varying(
+    targets=targets,
+    estimates=estimates,
+)
+```
+
+### Diagnostics at selected steps
+
+The selected-step methods accept zero-based indices. `recovery_at_steps()` compares true values with posterior point estimates, `calibration_at_steps()` compares nominal and empirical coverage, and `z_score_contraction_at_steps()` combines bias-sensitive posterior z-scores with informativeness.
+
+```python
+selected_steps = [0, NUM_STEPS // 2, NUM_STEPS - 1]
+
+fig_recovery = workflow.recovery_at_steps(
+    targets, estimates, time_steps=selected_steps
+)
+fig_calibration = workflow.calibration_at_steps(
+    targets, estimates, time_steps=selected_steps
+)
+fig_contraction = workflow.z_score_contraction_at_steps(
+    targets, estimates, time_steps=selected_steps
+)
+```
+
+### Time-invariant verification
+
+`verify_time_invariant()` produces recovery, calibration, and z-score-versus-contraction figures for shared parameters and inferred transition hyperparameters. Mixture parameters are expanded into named components. Pass `uncertainty_agg=None` to omit recovery intervals.
+
+```python
+fig_recovery, fig_calibration, fig_contraction = (
+    workflow.verify_time_invariant(
+        targets=targets,
+        estimates=estimates,
+    )
+)
+```
+
+### Numerical diagnostics
+
+The workflow methods are the recommended plotting interface. The four underlying time-varying metrics are also public when their values are needed for tables or comparisons. Estimates have shape `(simulations, posterior_samples, steps, parameters)` and targets have shape `(simulations, steps, parameters)`.
+
+```python
+v_estimates = estimates["v"]
+v_targets = targets["v"]
+
+metric_values = {
+    "correlation": sup.diagnostics.correlation_per_step(v_estimates, v_targets),
+    "nrmse": sup.diagnostics.nrmse_per_step(v_estimates, v_targets),
+    "contraction": sup.diagnostics.posterior_contraction_per_step(v_estimates, v_targets),
+    "calibration_error": sup.diagnostics.calibration_error_per_step(v_estimates, v_targets),
+}
+{name: values.shape for name, values in metric_values.items()}
+```
+
+## After inference: inspect fitted posteriors
+
+Ground truth is normally unavailable for empirical data. Posterior plots then describe uncertainty and dependence for particular datasets, but they should be interpreted together with held-out simulation diagnostics. Here the simulated targets remain visible so the plots can be checked directly.
+
+### Time-varying posteriors
+
+`plot_time_varying_posterior()` shows posterior centers and uncertainty bands over time. Select individual datasets with `data_idx`, or aggregate across datasets with a callable such as `np.median`. Smoothing is a display operation and does not change the posterior model.
+
+```python
+fig = workflow.plot_time_varying_posterior(
+    estimates=estimates,
+    targets=targets,
+    data_idx=0,
+    uncertainty_fun="hdi",
+    marginal=True,
+)
+```
+
+### Time-invariant posterior marginals
+
+`plot_marginals()` displays one-dimensional posteriors for one dataset. It uses the model's shared and hyperparameter keys and understands named mixture components. When several datasets are present, `data_idx` is required.
+
+```python
+fig = workflow.plot_marginals(
+    estimates=estimates,
+    targets=targets,
+    data_idx=0,
+    dist_type="both",
+)
+```
+
+### Pair plots
+
+`plot_pairs()` shows marginal distributions and pairwise dependence for the time-invariant posterior of one dataset. It can expose tradeoffs and non-identifiability hidden by univariate marginals.
+
+```python
+fig = workflow.plot_pairs(
+    estimates=estimates,
+    targets=targets,
+    data_idx=0,
+)
+```
+
+### Forest plots
+
+`plot_forest()` compares time-invariant posteriors across datasets. Without aggregation, every selected dataset is retained as a row. An aggregation callable creates a visual population summary; it does not fit a hierarchical model.
+
+```python
+fig = workflow.plot_forest(
+    estimates=estimates,
+    targets=targets,
+    data_idx=[0, 1, 2, 3, 4],
+)
+```
+
+## Posterior predictive checks
+
+Posterior predictive checks return to the observation scale. `Workflow.resimulate()` preserves the relationship between paired posterior parameters and the model, reconstructs deterministic trajectories, resolves formulas and links, and calls the simulator. For regression models, pass the original, unmasked design through `context`. Missingness is omitted by default. Pass an empirical `missing_mask` to reproduce the observed missingness pattern after simulation, or use `apply_missing=True` to draw a new pattern from the configured missing process; these options are mutually exclusive.
+
+```python
+selected_data = [0, 1, 2]
+prediction = workflow.resimulate(
+    estimates,
+    num_sims=100,
+    rng=SEED,
+    data_idx=selected_data,
+)
+empirical = {key: value[selected_data] for key, value in targets.items()}
+```
+
+The final plot is stateless because it only compares two prepared data mappings. Repeat this comparison for every observed variable and relevant summary; matching one marginal distribution is not sufficient.
+
+```python
+fig = sup.diagnostics.plot_posterior_resimulation(
+    prediction=prediction,
+    empirical=empirical,
+    data_dim="response_time",
+    kind="dist",
+)
+```
+
+```python
+fig = sup.diagnostics.plot_posterior_resimulation(
+    prediction=prediction,
+    empirical=empirical,
+    data_dim="choice",
+    kind="time_series",
+    aggregation=np.mean,
+    smoothing="sma",
+    smoothing_window=5,
+)
+```

@@ -64,6 +64,7 @@ def plot_marginals(
     tick_fontsize: int = TICK_FONTSIZE,
     figsize: tuple[float, float] | None = None,
     data_idx: int | None = None,
+    condition_labels: Mapping[str, Sequence[str]] | None = None,
 ) -> plt.Figure:
     """Plot univariate marginals for one time-invariant posterior.
 
@@ -134,6 +135,10 @@ def plot_marginals(
     local_estimates, local_targets, names, local_mixture_names = prepare_time_invariant_data(
         estimates, targets, variable_keys, variable_names, mixture_names
     )
+    hidden_condition_names = set()
+    if condition_labels and isinstance(estimates, Mapping):
+        keys = list(variable_keys) if variable_keys is not None else list(estimates)
+        hidden_condition_names = {name for key, name in zip(keys, names) if key in condition_labels}
     samples, target_values, _ = flatten_time_invariant_parameters(
         local_estimates, local_targets, names, local_mixture_names
     )
@@ -172,7 +177,7 @@ def plot_marginals(
                 num_bins=num_bins,
                 alpha=panel_dist_alpha,
             )
-            if is_mixture and component_label not in legend_labels:
+            if is_mixture and name not in hidden_condition_names and component_label not in legend_labels:
                 legend_handles.append(
                     mpatches.Patch(
                         facecolor=component_color,
@@ -204,18 +209,47 @@ def plot_marginals(
     if local_targets is not None:
         legend_handles.append(mlines.Line2D([], [], color="black", linestyle="--", linewidth=1.5, label="Target"))
     if legend_handles:
-        fig.legend(
-            handles=legend_handles,
-            loc="lower center",
-            ncol=min(4, len(legend_handles)),
-            fontsize=label_fontsize,
-            framealpha=0.0,
-            bbox_to_anchor=(0.5, legend_y),
-        )
+        columns = min(4, len(legend_handles))
+        while True:
+            legend = fig.legend(
+                handles=legend_handles,
+                loc="lower center",
+                ncol=columns,
+                fontsize=label_fontsize,
+                framealpha=0.0,
+                bbox_to_anchor=(0.5, legend_y),
+            )
+            fig.canvas.draw()
+            bounds = legend.get_window_extent().transformed(fig.transFigure.inverted())
+            if (bounds.x0 >= 0.01 and bounds.x1 <= 0.99) or columns == 1:
+                break
+            legend.remove()
+            columns -= 1
+        width, height = fig.get_size_inches()
+        reserved = legend_bottom * height
+        required = bounds.height * height + 0.3
+        if required > reserved:
+            fig.set_size_inches(width, height + required - reserved)
+            legend_bottom = required / fig.get_figheight()
+            legend.set_bbox_to_anchor((0.5, 0.1 / fig.get_figheight()))
 
     if num_datasets > 1:
         fig.suptitle(format_dataset_label(selected_index), fontsize=title_fontsize)
     sns.despine()
     plt.tight_layout()
     fig.subplots_adjust(bottom=legend_bottom, hspace=HSPACE, wspace=WSPACE)
+    if len(legend_handles) > 1:
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        label_bottom = min(
+            ax.xaxis.label.get_window_extent(renderer).y0 for ax in axes_flat if ax.get_visible() and ax.get_xlabel()
+        )
+        clearance = (legend.get_window_extent(renderer).y1 + 0.12 * fig.dpi - label_bottom) / fig.dpi
+        if clearance > 0:
+            width, height = fig.get_size_inches()
+            bottom_inches = fig.subplotpars.bottom * height
+            if figsize is None:
+                fig.set_size_inches(width, height + clearance)
+            fig.subplots_adjust(bottom=(bottom_inches + clearance) / fig.get_figheight())
+            legend.set_bbox_to_anchor((0.5, 0.1 / fig.get_figheight()))
     return fig

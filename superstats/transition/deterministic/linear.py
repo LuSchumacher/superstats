@@ -1,7 +1,6 @@
 """Linear deterministic transition."""
 
 from typing import Dict, Any
-from collections.abc import Sequence
 import numpy as np
 
 from .deterministic_transition import DeterministicTransition, Prior
@@ -12,9 +11,6 @@ class Linear(DeterministicTransition):
 
     Parameters
     ----------
-    bounds          : sequence of two floats or None, optional, default: None
-        Lower and upper bounds for the deterministic trajectory. Tuples and
-        lists are accepted.
     intercept       : float, Prior, or None, optional, default: None
         Starting value of the trajectory. A `Prior` samples one intercept
         per trajectory; `None` uses the deterministic default prior.
@@ -29,17 +25,16 @@ class Linear(DeterministicTransition):
     Notes
     -----
     The `sample` method returns a dict with keys `deterministic_params`,
-    `hyper_params`, and `fixed_params`. Trajectory values are clipped to `bounds`.
+    `hyper_params`, and `fixed_params`. Trajectories are returned on the raw coefficient scale.
     """
 
     def __init__(
         self,
-        bounds: Sequence[float, float] | None = None,
         intercept: float | Prior | None = None,
         slope: float | Prior | None = None,
         normalize_steps: bool = True,
     ):
-        super().__init__(bounds=bounds)
+        super().__init__()
 
         self.normalize_steps = normalize_steps
 
@@ -86,7 +81,7 @@ class Linear(DeterministicTransition):
         local = intercept[:, None] + slope[:, None] * index[None, :]
 
         return {
-            "deterministic_params": self._bound(local),
+            "deterministic_params": local.astype(self.dtype),
             "hyper_params": hyper,
             "fixed_params": fixed,
         }
@@ -107,4 +102,4 @@ class Linear(DeterministicTransition):
         )
         trajectory = intercept[:, None] + slope[:, None] * index[None, :]
 
-        return self._bound(trajectory)
+        return trajectory.astype(self.dtype)

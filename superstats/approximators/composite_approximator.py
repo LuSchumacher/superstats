@@ -22,23 +22,77 @@ from superstats.defaults import (
 
 @serializable("superstats.approximators")
 class CompositeApproximator(Approximator):
-    """Implementation shared by the marginal and autoregressive public APIs.
+    """Compose invariant and conditional time-varying posterior estimators.
 
-    Enabled targets use two canonical keys: ``inference_variables`` (B, T, Dv) and
-    ``invariant_variables`` (B, Di). Observations use ``summary_variables``
-    (B, T, Dx). Invariants are broadcast only as sequence-head conditions.
-    Either target group can be disabled with has_varying/has_invariant.
+    Parameters
+    ----------
+    varying_inference_network : str or bayesflow.networks.InferenceNetwork, default: "coupling"
+        Conditional density network for the time-varying parameters.
+    invariant_inference_network : str or bayesflow.networks.InferenceNetwork, default: "coupling"
+        Separate conditional density network for the invariant parameters.
+        The two heads must use distinct network instances.
+    summary_network : str or keras.layers.Layer, default: "recurrent"
+        Observation encoder mapping (B, T, Dx) to (B, T, H), with known
+        conditions appended to its inputs when present. The default recurrent
+        encoder is bidirectional for smoothing and unidirectional for filtering.
+    invariant_pooling : keras.layers.Layer or None, optional, default: None
+        Pooling layer mapping encoded observations (B, T, H) to (B, G).
+        If None, use a masked mean with log(1 + valid sequence length)
+        appended, giving G = H + 1. Requires invariant targets.
+    adapter : bayesflow.adapters.Adapter or None, optional, default: None
+        Adapter mapping named data to the canonical keys described below.
+        If None, use an identity adapter. See `build_adapter` for named inputs.
+    mode : {"smoothing", "filtering"}, optional, default: "smoothing"
+        Smoothing uses the complete observation sequence for each varying
+        factor. Filtering restricts each varying factor to its observation
+        prefix. The invariant head always uses the complete sequence.
+    standardize : str, sequence of str, or None, optional, default: "all"
+        Canonical variables to standardize: "inference_variables",
+        "invariant_variables", "summary_variables", and "inference_conditions".
+        "all" selects all four; None disables standardization. Each child
+        approximator standardizes its own targets.
+    decoder_network : keras.layers.Layer or None, optional, default: None
+        Decoder used when `joint` is True. Defaults to a TransformerDecoder
+        for smoothing or RecurrentDecoder for filtering. A custom filtering
+        decoder must be a RecurrentDecoder or declare supports_filtering=True.
+        Requires varying targets.
+    joint : bool, optional, default: False
+        If True, use an autoregressive sequence posterior. Otherwise, use
+        conditionally independent per-time posteriors given observations and
+        invariant parameters.
+    has_varying : bool, optional, default: True
+        Enable the time-varying target head.
+    has_invariant : bool, optional, default: True
+        Enable the invariant target head. At least one head must be enabled.
+        Disabled heads require their network argument to retain its default.
+    **kwargs
+        Additional arguments passed to the BayesFlow Approximator base class.
 
-    Filtering is conditional on the invariant parameters. The global head
-    always sees the complete observation sequence, including in filtering mode.
-    Consequently, ancestral samples with inferred invariants are not strict
-    online filtering samples. Strict filtering requires applying the complete
-    approximator separately to each observation prefix.
+    Raises
+    ------
+    TypeError
+        If the legacy `inference_network` constructor argument is supplied.
+    ValueError
+        If the mode, standardization keys, head configuration, network sharing,
+        or filtering decoder is invalid.
+
+    Notes
+    -----
+    Canonical varying targets use "inference_variables" with shape (B, T, Dv),
+    invariant targets use "invariant_variables" with shape (B, Di), and
+    observations use "summary_variables" with shape (B, T, Dx). B denotes
+    datasets, T time steps, and Dv, Di, and Dx the respective feature counts.
+    Invariant targets are never tiled over time; they are broadcast only when
+    conditioning the varying head.
+
+    Filtering is conditional on the invariant parameters. Since the invariant
+    head sees the complete sequence, integrating its draws does not give strict
+    online filtering. That requires applying the complete approximator
+    separately to each observation prefix.
     """
 
     def __init__(
         self,
-        *,
         varying_inference_network="coupling",
         invariant_inference_network="coupling",
         summary_network="recurrent",
@@ -52,6 +106,7 @@ class CompositeApproximator(Approximator):
         has_invariant: bool = True,
         **kwargs,
     ):
+        """Initialize the component networks using the class parameters."""
         if "inference_network" in kwargs:
             raise TypeError("Use varying_inference_network instead of inference_network.")
         super().__init__(**kwargs)
@@ -145,15 +200,17 @@ class CompositeApproximator(Approximator):
 
     @property
     def inference_network(self):
-        """Primary density network required by BayesFlow's workflow interface."""
+        """bayesflow.networks.InferenceNetwork: Varying head, or invariant head if varying targets are disabled."""
         return self.varying_inference_network or self.invariant_inference_network
 
     @property
     def varying_inference_network(self):
+        """bayesflow.networks.InferenceNetwork or None: Density network for enabled varying targets."""
         return self.sequence_approximator.inference_network if self.has_varying else None
 
     @property
     def invariant_inference_network(self):
+        """bayesflow.networks.InferenceNetwork or None: Density network for enabled invariant targets."""
         return self.invariant_approximator.inference_network if self.has_invariant else None
 
     @classmethod
@@ -169,14 +226,49 @@ class CompositeApproximator(Approximator):
         inference_mask: str | None = None,
         inference_attention_mask: str | None = None,
     ) -> Adapter:
-        """Build an adapter from named, separate varying and invariant targets.
+        """Build an adapter for named varying targets, invariant targets, and observations.
 
-        Pass None for an absent target group and disable that head in the constructor.
-        Varying targets and observations may be (B, T) or (B, T, D).
-        Invariant targets must be (B, D), including D=1. Known conditions
-        must be either (B, C) or (B, T, C). Target groups must not overlap.
-        Sample weights must have shape (B,).
-        Inverse adaptation preserves the named variables' usual dimensions.
+        Parameters
+        ----------
+        inference_variables : str, sequence of str, or None
+            Names of varying targets, each shaped (B, T) or (B, T, D).
+            Pass None for an absent head and set has_varying=False in the
+            constructor.
+        invariant_variables : str, sequence of str, or None
+            Names of invariant targets, each shaped (B, D), including D=1.
+            Pass None for an absent head and set has_invariant=False in the
+            constructor. Names must not overlap with varying targets.
+        summary_variables : str or sequence of str
+            Nonempty observation names, each shaped (B, T) or (B, T, D).
+        inference_conditions : str, sequence of str, or None, optional, default: None
+            Names of known conditions shaped (B, C) or (B, T, C). Conditions
+            are concatenated along their last axis and must have compatible
+            leading dimensions.
+        sample_weight : str or None, optional, default: None
+            Name of dataset weights shaped (B,).
+        summary_mask : str or None, optional, default: None
+            Name of the observation padding mask shaped (B, T), with True
+            indicating valid time steps.
+        summary_attention_mask : str or None, optional, default: None
+            Name of the attention mask forwarded to the summary network.
+        inference_mask : str or None, optional, default: None
+            Name of the target padding mask shaped (B, T), with True
+            indicating valid time steps for the varying objective.
+        inference_attention_mask : str or None, optional, default: None
+            Name of the attention mask forwarded to the varying head.
+
+        Returns
+        -------
+        adapter : bayesflow.adapters.Adapter
+            Adapter concatenating each group into its canonical key,
+            converting float64 to float32, and preserving only requested keys.
+            Inverse adaptation restores named variables and their dimensions.
+
+        Raises
+        ------
+        ValueError
+            If both target groups or the observations are empty, or if target
+            names overlap.
         """
         varying = [inference_variables] if isinstance(inference_variables, str) else list(inference_variables or [])
         invariant = [invariant_variables] if isinstance(invariant_variables, str) else list(invariant_variables or [])
@@ -214,6 +306,23 @@ class CompositeApproximator(Approximator):
         return adapter.keep(keep)
 
     def _validate_shapes(self, data_shapes, targets=True):
+        """Check canonical batch, time, target, and mask dimensions.
+
+        Parameters
+        ----------
+        data_shapes : mapping of str to tuple
+            Shapes of adapted tensors. Observations must be (B, T, Dx), known
+            conditions (B, C) or (B, T, C), and padding masks (B, T).
+        targets : bool, optional, default: True
+            Also require enabled varying targets shaped (B, T, Dv) and
+            invariant targets shaped (B, Di).
+
+        Raises
+        ------
+        ValueError
+            If required arrays are absent, the observation sequence is empty,
+            or batch and time dimensions are incompatible.
+        """
         summary = data_shapes.get("summary_variables")
         if summary is None or len(summary) != 3:
             raise ValueError("summary_variables must have shape (B, T, Dx).")
@@ -240,6 +349,20 @@ class CompositeApproximator(Approximator):
                 )
 
     def build(self, data_shapes):
+        """Build the encoder, pooling layer, standardizers, and enabled heads.
+
+        Parameters
+        ----------
+        data_shapes : mapping of str to tuple
+            Shapes of adapted training arrays using the canonical keys.
+            Both observations and all enabled target groups are required.
+
+        Raises
+        ------
+        ValueError
+            If input shapes are invalid, the summary network does not return
+            (B, T, H), or invariant pooling does not return (B, G).
+        """
         self._validate_shapes(data_shapes)
         self._data_shapes = dict(data_shapes)
         self.standardizer.build(data_shapes)
@@ -285,9 +408,39 @@ class CompositeApproximator(Approximator):
 
     @staticmethod
     def _tensorize(data):
+        """Convert leaves of a nested data structure to backend tensors.
+
+        Parameters
+        ----------
+        data : nested structure of array-like
+            Arrays to convert using the active Keras backend.
+
+        Returns
+        -------
+        tensors : nested structure of tensors
+            Converted arrays with the same structure as `data`.
+        """
         return keras.tree.map_structure(keras.ops.convert_to_tensor, data)
 
-    def _call_summary(self, inputs, *, mask=None, attention_mask=None, training=False):
+    def _call_summary(self, inputs, mask=None, attention_mask=None, training=False):
+        """Call the encoder with the mask arguments supported by its signature.
+
+        Parameters
+        ----------
+        inputs : tensor
+            Encoder inputs shaped (B, T, D), including any known conditions.
+        mask : tensor or None, optional, default: None
+            Observation padding mask shaped (B, T).
+        attention_mask : tensor or None, optional, default: None
+            Attention mask compatible with the encoder.
+        training : bool, optional, default: False
+            Whether the encoder runs in training mode.
+
+        Returns
+        -------
+        features : tensor
+            Encoded observations shaped (B, T, H).
+        """
         kwargs = {"training": training}
         if mask is not None:
             kwargs["mask"] = mask
@@ -296,10 +449,24 @@ class CompositeApproximator(Approximator):
         return self.summary_network(inputs, **filter_kwargs(kwargs, self.summary_network.call))
 
     def pool_invariants(self, features, mask=None, training=False):
-        """Pool the complete trajectory for the invariant head.
+        """Pool the complete encoded sequence for the invariant head.
 
-        The default is a plain masked mean with log(1 + valid length)
-        appended. A learned pooling layer can be supplied explicitly.
+        Parameters
+        ----------
+        features : tensor
+            Encoded observations shaped (B, T, H).
+        mask : tensor or None, optional, default: None
+            Padding mask shaped (B, T), with True indicating valid steps.
+            If None, all steps contribute.
+        training : bool, optional, default: False
+            Training flag forwarded to a custom pooling layer when supported.
+
+        Returns
+        -------
+        pooled : tensor
+            Invariant features shaped (B, G). Without a custom pooling layer,
+            G = H + 1: the masked mean followed by log(1 + valid length).
+            Fully masked sequences produce zeros under the default pooling.
         """
         if self.invariant_pooling is not None:
             kwargs = {"training": training}
@@ -315,6 +482,25 @@ class CompositeApproximator(Approximator):
         return keras.ops.concatenate([mean, keras.ops.log1p(count)], axis=-1)
 
     def _encode(self, data, stage="inference"):
+        """Standardize observations and compute sequence and invariant features.
+
+        Parameters
+        ----------
+        data : mapping of str to tensor
+            Canonical observations, optional known conditions, and masks.
+        stage : str, optional, default: "inference"
+            Stage forwarded to standardization. The encoder and pooling layer
+            run in training mode only when this equals "training".
+
+        Returns
+        -------
+        features : tensor
+            Sequence features shaped (B, T, H). In filtering mode, causal
+            encoders run once; other encoders are evaluated on prefixes.
+        pooled : tensor or None
+            Features shaped (B, G) pooled from the complete sequence, or None
+            when the invariant head is disabled.
+        """
         mask = data.get("summary_mask")
         inputs = self.standardizer.maybe_standardize(
             data["summary_variables"], key="summary_variables", stage=stage, mask=mask
@@ -357,6 +543,25 @@ class CompositeApproximator(Approximator):
         return features, pooled
 
     def _sequence_data(self, data, features, invariant):
+        """Arrange encoded observations and invariants for the varying head.
+
+        Parameters
+        ----------
+        data : mapping of str to tensor
+            Canonical data containing any available varying targets and masks.
+        features : tensor
+            Sequence features shaped (B, T, H).
+        invariant : tensor or None
+            Paired invariant targets or draws shaped (B, Di).
+
+        Returns
+        -------
+        sequence_data : dict of str to tensor
+            For autoregressive estimation, features become summary variables
+            and invariants become conditions. For marginal estimation,
+            invariants are broadcast across time and appended to features as
+            conditions. Available target and attention masks are preserved.
+        """
         result = {
             key: data[key]
             for key in ("inference_variables", "inference_mask", "inference_attention_mask", "summary_mask")
@@ -391,11 +596,53 @@ class CompositeApproximator(Approximator):
         inference_attention_mask=None,
         stage="training",
     ):
-        """Route adapted tensors to both children and sum their native objectives.
-        ``inference_mask`` excludes padded sequence targets from the objective.
-        Metrics are prefixed with ``varying/`` and ``invariant/``. Native head
-        losses retain BayesFlow's reductions; the sequence objective is usually
-        averaged over time, while ``log_prob`` sums densities over time.
+        """Compute the enabled heads' metrics and combined training objective.
+
+        Parameters
+        ----------
+        summary_variables : array-like
+            Adapted observations shaped (B, T, Dx).
+        inference_variables : array-like or None, optional, default: None
+            Varying targets shaped (B, T, Dv). Required when the varying head
+            is enabled.
+        invariant_variables : array-like or None, optional, default: None
+            Invariant targets shaped (B, Di). Required when the invariant head
+            is enabled; tiled targets are not supported.
+        inference_conditions : array-like or None, optional, default: None
+            Known conditions shaped (B, C) or (B, T, C), appended to encoder
+            inputs after standardization.
+        sample_weight : array-like or None, optional, default: None
+            Dataset weights shaped (B,). Broadcast over time for the varying
+            head and multiplied by `inference_mask` when present.
+        summary_mask : array-like or None, optional, default: None
+            Observation padding mask shaped (B, T), with True indicating valid
+            steps. Used for observation standardization, encoding, and pooling.
+        summary_attention_mask : array-like or None, optional, default: None
+            Attention mask forwarded to the summary network when supported.
+        inference_mask : array-like or None, optional, default: None
+            Target padding mask shaped (B, T), with True indicating steps
+            included in the varying objective.
+        inference_attention_mask : array-like or None, optional, default: None
+            Attention mask forwarded to the varying approximator.
+        stage : str, optional, default: "training"
+            Stage passed to standardization and both child approximators,
+            typically "training", "validation", or "inference".
+
+        Returns
+        -------
+        metrics : dict of str to tensor
+            Child metrics prefixed with "varying/" or "invariant/", plus the
+            combined "loss" and layer-loss metrics. Child layer losses are
+            removed before combining objectives and included once through the
+            parent model's layer losses.
+
+        Notes
+        -----
+        Inputs are already adapted; this method does not apply `adapter`.
+        An unbuilt approximator is built from the supplied tensor shapes.
+        Child objectives retain their native BayesFlow reductions. The varying
+        training objective is generally averaged over time, whereas `log_prob`
+        sums the sequence log densities.
         """
         data = self._tensorize(
             {
@@ -458,14 +705,61 @@ class CompositeApproximator(Approximator):
         return metrics | self._with_layer_losses(loss)
 
     def _batch_size_from_data(self, data):
-        """Both target configurations have an observation batch axis."""
+        """Read the batch size from canonical observations.
+
+        Parameters
+        ----------
+        data : mapping of str to tensor
+            Adapted data containing "summary_variables" shaped (B, T, Dx).
+
+        Returns
+        -------
+        batch_size : int or scalar tensor
+            Observation batch size B, regardless of the enabled target heads.
+        """
         return keras.ops.shape(data["summary_variables"])[0]
 
     def fit(self, *args, **kwargs):
+        """Train the approximator using its configured adapter.
+
+        Parameters
+        ----------
+        *args
+            Positional arguments forwarded to BayesFlow's `Approximator.fit`,
+            subject to that method's signature.
+        **kwargs
+            Dataset or simulator configuration and training options forwarded
+            to `Approximator.fit`. Any supplied adapter is replaced by this
+            approximator's configured adapter.
+
+        Returns
+        -------
+        history : keras.callbacks.History
+            Training and validation losses and metrics recorded during fitting.
+        """
         return super().fit(*args, **(kwargs | {"adapter": self.adapter}))
 
     def call(self, inputs=None, training=None, **kwargs):
-        """Support Keras' dictionary-batch calls as well as explicit target calls."""
+        """Route Keras batch calls or explicit tensors to `compute_metrics`.
+
+        Parameters
+        ----------
+        inputs : mapping, array-like, or None, optional, default: None
+            Adapted batch mapping, or varying targets to use as
+            "inference_variables". Other required tensors must be supplied
+            through keyword arguments when `inputs` is not a mapping.
+        training : bool or None, optional, default: None
+            If given, select "training" or "validation" unless an explicit
+            `stage` is already present in the keyword arguments.
+        **kwargs
+            Arguments for `compute_metrics`. For mapping inputs, these
+            override matching batch entries and unsupported keys are filtered.
+
+        Returns
+        -------
+        metrics : dict of str to tensor
+            Combined loss and metrics returned by `compute_metrics`.
+        """
         if training is not None:
             kwargs.setdefault("stage", "training" if training else "validation")
         if isinstance(inputs, Mapping):
@@ -476,7 +770,6 @@ class CompositeApproximator(Approximator):
 
     def sample(
         self,
-        *,
         num_samples: int,
         conditions: Mapping[str, np.ndarray],
         batch_size: int | None = None,
@@ -486,12 +779,53 @@ class CompositeApproximator(Approximator):
         sequence_kwargs: Mapping | None = None,
         invariant_kwargs: Mapping | None = None,
     ) -> dict[str, np.ndarray]:
-        """Draw one trajectory per invariant draw, preserving paired sample axes.
+        """Sample paired invariant parameters and conditional trajectories.
 
-        With an identity adapter, returns ``inference_variables`` (B, S, T, Dv)
-        and ``invariant_variables`` (B, S, Di). Named adapters restore original
-        parameter keys. ``batch_size`` bounds the number of datasets encoded and
-        expanded at once. Child sampling options use separate kwargs mappings.
+        Parameters
+        ----------
+        num_samples : int
+            Number S of paired posterior draws per dataset.
+        conditions : mapping of str to np.ndarray
+            Observations and optional known conditions and masks before
+            adaptation. With an identity adapter, observations have shape
+            (B, T, Dx) under "summary_variables". Target arrays are not required.
+        batch_size : int or None, optional, default: None
+            Number of datasets encoded and expanded at once. If None, process
+            all datasets in one batch.
+        split : bool, optional, default: False
+            Split multichannel outputs along their final feature axis using
+            BayesFlow's array splitting convention. Named scalar time series
+            retain their time axis.
+        return_summaries : bool, optional, default: False
+            Include sequence features under "_summaries" with shape (B, T, H).
+            When invariants are enabled, also include pooled features under
+            "_invariant_summaries" with shape (B, G).
+        seed : int, keras.random.SeedGenerator, or None, optional, default: None
+            Random seed passed to the child samplers. If None, use this
+            approximator's seed generator.
+        sequence_kwargs : mapping or None, optional, default: None
+            Additional arguments for the varying approximator's `sample`.
+            Must not duplicate arguments supplied directly by this method,
+            such as `num_samples`, `conditions`, `sample_shape`, or `seed`.
+        invariant_kwargs : mapping or None, optional, default: None
+            Additional arguments for the invariant approximator's `sample`,
+            subject to the same restriction on duplicate arguments.
+
+        Returns
+        -------
+        samples : dict of str to np.ndarray
+            Samples after inverse adaptation. With an identity adapter,
+            "inference_variables" has shape (B, S, T, Dv) and
+            "invariant_variables" has shape (B, S, Di), for enabled heads.
+            Named adapters restore original parameter keys and dimensions.
+            Optional summaries have no posterior sample axis.
+
+        Notes
+        -----
+        Each invariant draw conditions exactly one trajectory. Marginal mode
+        samples per-time factors conditional on that draw; joint mode samples
+        an autoregressive trajectory. Filtering factors use observation
+        prefixes conditional on invariants inferred from the complete sequence.
         """
 
         adapted = self.adapter(conditions, strict=False, stage="inference")
@@ -574,19 +908,48 @@ class CompositeApproximator(Approximator):
 
         return keras.tree.map_structure(lambda *values: np.concatenate(values, axis=0), *batches)
 
-    def log_prob(self, data: Mapping[str, np.ndarray], *, return_components=False, **kwargs):
-        """Evaluate log q(phi|x) + log q(theta|phi,x), with invariants counted once.
+    def log_prob(self, data: Mapping[str, np.ndarray], return_components=False, **kwargs):
+        """Evaluate the posterior log density with invariants counted once.
 
-        Inputs have training shapes (B, T, Dv), (B, Di), (B, T, Dx).
-        Returns (B,). ``return_components=True`` instead returns the two (B,)
-        terms under ``invariant`` and ``varying``. For marginal estimation the
-        sequence term is a product of conditional per-time marginals, not an
-        estimate of the dependent joint trajectory posterior. For filtering,
-        its factors use observation prefixes conditional on phi.
+        Parameters
+        ----------
+        data : mapping of str to np.ndarray
+            Targets, observations, and optional conditions and masks before
+            adaptation. Canonical training shapes are (B, T, Dv) for varying
+            targets, (B, Di) for invariants, and (B, T, Dx) for observations.
+            There is no posterior sample axis.
+        return_components : bool, optional, default: False
+            Return separate "invariant" and "varying" log-density terms
+            instead of their sum.
+        **kwargs
+            Additional arguments forwarded to both enabled child approximators'
+            `log_prob` methods.
 
-        Target-changing adapters must supply their Jacobian, following BayesFlow.
-        Masked sequence densities require zero varying-target adapter Jacobians,
-        since BayesFlow adapters return a single Jacobian per complete dataset.
+        Returns
+        -------
+        log_prob : np.ndarray or dict of str to np.ndarray
+            Total log density shaped (B,), or the two component arrays, each
+            shaped (B,), when `return_components` is True. Disabled heads
+            contribute zero. Adapter target Jacobians are included.
+
+        Raises
+        ------
+        ValueError
+            If varying steps are masked and the adapter supplies a nonzero
+            varying-target Jacobian. Dataset-level Jacobians cannot be
+            apportioned across valid time steps.
+
+        Notes
+        -----
+        The result is log q(phi | x) + log q(theta | phi, x). In marginal mode,
+        the sequence term sums conditional per-time log densities; it does not
+        model dependence between varying parameters beyond shared invariants.
+        In joint mode, it is an autoregressive trajectory density. Filtering
+        factors use observation prefixes conditional on phi.
+
+        Target-changing adapters must provide their log-determinant Jacobians
+        following BayesFlow's adapter contract. Densities are evaluated on the
+        supplied parameter scale, without resolving simulator formulas or links.
         """
         adapted, jacobian = self.adapter(data, strict=False, log_det_jac=True, stage="inference")
         adapted = self._tensorize(adapted)
@@ -623,16 +986,57 @@ class CompositeApproximator(Approximator):
         return components if return_components else components["invariant"] + components["varying"]
 
     def summarize(self, conditions, **kwargs):
+        """Encode observations into one summary vector per time step.
+
+        Parameters
+        ----------
+        conditions : mapping of str to array-like
+            Observations, optional known conditions, and masks before
+            adaptation. Canonical observations have shape (B, T, Dx).
+        **kwargs
+            Accepted for compatibility with the BayesFlow summary interface;
+            currently ignored.
+
+        Returns
+        -------
+        summaries : np.ndarray
+            Sequence features shaped (B, T, H), respecting the configured
+            smoothing or filtering mode. Pooled invariant features are omitted.
+        """
         adapted = self.adapter(conditions, strict=False, stage="inference")
         features, _ = self._encode(self._tensorize(adapted))
         return keras.ops.convert_to_numpy(features)
 
     def compile(self, *args, invariant_inference_metrics=None, **kwargs):
+        """Compile training and optionally configure invariant-head metrics.
+
+        Parameters
+        ----------
+        *args
+            Positional arguments forwarded to `Approximator.compile`.
+        invariant_inference_metrics : keras.metrics.Metric, sequence, or None, optional, default: None
+            Metrics assigned to the invariant density network when that head
+            is enabled. If None, retain its existing metrics.
+        **kwargs
+            Compilation options forwarded to BayesFlow and Keras, including
+            optimizer settings, `inference_metrics` for the primary density
+            network, and `summary_metrics` for the encoder. The primary density
+            network is the varying head when enabled, otherwise the invariant
+            head. Forwarded options are applied after the invariant metrics.
+        """
         if invariant_inference_metrics is not None and self.has_invariant:
             self.invariant_inference_network._metrics = invariant_inference_metrics
         return super().compile(*args, **kwargs)
 
     def get_compile_config(self):
+        """Return serialized compilation settings for checkpoint restoration.
+
+        Returns
+        -------
+        config : dict
+            Base compilation settings and invariant-head metrics when enabled,
+            or an empty dictionary if the model has not been compiled.
+        """
         if not self.compiled:
             return {}
         if not self.has_invariant:
@@ -642,6 +1046,15 @@ class CompositeApproximator(Approximator):
         )
 
     def get_config(self):
+        """Serialize the network architecture, adapter, and head configuration.
+
+        Returns
+        -------
+        config : dict
+            Keras-compatible constructor configuration. Includes the decoder
+            only for an enabled joint varying head. The `joint` flag is stored
+            for this base class and inferred from the class for public subclasses.
+        """
         config = {
             "varying_inference_network": self.varying_inference_network if self.has_varying else "coupling",
             "invariant_inference_network": self.invariant_inference_network if self.has_invariant else "coupling",
@@ -661,6 +1074,22 @@ class CompositeApproximator(Approximator):
 
     @classmethod
     def from_config(cls, config, custom_objects=None):
+        """Restore an approximator from its serialized constructor configuration.
+
+        Parameters
+        ----------
+        config : dict
+            Configuration returned by `get_config`. Legacy configurations using
+            "inference_network" are migrated to "varying_inference_network".
+        custom_objects : dict or None, optional, default: None
+            Custom classes or functions supplied to Keras deserialization.
+
+        Returns
+        -------
+        approximator : CompositeApproximator
+            Restored instance of the requested class. Network weights are
+            restored separately by the checkpoint loading mechanism.
+        """
         # Previously saved composite checkpoints used the asymmetric name.
         config = dict(config)
         if "inference_network" in config:
@@ -668,8 +1097,24 @@ class CompositeApproximator(Approximator):
         return super().from_config(config, custom_objects=custom_objects)
 
     def get_build_config(self):
+        """Return the canonical shapes needed to rebuild network weights.
+
+        Returns
+        -------
+        config : dict
+            Recorded training shapes under "data_shapes", or an empty
+            dictionary when no build shapes have been recorded.
+        """
         return {"data_shapes": self._data_shapes} if self._data_shapes is not None else {}
 
     def build_from_config(self, config):
+        """Rebuild component networks from saved canonical data shapes.
+
+        Parameters
+        ----------
+        config : dict
+            Build configuration returned by `get_build_config`. If no
+            "data_shapes" entry is present, leave the model unchanged.
+        """
         if config.get("data_shapes") is not None:
             self.build(config["data_shapes"])

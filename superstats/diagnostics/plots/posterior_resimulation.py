@@ -21,13 +21,12 @@ from superstats.defaults import (
     TITLE_FONTSIZE,
     WSPACE,
     Y_LABEL_PAD,
+    UNCERTAINTY_LABELS,
 )
 from superstats.utils.indexing import format_dataset_label, normalize_data_indices
 from superstats.utils.plotting import (
     compute_uncertainty_bands,
     get_default_num_cols,
-    get_uncertainty_band_alphas,
-    get_uncertainty_bound_labels,
     get_layout,
     plot_dist,
     plot_uncertainty_bands,
@@ -445,8 +444,12 @@ def plot_posterior_resimulation(
 
         handles = [mlines.Line2D([], [], color=color, linewidth=2.0, label=agg_label)]
         if has_uncertainty_band:
-            lower_label, upper_label = get_uncertainty_bound_labels(uncertainty_fun)
-            lower_alpha, upper_alpha = get_uncertainty_band_alphas(0.3)
+            lower_label, upper_label = (
+                UNCERTAINTY_LABELS[uncertainty_fun]
+                if isinstance(uncertainty_fun, str)
+                else ("Lower Uncertainty", "Upper Uncertainty")
+            )
+            lower_alpha, upper_alpha = 0.3, 0.15
             handles.extend(
                 [
                     mpatches.Patch(facecolor=color, alpha=lower_alpha, edgecolor="none", label=lower_label),
@@ -622,17 +625,20 @@ def plot_posterior_resimulation(
             ]
 
     legend_kwargs = (
-        {"bbox_to_anchor": (0, legend_y, 1, 0), "mode": "expand"} if spaghetti else {"bbox_to_anchor": (0.5, legend_y)}
+        {"bbox_to_anchor": (0.05, legend_y, 0.9, 0), "mode": "expand"}
+        if spaghetti
+        else {"bbox_to_anchor": (0.5, legend_y)}
     )
     fig.legend(
         handles=handles,
         loc="lower center",
-        ncol=2 if spaghetti else min(3, len(handles)),
+        ncol=len(handles),
         fontsize=label_fontsize,
         framealpha=0.0,
         columnspacing=0.7,
         handlelength=1.3,
         handletextpad=0.5,
+        borderaxespad=0 if spaghetti else 0.5,
         **legend_kwargs,
     )
 

@@ -2,8 +2,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from superstats import Formula, JointPrior, Model
-from superstats.simulation import ContextMapping, ContextSimulator
+from superstats import Formula, JointPrior, Model, Prior
+from superstats.simulation import ContextSimulator
 
 
 def test_formula_resolves_expressions_and_preserves_parameter_draws():
@@ -73,8 +73,8 @@ def test_model_applies_formula_to_context_simulated_covariates():
         prior=JointPrior(v_0=1.0, b_v=2.0),
         simulator=simulator,
         missing=None,
-        context=ContextSimulator(context_simulator),
-        context_mapping=ContextMapping(formula_context=("covariate",)),
+        context_simulator=ContextSimulator(context_simulator),
+        design_context=("covariate",),
         formula=Formula(["v = v_0 + b_v * covariate"]),
     )
 
@@ -100,8 +100,8 @@ def test_model_accepts_fixed_context(context):
         prior=JointPrior(v_0=1.0),
         simulator=simulator,
         missing=None,
-        context=context,
-        context_mapping=ContextMapping(formula_context=("covariate",)),
+        context_simulator=context,
+        design_context=("covariate",),
         formula=Formula(["v = v_0 + covariate"]),
     )
 
@@ -119,8 +119,49 @@ def test_model_rejects_fixed_context_with_wrong_number_of_trials():
         prior=JointPrior(v=1.0),
         simulator=simulator,
         missing=None,
-        context={"covariate": [0.0, 1.0]},
+        context_simulator={"covariate": [0.0, 1.0]},
     )
 
     with pytest.raises(ValueError, match="3 trial rows"):
         model.sample(batch_size=1, num_steps=3)
+
+
+@pytest.mark.parametrize("tile_to_steps", [False, True])
+def test_model_returns_linked_formula_params_without_adding_inference_targets(tile_to_steps):
+    from superstats import LinkFunction, Workflow
+
+    model = Model(
+        JointPrior(v_0=Prior("normal", loc=-2, scale=0)),
+        lambda v: {"observation": v},
+        formula_link_function={"v": LinkFunction(bounds=(0.2, 4.0))},
+        formula=Formula(["v = v_0 - 1"]),
+        missing=None,
+    )
+    sample = model.sample(2, 3, tile_to_steps=tile_to_steps)
+    assert sample["v"].shape == (2, 3, 1)
+    np.testing.assert_allclose(sample["v"][..., 0], sample["observation"])
+    np.testing.assert_allclose(sample["v"], LinkFunction(bounds=(0.2, 4.0))(-3))
+    assert model.formula_keys == ["v"]
+    assert model.shared_keys == ["v_0"]
+    assert "v" not in model.summary_keys
+    adapted = Workflow.default_adapter(model)(sample)
+    assert "inference_variables" not in adapted
+    np.testing.assert_allclose(adapted["invariant_variables"], sample["v_0"])
+    inference_prior = model._sample_inference_prior(2, 3)
+    assert set(inference_prior["shared_params"]) == {"v_0"}
+
+
+def test_formula_params_do_not_overwrite_existing_raw_inference_targets():
+    from superstats import LinkFunction
+
+    model = Model(
+        JointPrior(v=Prior("normal", loc=-2, scale=0)),
+        lambda v: {"observation": v},
+        formula=Formula(["v = v + 1"]),
+        formula_link_function={"v": LinkFunction("softplus")},
+        missing=None,
+    )
+    sample = model.sample(2, 3)
+    np.testing.assert_allclose(sample["v"], -2)
+    np.testing.assert_allclose(sample["observation"], np.logaddexp(0, -1))
+    assert model.formula_keys == []

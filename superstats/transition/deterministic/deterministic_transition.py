@@ -1,14 +1,12 @@
 """Base interface and shared helpers for deterministic transitions."""
 
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
 from typing import Dict, Any, Union
 import numpy as np
 
 from superstats.defaults import (
     DEFAULT_DETERMINISTIC_HYPER_PRIORS,
     DEFAULT_INITIAL_PRIOR,
-    DEFAULT_BOUNDS,
 )
 from superstats.prior.prior import Prior
 
@@ -24,17 +22,12 @@ class DeterministicTransition(ABC):
 
     Parameters
     ----------
-    bounds        : tuple or np.ndarray or None, optional, default: None
-        Lower and upper bounds for the latent state, applied via
-        `scaled_sigmoid`. Falls back to `DEFAULT_BOUNDS` if not provided.
     initial_prior : Prior or None, optional, default: None
         Prior used to draw the initial latent state. Falls back to
         `DEFAULT_INITIAL_PRIOR` if not provided.
 
     Attributes
     ----------
-    bounds        : np.ndarray
-        Resolved lower and upper bounds for the latent state.
     initial_prior : Prior
         Resolved prior used to draw initial latent states.
     hyper_specs   : dict
@@ -49,15 +42,9 @@ class DeterministicTransition(ABC):
 
     def __init__(
         self,
-        bounds: Sequence[float, float] | None = None,
         initial_prior: Prior | None = None,
     ):
-        self._user_defined_bounds = bounds is not None
         self._user_defined_initial_prior = initial_prior is not None
-
-        self.bounds = (
-            np.asarray(bounds, dtype=self.dtype) if bounds is not None else np.asarray(DEFAULT_BOUNDS, dtype=self.dtype)
-        )
 
         self.initial_prior = initial_prior if initial_prior is not None else DEFAULT_INITIAL_PRIOR
         self.hyper_specs = {}
@@ -179,10 +166,6 @@ class DeterministicTransition(ABC):
         if np.ndim(x) == 0:
             return np.full(batch_size, x, dtype=self.dtype)
         return np.asarray(x, dtype=self.dtype)
-
-    def _bound(self, values: np.ndarray) -> np.ndarray:
-        """Clip trajectory values to the configured latent-state bounds."""
-        return np.clip(values, self.bounds[0], self.bounds[1]).astype(self.dtype)
 
     def _resolve_hyperparams(self, batch_size: int) -> tuple[Dict[str, np.ndarray], Dict[str, float]]:
         """Resolve every entry in `hyper_specs` into sampled and fixed groups.

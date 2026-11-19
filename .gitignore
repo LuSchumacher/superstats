@@ -1,5 +1,9 @@
 # Custom
 **/checkpoints/
+**/data/
+examples/data/
+examples/experimental/
+examples/case_studies/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

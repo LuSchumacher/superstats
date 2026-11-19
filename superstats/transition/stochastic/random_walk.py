@@ -1,12 +1,10 @@
 """Random-walk transition model."""
 
 from typing import Dict, Any
-from collections.abc import Sequence
 import numpy as np
 from numba import njit, prange
 
 from .stochastic_transition import StochasticTransition, Prior
-from superstats.utils.transformations import scaled_sigmoid
 
 
 @njit(parallel=True, fastmath=True)
@@ -14,7 +12,6 @@ def _sample_random_walk(
     local_params: np.ndarray,
     sigma: np.ndarray,
     delta: np.ndarray,
-    bounds: np.ndarray,
 ) -> np.ndarray:
     """Vectorized random-walk rollout across a batch, filled in place.
 
@@ -27,23 +24,19 @@ def _sample_random_walk(
         Standard deviation of the Gaussian increments, per trajectory.
     delta        : np.ndarray of shape (batch_size,)
         Additive drift term, per trajectory.
-    bounds       : np.ndarray of shape (2,)
-        (lower, upper) bounds passed to `scaled_sigmoid`.
 
     Returns
     -------
     local_params : np.ndarray of shape (batch_size, steps) - the same
-        array, filled with the bounded random-walk rollout
+        array, filled with the raw random-walk rollout
     """
     batch_size, steps = local_params.shape
-    lower, upper = bounds[0], bounds[1]
 
     noise = np.random.randn(batch_size, steps - 1)
 
     for b in prange(batch_size):
         increments = delta[b] + sigma[b] * noise[b]
         local_params[b, 1:] = local_params[b, 0] + np.cumsum(increments)
-        local_params[b, :] = scaled_sigmoid(local_params[b, :], lower, upper)
 
     return local_params
 
@@ -78,8 +71,6 @@ class RandomWalk(StochasticTransition):
 
     Parameters
     ----------
-    bounds        : tuple or None, optional, default: None
-        Lower and upper bounds for the latent state.
     initial_prior : Prior or None, optional, default: None
         Prior for the initial latent state.
     sigma         : float or Prior or None, optional, default: None
@@ -96,12 +87,11 @@ class RandomWalk(StochasticTransition):
 
     def __init__(
         self,
-        bounds: Sequence[float, float] | None = None,
         initial_prior: Prior | None = None,
         sigma: float | Prior | None = None,
         delta: float | Prior | None = None,
     ):
-        super().__init__(bounds, initial_prior)
+        super().__init__(initial_prior)
 
         self.hyper_specs = {
             "sigma": sigma,
@@ -144,7 +134,6 @@ class RandomWalk(StochasticTransition):
             local_params,
             sigma,
             delta,
-            self.bounds,
         )
 
         return {

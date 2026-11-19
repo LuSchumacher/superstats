@@ -128,7 +128,7 @@ def test_missing_dispatches_random_defaults():
 
 
 def test_missing_dispatch_passes_existing_processes_through():
-    process = RandomMissingProcess(p_missing=0.0)
+    process = RandomMissingProcess()
 
     assert find_missing(process) is process
     assert find_missing(None) is None
@@ -149,7 +149,7 @@ def test_contamination_dispatches_random_choice_defaults():
 
 
 def test_contamination_dispatch_passes_existing_processes_through():
-    process = RandomChoiceContamination(p_contaminated=0.0)
+    process = RandomChoiceContamination()
 
     assert find_contamination(process) is process
     assert find_contamination(None) is None
