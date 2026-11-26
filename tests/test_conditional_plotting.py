@@ -135,7 +135,8 @@ def test_multiple_dummy_conditions_get_distinct_trajectory_colors():
         missing=None,
     )
     fig = model.plot_time_varying_prior(num_steps=2, num_trajectories=1, marginal=False, scale="model")
-    colors = {tuple(line.get_color()) for line in fig.axes[0].lines if line.get_linewidth() == 2.5}
+    mean_width = fig.legends[0].legend_handles[0].get_linewidth()
+    colors = {tuple(line.get_color()) for line in fig.axes[0].lines if line.get_linewidth() == mean_width}
     assert len(colors) == 8
     plt.close(fig)
 
@@ -175,10 +176,20 @@ def test_prior_plot_preserves_individual_draw_count_and_average_per_condition():
     ax = fig.axes[0]
     assert len(ax.lines) == 12  # five individual trajectories + their average, for both conditions
     assert len(ax.collections) == 0  # prior draws, rather than uncertainty ribbons
-    assert {line.get_label() for line in ax.lines if line.get_linewidth() == 2.5} == {"difficulty=0", "difficulty=1"}
+    average, individual = fig.legends[0].legend_handles
+    assert average.get_linewidth() == 3.5
+    assert individual.get_linewidth() == 1.25
+    assert individual.get_alpha() == 0.25
+    assert {line.get_label() for line in ax.lines if line.get_linewidth() == average.get_linewidth()} == {
+        "difficulty=0",
+        "difficulty=1",
+    }
     first, second = ax.lines[:6], ax.lines[6:]
     for a, b in zip(first, second):
         np.testing.assert_allclose(b.get_ydata() - a.get_ydata(), 2)
+    for condition in (first, second):
+        assert condition[0].get_alpha() == individual.get_alpha()
+        assert condition[-1].get_zorder() > condition[0].get_zorder()
     assert first[0].get_color() != second[0].get_color()
     plt.close(fig)
 
@@ -372,7 +383,8 @@ def test_posterior_rejects_mismatched_draw_shapes_and_extrapolation():
 
 
 @pytest.mark.parametrize("dynamic", ["b0", "b1"])
-def test_both_prior_views_keep_coefficients_and_implied_curves_paired(dynamic):
+@pytest.mark.parametrize("num_cols", [1, 2])
+def test_both_prior_views_keep_coefficients_and_implied_curves_paired(dynamic, num_cols):
     model = Model(
         JointPrior(**{name: RandomWalk() if name == dynamic else Prior("normal") for name in ("b0", "b1")}),
         lambda mu: {"observation": mu},
@@ -384,11 +396,12 @@ def test_both_prior_views_keep_coefficients_and_implied_curves_paired(dynamic):
         missing=None,
     )
     model.prior.sample = Mock(wraps=model.prior.sample)
-    fig = model.plot_time_varying_prior(num_steps=5, num_trajectories=3, marginal=False)
+    fig = model.plot_time_varying_prior(num_steps=5, num_trajectories=3, marginal=False, num_cols=num_cols)
     panels = {ax.get_title(): ax for ax in fig.axes if ax.get_visible()}
-    assert set(panels) == {f"{dynamic} [raw]", "mu [implied]"}
-    raw_lines = panels[f"{dynamic} [raw]"].lines
-    implied_lines = panels["mu [implied]"].lines
+    assert set(panels) == {dynamic, "mu"}
+    assert [text.get_text() for text in fig.texts] == ["Trajectories", "Raw", "Implied"]
+    raw_lines = panels[dynamic].lines
+    implied_lines = panels["mu"].lines
     assert len(raw_lines) == 4
     assert len(implied_lines) == 8
     # Differences on the formula's input scale recover each draw of the linked slope.
@@ -583,6 +596,7 @@ def test_identical_raw_and_implied_parameters_use_a_single_panel():
     model = Model(JointPrior(mu=RandomWalk()), lambda mu: {"observation": mu}, missing=None)
     fig = model.plot_time_varying_prior(num_steps=4, num_trajectories=2, marginal=False)
     assert [ax.get_title() for ax in fig.axes] == ["mu"]
+    assert [text.get_text() for text in fig.texts] == ["Trajectories"]
     plt.close(fig)
 
 
@@ -686,17 +700,27 @@ def test_joint_prior_groups_coefficients_under_observation_parameter_rows(scale,
         for text in ax.texts
     ]
     assert row_labels == [("v", 0), ("a", 1)]
-    assert {ax.get_subplotspec().get_topmost_subplotspec().rowspan.start for ax in axes} == {0, 1}
-    titles = [ax.get_title() for ax in axes]
-    assert titles.count("Raw") == (4 if scale != "model" else 0)
-    assert titles.count("Implied") == (2 if scale != "raw" else 0)
+    trajectories = [ax for ax in axes if ax.lines]
+    assert len(trajectories) == {"both": 5, "model": 2, "raw": 3}[scale]
+    assert {ax.get_subplotspec().get_topmost_subplotspec().rowspan.start for ax in trajectories} == {0, 1}
+    headings = ["Hyperparameters", "Trajectories"]
+    if scale == "both":
+        headings.extend(["Raw", "Implied"])
+    if scale != "model":
+        headings.append("Shared parameters")
+        hyper = next(ax for ax in axes if ax.get_title() == "v0_sigma")
+        shared = next(ax for ax in axes if ax.get_title() == "b_a")
+        assert shared.get_position().x0 == pytest.approx(hyper.get_position().x0)
+        assert shared.get_position().x1 == pytest.approx(hyper.get_position().x1)
+        assert shared.get_position().y1 < hyper.get_position().y0
+    assert [text.get_text() for text in fig.texts] == headings
     assert all(ax.get_legend() is None for ax in axes)
     if scale == "both":
-        v_raw = {ax.get_xlabel(): ax for ax in axes if ax.get_title() == "Raw" and ax.get_xlabel() in {"v0", "b_v"}}
+        v_raw = {ax.get_xlabel(): ax for ax in trajectories if ax.get_xlabel() in {"v0", "b_v"}}
         v_implied = next(
             ax
-            for ax in axes
-            if ax.get_title() == "Implied" and ax.get_subplotspec().get_topmost_subplotspec().rowspan.start == 0
+            for ax in trajectories
+            if not ax.get_xlabel() and ax.get_subplotspec().get_topmost_subplotspec().rowspan.start == 0
         )
         for draw in range(2):
             np.testing.assert_allclose(v_implied.lines[draw].get_ydata(), np.exp(v_raw["v0"].lines[draw].get_ydata()))
@@ -706,15 +730,15 @@ def test_joint_prior_groups_coefficients_under_observation_parameter_rows(scale,
             )
         a_implied = next(
             ax
-            for ax in axes
-            if ax.get_title() == "Implied" and ax.get_subplotspec().get_topmost_subplotspec().rowspan.start == 1
+            for ax in trajectories
+            if not ax.get_xlabel() and ax.get_subplotspec().get_topmost_subplotspec().rowspan.start == 1
         )
         assert a_implied.get_ylim() == (1, 4)
     model.prior.sample.assert_called_once_with(batch_size=7, num_steps=5)
     plt.close(fig)
 
 
-def test_joint_prior_groups_stationary_raw_and_implied_distributions_in_one_row():
+def test_joint_prior_groups_stationary_raw_and_implied_distributions_under_shared_heading():
     model = Model(
         JointPrior(a=Prior("normal")),
         lambda a: {"observation": a},
@@ -723,8 +747,9 @@ def test_joint_prior_groups_stationary_raw_and_implied_distributions_in_one_row(
     )
     fig = model.plot_joint_prior(num_draws=10)
     axes = [ax for ax in fig.axes if ax.axison]
-    assert [ax.get_title() for ax in axes] == ["Raw", "Implied"]
-    assert [text.get_text() for ax in fig.axes for text in ax.texts] == ["a"]
+    assert [ax.get_title() for ax in axes] == ["a [raw]", "a [implied]"]
+    assert [text.get_text() for text in fig.texts] == ["Shared parameters"]
+    assert not fig.legends
     assert {ax.get_subplotspec().get_topmost_subplotspec().rowspan.start for ax in axes} == {0}
     plt.close(fig)
 
@@ -733,7 +758,8 @@ def test_joint_prior_identical_views_share_one_panel_in_the_parameter_row():
     model = Model(JointPrior(mu=RandomWalk()), lambda mu: {"observation": mu}, missing=None)
     fig = model.plot_joint_prior(num_draws=5, num_trajectories=2, num_steps=4, marginal=False)
     axes = [ax for ax in fig.axes if ax.axison]
-    assert [ax.get_title() for ax in axes].count("Raw / Implied") == 1
+    assert sum(bool(ax.lines) for ax in axes) == 1
+    assert [text.get_text() for text in fig.texts] == ["Hyperparameters", "Trajectories"]
     assert [text.get_text() for ax in fig.axes for text in ax.texts] == ["mu"]
     plt.close(fig)
 

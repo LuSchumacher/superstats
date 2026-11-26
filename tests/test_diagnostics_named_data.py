@@ -836,7 +836,7 @@ def test_plot_push_forward_selects_dynamic_columns(
 
     expected_rows = int(np.ceil(batch_size / expected_cols))
     assert len(fig.axes) == expected_rows * expected_cols
-    assert fig.get_size_inches()[0] == pytest.approx(BASE_COL_WIDTH * expected_cols)
+    assert fig.get_size_inches() == pytest.approx((BASE_COL_WIDTH * expected_cols, 3.9 * expected_rows))
     plt.close(fig)
 
 

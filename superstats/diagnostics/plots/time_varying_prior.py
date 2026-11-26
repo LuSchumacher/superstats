@@ -1,9 +1,9 @@
 """Prior sample visualization helpers."""
 
 from collections.abc import Mapping, Sequence
+from itertools import groupby
 from typing import Literal
 
-import matplotlib.lines as mlines
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
@@ -11,20 +11,22 @@ import seaborn as sns
 from superstats.defaults import (
     BASE_COLOR,
     BASE_COL_WIDTH,
-    BASE_ROW_HEIGHT,
-    CATEGORICAL_PALETTE,
-    HSPACE,
     LABEL_FONTSIZE,
     LABEL_PAD,
     TICK_FONTSIZE,
     TITLE_FONTSIZE,
-    WSPACE,
     Y_LABEL_PAD,
 )
 from superstats.utils.plotting import (
+    PRIOR_ALPHA,
+    PRIOR_SECTION_ROW_HEIGHT,
+    PRIOR_TITLE_PAD,
+    add_prior_heading,
+    add_prior_trajectory_legend,
+    adjust_prior_layout,
     get_default_num_cols,
     get_layout,
-    plot_dist,
+    plot_prior_trajectories,
 )
 
 
@@ -35,8 +37,8 @@ def plot_time_varying_prior(
     marginal: bool = True,
     dist_type: Literal["hist", "kde", "both"] = "hist",
     num_bins: int | None = None,
-    dist_alpha: float = 1.0,
-    alpha: float = 0.5,
+    dist_alpha: float | None = None,
+    alpha: float = PRIOR_ALPHA,
     color: str = BASE_COLOR,
     title_fontsize: int = TITLE_FONTSIZE,
     label_fontsize: int = LABEL_FONTSIZE,
@@ -48,7 +50,8 @@ def plot_time_varying_prior(
 
     Individual trajectories and their average are shown for every parameter.
     An optional marginal histogram or KDE is displayed beside each trajectory
-    panel.
+    panel. When both raw and implied views are shown, scale headings identify
+    their panels.
 
     Parameters
     ----------
@@ -67,16 +70,17 @@ def plot_time_varying_prior(
         Marginal plot type: ``"hist"``, ``"kde"``, or ``"both"``.
     num_bins       : int or None, optional, default: None
         Number of histogram bins. If None, Seaborn selects the bins.
-    dist_alpha     : float, optional, default: 1.0
-        Opacity of marginal distributions.
-    alpha          : float, optional, default: 0.5
+    dist_alpha     : float or None, optional, default: None
+        Opacity of marginal distributions. If None, uses 1.0 for a single
+        distribution and 0.5 for overlaid conditions.
+    alpha          : float, optional, default: 0.25
         Opacity of individual trajectories.
     color          : str, optional, default: BASE_COLOR
         Color used for trajectories and marginals.
     title_fontsize : int, optional, default: 22
-        Font size for subplot titles.
+        Font size for panel titles and the Trajectories heading.
     label_fontsize : int, optional, default: 18
-        Font size for axis labels and the legend.
+        Font size for axis labels, scale headings, and the legend.
     tick_fontsize  : int, optional, default: 16
         Font size for tick labels.
     figsize        : tuple of two floats or None, optional, default: None
@@ -89,16 +93,25 @@ def plot_time_varying_prior(
     """
 
     n = len(local_params)
+    if not n:
+        raise ValueError("No time-varying parameters to plot.")
     if num_cols is None:
         num_cols = get_default_num_cols(n)
     num_rows = int(np.ceil(n / num_cols))
+    show_scales = any(name.endswith(" [raw]") for name in local_params) and any(
+        name.endswith(" [implied]") for name in local_params
+    )
+    scale_offset = max(title_fontsize, label_fontsize) + PRIOR_TITLE_PAD + 10
+    scale_space = label_fontsize + 10 if show_scales else 0
+    heading_offset = scale_offset + scale_space
+    heading_height = (heading_offset + title_fontsize + 10) / 72
 
     plot_figsize, legend_bottom, legend_y = get_layout(
         num_rows,
         num_cols,
         figsize,
         col_width=BASE_COL_WIDTH,
-        row_height=BASE_ROW_HEIGHT,
+        row_height=PRIOR_SECTION_ROW_HEIGHT + (heading_height - 0.25 + (num_rows - 1) * scale_space / 72) / num_rows,
     )
 
     fig, axes = plt.subplots(
@@ -107,116 +120,63 @@ def plot_time_varying_prior(
         figsize=plot_figsize,
     )
     axes = np.atleast_1d(axes).ravel()
+    gs = axes[0].get_gridspec()
+    panel_scales = []
 
     for i, (name, values) in enumerate(local_params.items()):
-        ax = axes[i]
-        values_plot = np.asarray(values)
-
-        if marginal:
-            sub = ax.get_subplotspec().subgridspec(
-                1,
-                2,
-                width_ratios=[4.2, 0.8],
-                wspace=0.0,
-            )
-            ax_traj = fig.add_subplot(sub[0])
-            ax_marginal = fig.add_subplot(sub[1])
-            ax.axis("off")
-        else:
-            ax_traj = ax
-            ax_marginal = None
-
-        if param_bounds and name in param_bounds:
-            ax_traj.set_ylim(param_bounds[name])
-
-        groups = values_plot[:, None, :] if values_plot.ndim == 2 else values_plot
-        labels = (condition_labels or {}).get(name, [None] * groups.shape[1])
-        for group in range(groups.shape[1]):
-            group_color = (
-                color
-                if groups.shape[1] == 1
-                else (
-                    CATEGORICAL_PALETTE[group]
-                    if groups.shape[1] <= len(CATEGORICAL_PALETTE)
-                    else plt.get_cmap("tab20")(group % 20)
-                )
-            )
-            for trajectory in groups[:, group, :]:
-                ax_traj.plot(trajectory, alpha=alpha, color=group_color, linewidth=1.5)
-            ax_traj.plot(groups[:, group, :].mean(axis=0), color=group_color, linewidth=2.5, label=labels[group])
-            if ax_marginal is not None:
-                plot_dist(
-                    groups[:, group, :],
-                    ax=ax_marginal,
-                    dist_type=dist_type,
-                    color=group_color,
-                    orientation="vertical",
-                    num_bins=num_bins,
-                    alpha=dist_alpha,
-                    hide_axis=True,
-                )
-
-        ax_traj.set_title(
-            name,
-            fontsize=title_fontsize,
-            pad=15,
+        ax = plot_prior_trajectories(
+            axes[i],
+            values,
+            bounds=(param_bounds or {}).get(name),
+            labels=(condition_labels or {}).get(name),
+            marginal=marginal,
+            dist_type=dist_type,
+            num_bins=num_bins,
+            dist_alpha=dist_alpha,
+            alpha=alpha,
+            color=color,
         )
-        ax_traj.set_xlabel("")
-        ax_traj.set_ylabel("")
+        title = name
+        if show_scales:
+            title = name.removesuffix(" [raw]").removesuffix(" [implied]")
+            view = {" [raw]": "Raw", " [implied]": "Implied"}.get(name[len(title) :], "Raw / Implied")
+            panel_scales.append(view)
+        ax.set_title(title, fontsize=title_fontsize, pad=PRIOR_TITLE_PAD)
 
         if i // num_cols == num_rows - 1:
-            ax_traj.set_xlabel(
+            ax.set_xlabel(
                 "Step",
                 fontsize=label_fontsize,
                 labelpad=LABEL_PAD,
             )
 
         if i % num_cols == 0:
-            ax_traj.set_ylabel(
+            ax.set_ylabel(
                 "Parameter value",
                 fontsize=label_fontsize,
                 labelpad=Y_LABEL_PAD,
             )
 
-        ax_traj.grid(alpha=0.3)
-        ax_traj.tick_params(labelsize=tick_fontsize)
-
-        if ax_marginal is not None:
-            ax_marginal.set_ylim(ax_traj.get_ylim())
+        ax.grid(alpha=0.3)
+        ax.tick_params(labelsize=tick_fontsize)
 
     for j in range(len(local_params), len(axes)):
         axes[j].axis("off")
 
-    fig.legend(
-        handles=[
-            mlines.Line2D(
-                [],
-                [],
-                color=color,
-                linewidth=2.5,
-                label="Average",
-            ),
-            mlines.Line2D(
-                [],
-                [],
-                color=color,
-                linewidth=1.0,
-                label="Individual",
-            ),
-        ],
-        loc="lower center",
-        ncol=2,
-        fontsize=label_fontsize,
-        framealpha=0.0,
-        bbox_to_anchor=(0.5, legend_y),
-    )
-
-    sns.despine()
-    plt.tight_layout()
-    fig.subplots_adjust(
+    add_prior_trajectory_legend(fig, color, alpha, label_fontsize, legend_y)
+    adjust_prior_layout(
+        fig,
+        gs,
+        heading_height=heading_height,
         bottom=legend_bottom,
-        hspace=HSPACE,
-        wspace=WSPACE,
+        min_gap=max(title_fontsize + PRIOR_TITLE_PAD, label_fontsize) + tick_fontsize + 13 + scale_space,
     )
-
+    add_prior_heading(fig, gs[0, :], "Trajectories", heading_offset, title_fontsize)
+    for row, start in enumerate(range(0, len(panel_scales), num_cols)):
+        column = 0
+        for view, panels in groupby(panel_scales[start : start + num_cols]):
+            end = column + sum(1 for _ in panels)
+            add_prior_heading(fig, gs[row, column:end], view, scale_offset, label_fontsize, "normal")
+            column = end
+    sns.despine(fig=fig)
     return fig

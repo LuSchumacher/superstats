@@ -26,6 +26,7 @@ from superstats.simulation.augmentation.missing import MissingProcess
 from superstats.simulation.augmentation.contamination import ContaminationProcess
 from superstats.simulation.context.context_simulator import ContextSimulator
 from superstats.utils.dispatch import find_contamination, find_missing
+from superstats.utils.plotting import PRIOR_ALPHA
 
 
 class Model:
@@ -424,8 +425,8 @@ class Model:
         marginal: bool = True,
         dist_type: Literal["hist", "kde", "both"] = "hist",
         num_bins: int | None = None,
-        dist_alpha: float = 1.0,
-        alpha: float = 0.5,
+        dist_alpha: float | None = None,
+        alpha: float = PRIOR_ALPHA,
         color: str = BASE_COLOR,
         title_fontsize: int = TITLE_FONTSIZE,
         label_fontsize: int = LABEL_FONTSIZE,
@@ -460,16 +461,17 @@ class Model:
             Distribution type used for marginal panels.
         num_bins         : int or None, optional, default: None
             Number of histogram bins. If None, Seaborn selects the bins.
-        dist_alpha       : float, optional, default: 1.0
-            Opacity of marginal distributions.
-        alpha            : float, optional, default: 0.5
+        dist_alpha       : float or None, optional, default: None
+            Opacity of marginal distributions. If None, uses 1.0 for a single
+            distribution and 0.5 for overlaid conditions.
+        alpha            : float, optional, default: 0.25
             Opacity of individual trajectories.
         color            : str, optional, default: BASE_COLOR
             Color used for trajectories and marginal distributions.
         title_fontsize   : int, optional, default: 22
-            Font size for panel titles.
+            Font size for panel titles and the Trajectories heading.
         label_fontsize   : int, optional, default: 18
-            Font size for axis labels and the figure legend.
+            Font size for axis labels, scale headings, and the figure legend.
         tick_fontsize    : int, optional, default: 16
             Font size for tick labels.
         figsize          : tuple of two floats or None, optional, default: None
@@ -584,7 +586,7 @@ class Model:
         num_cols       : int or None, optional, default: None
             Number of panel columns. If None, uses up to four columns.
         title_fontsize : int, optional, default: 22
-            Font size for panel titles.
+            Font size for panel titles and section headings.
         label_fontsize : int, optional, default: 18
             Font size for axis labels.
         tick_fontsize  : int, optional, default: 16
@@ -667,7 +669,7 @@ class Model:
         title_fontsize: int = TITLE_FONTSIZE,
         label_fontsize: int = LABEL_FONTSIZE,
         tick_fontsize: int = TICK_FONTSIZE,
-        alpha: float = 0.5,
+        alpha: float = PRIOR_ALPHA,
         figsize: tuple[float, float] | None = None,
         scale: Literal["both", "model", "raw"] = "both",
         conditions: Mapping | Sequence[Mapping] | None = None,
@@ -680,11 +682,11 @@ class Model:
         coefficients and displayed alongside stochastic local trajectories.
         Each draw is resolved under fixed predictor conditions, preserving latent
         links, ordered formulas, and formula links. The default ``scale="both"``
-        uses one row per observation-model parameter: its hyperparameters, raw
-        coefficients, and implied values, in that order. Panels are titled
-        "Raw" and "Implied", with the observation parameter as the row label.
-        Stationary coefficients use distributions. All panels reuse the same
-        draws; identical raw and implied views share a panel. Hyperparameters
+        shows hyperparameters and trajectories in rows labeled by observation
+        parameter. Trajectory columns are labeled "Raw" and "Implied" when
+        both are shown. Shared distributions appear in a separate section
+        aligned with the hyperparameter columns. All panels reuse the same
+        draws. Identical raw and implied views share a panel. Hyperparameters
         appear once in their first owning row.
         Use ``scale="raw"`` or ``scale="model"`` to select one view.
         Condition legends are hidden.
@@ -709,12 +711,12 @@ class Model:
         color            : str, optional, default: BASE_COLOR
             Color used for trajectories and distributions.
         title_fontsize   : int, optional, default: 22
-            Font size for panel titles.
+            Font size for panel titles, section headings, and row labels.
         label_fontsize   : int, optional, default: 18
-            Font size for row labels and the figure legend.
+            Font size for axis labels, scale headings, and the figure legend.
         tick_fontsize    : int, optional, default: 16
             Font size for tick labels.
-        alpha            : float, optional, default: 0.5
+        alpha            : float, optional, default: 0.25
             Opacity of individual trajectories.
         figsize          : tuple of two floats or None, optional, default: None
             Explicit figure size in inches.

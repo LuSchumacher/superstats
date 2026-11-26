@@ -107,7 +107,7 @@ def plot_push_forward(
         The font size of the axis tick labels.
     figsize            : tuple of two floats or None, optional, default: None
         Explicit figure size in inches. If None, individual-panel grids
-        use 3.5 inches of height per row.
+        use 3.9 inches of height per row.
     max_discrete_values : int, optional, default: 30
         Maximum number of discrete categories to treat the data as discrete.
 
@@ -147,6 +147,12 @@ def plot_push_forward(
     )
 
     legend_bottom = None
+
+    if not show_aggregate:
+        num_rows = int(np.ceil(batch_size / num_cols))
+        default_figsize = (BASE_COL_WIDTH * num_cols, (BASE_ROW_HEIGHT + 0.9) * num_rows)
+        fig, axes = plt.subplots(num_rows, num_cols, figsize=figsize if figsize is not None else default_figsize)
+        axes = np.atleast_1d(axes).ravel()
 
     if show_aggregate:
         if kind == "time_series":
@@ -338,10 +344,6 @@ def plot_push_forward(
             raise ValueError("kind must be 'dist' or 'time_series'.")
 
     elif kind == "time_series":
-        num_rows = int(np.ceil(batch_size / num_cols))
-        default_figsize = (BASE_COL_WIDTH * num_cols, (BASE_ROW_HEIGHT + 0.5) * num_rows)
-        fig, axes = plt.subplots(num_rows, num_cols, figsize=figsize if figsize is not None else default_figsize)
-        axes = np.atleast_1d(axes).ravel()
         t = np.arange(steps)
 
         for i in range(batch_size):
@@ -403,11 +405,6 @@ def plot_push_forward(
             axes[j].axis("off")
 
     else:
-        num_rows = int(np.ceil(batch_size / num_cols))
-        default_figsize = (BASE_COL_WIDTH * num_cols, (BASE_ROW_HEIGHT + 0.5) * num_rows)
-        fig, axes = plt.subplots(num_rows, num_cols, figsize=figsize if figsize is not None else default_figsize)
-        axes = np.atleast_1d(axes).ravel()
-
         for i in range(batch_size):
             ax = axes[i]
             if discrete:
