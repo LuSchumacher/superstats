@@ -87,7 +87,7 @@ It is highly recommended to use a GPU for fast training and inference. For an in
 
 | Notebook | What it covers |
 |---|---|
-| [Workflow demo](https://github.com/LuSchumacher/superstats/blob/main/examples/minimal_workflow_demo.ipynb) | Complete path from prior to posterior |
+| [Workflow demo](https://github.com/LuSchumacher/superstats/blob/main/examples/workflow_demo.ipynb) | Complete path from prior to posterior |
 | [Marginal versus joint smoothing](https://github.com/LuSchumacher/superstats/blob/main/examples/joint_vs_marginal.ipynb) | Compact comparison of the two trajectory approximations |
 
 More examples are always welcome. If you have an application, please consider opening a pull request.
