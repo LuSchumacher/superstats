@@ -163,7 +163,7 @@ Run model diagnostics before spending time on training. The three prior plots sh
 
 ### Time-varying prior trajectories
 
-`plot_time_varying_prior()` displays raw and implied stochastic and deterministic trajectories, with individual draws, averages, and optional marginal distributions. Inspect their starting values, variability, smoothness, drift, jumps, and behavior near the beginning and end of the sequence. Each condition uses the same draws with predictors held constant over time; `plot_push_forward()` checks the resulting observations.
+`plot_time_varying_prior()` displays stochastic and deterministic trajectories with individual draws, thicker average lines, and optional marginal distributions. When both views are shown, **Raw** and **Implied** headings identify their panels. Inspect starting values, variability, smoothness, drift, jumps, and behavior near the beginning and end of the sequence. Each condition uses the same draws with predictors held constant over time. Use `plot_push_forward()` to check the resulting observations.
 
 ```python
 fig = model.plot_time_varying_prior(
@@ -174,7 +174,7 @@ fig = model.plot_time_varying_prior(
 
 ### Time-invariant priors
 
-`plot_time_invariant_prior()` displays raw and linked shared parameters, stationary formula targets by condition, and inferred transition hyperparameters on their own scale.
+`plot_time_invariant_prior()` displays inferred transition hyperparameters on their own scale under **Hyperparameters**. The **Shared parameters** section uses the same columns and shows raw and linked shared parameters and stationary formula targets by condition.
 
 ```python
 fig = model.plot_time_invariant_prior(
@@ -185,7 +185,7 @@ fig = model.plot_time_invariant_prior(
 
 ### Joint inference prior
 
-`plot_joint_prior()` uses one row per observation-model parameter, labeled with its name (for example, `v`). Each row shows hyperparameter distributions first, then panels titled **Raw** and **Implied**. Formula coefficients stay in their target parameter's row; multiple coefficients have separate Raw panels labeled with their coefficient names. Stationary coefficients and targets use distributions in the same row. Fixed conditions use different colors, and all views reuse the same draws. Identical raw and implied views share a panel. Use `scale="raw"` or `scale="model"` to show only one view.
+`plot_joint_prior()` groups panels under **Hyperparameters** and **Trajectories**, with each row labeled by its observation-model parameter. When both trajectory views are displayed, **Raw** and **Implied** label their columns. Time-varying formula coefficients appear in their target parameter's row with their names below the panels. Stationary coefficients and targets appear under **Shared parameters**, aligned with the hyperparameter columns. Fixed conditions use different colors, and all views reuse the same draws. Identical raw and implied views share a panel. Use `scale="raw"` or `scale="model"` to show only one view.
 
 ```python
 fig = model.plot_joint_prior(

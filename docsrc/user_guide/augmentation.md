@@ -13,13 +13,11 @@ Both processes are optional modeling assumptions. Their probabilities should des
 
 Let us continue with the DDM example from the previous pages. We first define the observation model and joint prior without attaching an augmentation process.
 
+
 ```python
 import numpy as np
-
 import superstats as sup
-```
 
-```python
 simulator = sup.simulation.sample_ddm
 
 prior = sup.JointPrior(
