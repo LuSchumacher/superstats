@@ -40,6 +40,7 @@ from .categorical import EncodeCategorical
 from superstats.utils.dispatch import find_approximator
 from superstats.utils.indexing import normalize_data_indices
 from superstats.utils.logging import warning as log_warning
+from superstats.utils.plotting import normalize_time_invariant_target
 from superstats.diagnostics.plots import (
     plot_time_varying_verification,
     plot_recovery,
@@ -1018,112 +1019,59 @@ class Workflow:
         ValueError
             If no time-invariant parameters are found for dict input.
         """
-        recovery_kwargs = dict(kwargs)
-        recovery_kwargs["uncertainty_agg"] = uncertainty_agg
+        if isinstance(estimates, Mapping):
+            if variable_keys is None:
+                variable_keys = self.model.hyper_keys + self.model.shared_keys
+            if not variable_keys:
+                raise ValueError("No time-invariant parameters found.")
+            missing = [name for name in variable_keys if name not in estimates or name not in targets]
+            if missing:
+                raise ValueError(f"variable_keys not found in both estimates and targets: {missing}")
 
-        if not isinstance(estimates, Mapping):
-            fig_recovery = plot_recovery(
-                estimates=estimates,
-                targets=targets,
-                variable_keys=variable_keys,
-                variable_names=variable_names,
-                **recovery_kwargs,
-            )
-            fig_calibration = plot_calibration(
-                estimates=estimates,
-                targets=targets,
-                variable_keys=variable_keys,
-                variable_names=variable_names,
-                **kwargs,
-            )
-            fig_z_score_contraction = plot_z_score_contraction(
-                estimates=estimates,
-                targets=targets,
-                variable_keys=variable_keys,
-                variable_names=variable_names,
-                **kwargs,
-            )
-            return fig_recovery, fig_calibration, fig_z_score_contraction
+            target_columns, estimate_columns, expanded_names = [], [], []
+            for name in variable_keys:
+                values = np.asarray(estimates[name])
+                if values.ndim not in (3, 4):
+                    raise ValueError(
+                        f"Estimate '{name}' must have shape (B, S, D) or (B, S, T, D), got {values.shape}."
+                    )
+                batch_size, num_samples = values.shape[:2]
+                num_components = values.shape[-1]
+                if values.ndim == 4:
+                    values = values.reshape(batch_size, num_samples * values.shape[2], num_components)
+                estimate_columns.append(values)
+                target_columns.append(normalize_time_invariant_target(name, targets[name], batch_size, num_components))
 
-        if variable_keys is None:
-            variable_keys = self.model.hyper_keys + self.model.shared_keys
-        if not variable_keys:
-            raise ValueError("No time-invariant parameters found.")
-        missing = [k for k in variable_keys if k not in estimates or k not in targets]
-        if missing:
-            raise ValueError(f"variable_keys not found in both estimates and targets: {missing}")
-
-        target_list = []
-        estimate_list = []
-        expanded_names = []
-
-        for k in variable_keys:
-            e_arr = np.asarray(estimates[k])
-            if e_arr.ndim == 3:
-                B, S, dim = e_arr.shape
-                e_agg = e_arr
-            elif e_arr.ndim == 4:
-                B, S, T, dim = e_arr.shape
-                e_agg = e_arr.reshape(B, S * T, dim)
-            else:
-                raise ValueError(f"Estimate '{k}' must have shape (B, S, D) or (B, S, T, D), got {e_arr.shape}.")
-            t_arr = self._normalize_time_invariant_target(
-                k,
-                targets[k],
-                batch_size=B,
-                num_components=dim,
-            )
-
-            if dim > 1:
-                param_key = k.split("_mixture_weights")[0]
-                mixture_obj = self.model.prior.params.get(param_key)
-                if hasattr(mixture_obj, "names") and len(mixture_obj.names) == dim:
-                    comp_names = [f"{k}_{n}" for n in mixture_obj.names]
+                if num_components > 1:
+                    mixture = self.model.prior.params.get(name.split("_mixture_weights")[0])
+                    component_names = getattr(mixture, "names", ())
+                    if len(component_names) != num_components:
+                        component_names = range(num_components)
+                    expanded_names.extend(f"{name}_{component}" for component in component_names)
                 else:
-                    comp_names = [f"{k}_{i}" for i in range(dim)]
-
-                for i, name in enumerate(comp_names):
-                    target_list.append(t_arr[:, i : i + 1])
-                    estimate_list.append(e_agg[:, :, i : i + 1])
                     expanded_names.append(name)
-            else:
-                target_list.append(t_arr)
-                estimate_list.append(e_agg)
-                expanded_names.append(k)
 
-        target_arr = np.concatenate(target_list, axis=-1)
-        estimate_arr = np.concatenate(estimate_list, axis=-1)
+            targets = np.concatenate(target_columns, axis=-1)
+            estimates = np.concatenate(estimate_columns, axis=-1)
+            if variable_names is not None:
+                if len(variable_names) != len(expanded_names):
+                    raise ValueError(
+                        f"variable_names has {len(variable_names)} entries but there are "
+                        f"{len(expanded_names)} expanded columns."
+                    )
+                expanded_names = list(variable_names)
 
-        if variable_names is not None:
-            if len(variable_names) != len(expanded_names):
-                raise ValueError(
-                    f"variable_names has {len(variable_names)} entries but there are "
-                    f"{len(expanded_names)} expanded columns."
-                )
-            expanded_names = list(variable_names)
+            variable_keys = None
+            variable_names = expanded_names
 
-        fig_recovery = plot_recovery(
-            estimates=estimate_arr,
-            targets=target_arr,
-            variable_names=expanded_names,
-            **recovery_kwargs,
+        plot_options = kwargs | dict(
+            estimates=estimates, targets=targets, variable_keys=variable_keys, variable_names=variable_names
         )
-
-        fig_calibration = plot_calibration(
-            estimates=estimate_arr,
-            targets=target_arr,
-            variable_names=expanded_names,
-            **kwargs,
+        return (
+            plot_recovery(uncertainty_agg=uncertainty_agg, **plot_options),
+            plot_calibration(**plot_options),
+            plot_z_score_contraction(**plot_options),
         )
-
-        fig_z_score_contraction = plot_z_score_contraction(
-            estimates=estimate_arr,
-            targets=target_arr,
-            variable_names=expanded_names,
-            **kwargs,
-        )
-
-        return fig_recovery, fig_calibration, fig_z_score_contraction
 
     def plot_time_varying_posterior(
         self,
@@ -1851,39 +1799,3 @@ class Workflow:
         targets_arr = np.stack(target_columns, axis=-1)
         estimates_arr = np.stack(estimate_columns, axis=-1)
         return estimates_arr, targets_arr, resolved_names
-
-    def _normalize_time_invariant_target(
-        self,
-        name: str,
-        values: np.ndarray,
-        batch_size: int,
-        num_components: int,
-    ) -> np.ndarray:
-        """Return a time-invariant target as `(batch_size, num_components)`."""
-        arr = np.asarray(values)
-        if arr.shape[0] != batch_size:
-            raise ValueError(f"Target '{name}' has batch size {arr.shape[0]}, expected {batch_size}.")
-
-        if arr.ndim == 1:
-            if num_components != 1:
-                raise ValueError(f"Target '{name}' must have {num_components} components, got shape {arr.shape}.")
-            return arr[:, None]
-
-        if arr.ndim == 2 and arr.shape[1] == num_components:
-            return arr
-
-        if arr.ndim == 2 and num_components == 1:
-            tiled = arr[..., None]
-        elif arr.ndim == 3 and arr.shape[2] == num_components:
-            tiled = arr
-        else:
-            raise ValueError(
-                f"Target '{name}' must have shape (batch_size, {num_components}) or "
-                f"(batch_size, num_steps, {num_components}), got {arr.shape}."
-            )
-
-        if not np.allclose(tiled, tiled[:, :1, :], equal_nan=True):
-            raise ValueError(
-                f"Target '{name}' varies across steps but verify_time_invariant requires a time-invariant target."
-            )
-        return tiled[:, 0, :]

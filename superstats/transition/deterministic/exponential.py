@@ -42,38 +42,7 @@ class Exponential(DeterministicTransition):
         self.transition_name = "exponential"
 
     def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
-        """Draw `batch_size` exponential trajectories of length `num_steps`.
-
-        Parameters
-        ----------
-        batch_size : int
-            Number of independent trajectories to draw.
-        num_steps : int
-            Number of time steps per trajectory.
-
-        Returns
-        -------
-        result : dict
-            Dictionary with keys `deterministic_params`, `hyper_params`, and
-            `fixed_params`.
-        """
-        hyper, fixed = self._resolve_hyperparams(batch_size)
-        intercept = (
-            hyper["intercept"] if "intercept" in hyper else np.full(batch_size, fixed["intercept"], dtype=self.dtype)
-        )
-        beta = hyper["beta"] if "beta" in hyper else np.full(batch_size, fixed["beta"], dtype=self.dtype)
-        index = (
-            np.linspace(0.0, 1.0, num_steps, dtype=self.dtype)
-            if self.normalize_steps
-            else np.arange(num_steps, dtype=self.dtype)
-        )
-        trajectory = intercept[:, None] * np.exp(beta[:, None] * index[None, :])
-
-        return {
-            "deterministic_params": trajectory.astype(self.dtype),
-            "hyper_params": hyper,
-            "fixed_params": fixed,
-        }
+        return self._sample_curve(batch_size, num_steps, Exponential.sample_from_parameters)
 
     def sample_from_parameters(
         self,

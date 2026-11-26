@@ -497,8 +497,14 @@ class Model:
         """
         if scale not in {"both", "model", "raw"}:
             raise ValueError("scale must be 'both', 'model', or 'raw'.")
-        if scale != "raw":
-            local, _, _, labels, _ = prior_plot_samples(
+        if scale == "raw":
+            samples = self._sample_inference_prior(batch_size=num_trajectories, num_steps=num_steps)
+            local_params = samples["local_params"]
+            if variable_keys is not None:
+                local_params = {name: local_params[name] for name in variable_keys}
+            bounds, labels = {}, None
+        else:
+            local_params, _, _, labels, _ = prior_plot_samples(
                 self,
                 num_draws=num_trajectories,
                 num_steps=num_steps,
@@ -508,29 +514,11 @@ class Model:
                 kind="varying",
                 scale=scale,
             )
-            return plot_time_varying_prior(
-                local_params=local,
-                param_bounds=parameter_bounds(self, local),
-                condition_labels=labels,
-                num_cols=num_cols,
-                marginal=marginal,
-                dist_type=dist_type,
-                num_bins=num_bins,
-                dist_alpha=dist_alpha,
-                alpha=alpha,
-                color=color,
-                title_fontsize=title_fontsize,
-                label_fontsize=label_fontsize,
-                tick_fontsize=tick_fontsize,
-                figsize=figsize,
-            )
-        samples = self._sample_inference_prior(batch_size=num_trajectories, num_steps=num_steps)
-        local_params = samples["local_params"]
-        if variable_keys is not None:
-            local_params = {name: local_params[name] for name in variable_keys}
+            bounds = parameter_bounds(self, local_params)
         return plot_time_varying_prior(
             local_params=local_params,
-            param_bounds={},
+            param_bounds=bounds,
+            condition_labels=labels,
             num_cols=num_cols,
             marginal=marginal,
             dist_type=dist_type,
@@ -614,8 +602,12 @@ class Model:
         """
         if scale not in {"both", "model", "raw"}:
             raise ValueError("scale must be 'both', 'model', or 'raw'.")
-        if scale != "raw":
-            local, hyper, shared, condition_labels, owners = prior_plot_samples(
+        if scale == "raw":
+            samples = self._sample_inference_prior(batch_size=num_draws, num_steps=num_steps)
+            hyper, shared = samples["hyper_params"], samples["shared_params"]
+            condition_labels = None
+        else:
+            _, hyper, shared, condition_labels, _ = prior_plot_samples(
                 self,
                 num_draws=num_draws,
                 num_steps=num_steps,
@@ -625,25 +617,10 @@ class Model:
                 kind="invariant",
                 scale=scale,
             )
-            return plot_time_invariant_prior(
-                hyper_params=hyper,
-                shared_params=shared,
-                condition_labels=condition_labels,
-                mixture_names={name: obj.names for name, obj in self.prior.params.items() if hasattr(obj, "names")},
-                dist_type=dist_type,
-                num_bins=num_bins,
-                dist_alpha=dist_alpha,
-                color=color,
-                num_cols=num_cols,
-                title_fontsize=title_fontsize,
-                label_fontsize=label_fontsize,
-                tick_fontsize=tick_fontsize,
-                figsize=figsize,
-            )
-        samples = self._sample_inference_prior(batch_size=num_draws, num_steps=num_steps)
         return plot_time_invariant_prior(
-            hyper_params=samples["hyper_params"],
-            shared_params=samples["shared_params"],
+            hyper_params=hyper,
+            shared_params=shared,
+            condition_labels=condition_labels,
             mixture_names={name: obj.names for name, obj in self.prior.params.items() if hasattr(obj, "names")},
             dist_type=dist_type,
             num_bins=num_bins,
@@ -741,7 +718,17 @@ class Model:
         """
         if scale not in {"both", "model", "raw"}:
             raise ValueError("scale must be 'both', 'model', or 'raw'.")
-        if scale != "raw":
+        if scale == "raw":
+            samples = self._sample_inference_prior(
+                batch_size=num_draws,
+                num_steps=num_steps,
+                include_deterministic=True,
+            )
+            local = samples["local_params"] | samples["deterministic_params"]
+            hyper, shared = samples["hyper_params"], samples["shared_params"]
+            owners = samples["hyper_param_groups"]
+            bounds, condition_labels = {}, None
+        else:
             local, hyper, shared, condition_labels, owners = prior_plot_samples(
                 self,
                 num_draws=num_draws,
@@ -752,43 +739,16 @@ class Model:
                 kind="joint",
                 scale=scale,
             )
-            return plot_joint_prior(
-                local_params={name: value[:num_trajectories] for name, value in local.items()},
-                param_bounds=parameter_bounds(self, local),
-                hyper_params=hyper,
-                shared_params=shared,
-                condition_labels=condition_labels,
-                hyper_param_groups=owners,
-                parameter_groups=joint_prior_groups(self, local, hyper, shared, scale),
-                mixture_names={name: obj.names for name, obj in self.prior.params.items() if hasattr(obj, "names")},
-                marginal=marginal,
-                dist_type=dist_type,
-                num_bins=num_bins,
-                dist_alpha=dist_alpha,
-                color=color,
-                alpha=alpha,
-                title_fontsize=title_fontsize,
-                label_fontsize=label_fontsize,
-                tick_fontsize=tick_fontsize,
-                figsize=figsize,
-            )
-        samples = self._sample_inference_prior(
-            batch_size=num_draws,
-            num_steps=num_steps,
-            include_deterministic=True,
-        )
-        all_local_params = {**samples["local_params"], **samples["deterministic_params"]}
-        local_params = {k: v[:num_trajectories] for k, v in all_local_params.items()}
+            bounds = parameter_bounds(self, local)
         return plot_joint_prior(
-            local_params=local_params,
-            hyper_params=samples["hyper_params"],
-            shared_params=samples["shared_params"],
-            param_bounds={},
+            local_params={name: values[:num_trajectories] for name, values in local.items()},
+            hyper_params=hyper,
+            shared_params=shared,
+            param_bounds=bounds,
+            condition_labels=condition_labels,
             mixture_names={name: obj.names for name, obj in self.prior.params.items() if hasattr(obj, "names")},
-            hyper_param_groups=samples["hyper_param_groups"],
-            parameter_groups=joint_prior_groups(
-                self, local_params, samples["hyper_params"], samples["shared_params"], scale
-            ),
+            hyper_param_groups=owners,
+            parameter_groups=joint_prior_groups(self, local, hyper, shared, scale),
             marginal=marginal,
             dist_type=dist_type,
             num_bins=num_bins,

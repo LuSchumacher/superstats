@@ -46,45 +46,7 @@ class Linear(DeterministicTransition):
         self.transition_name = "linear"
 
     def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
-        """Draw `batch_size` linear trajectories of length `num_steps`.
-
-        Parameters
-        ----------
-        batch_size : int
-            Number of independent trajectories to draw.
-        num_steps  : int
-            Number of time steps per trajectory.
-
-        Returns
-        -------
-        result : dict - dictionary with keys `deterministic_params`,
-            `hyper_params`, and `fixed_params`
-        """
-        hyper, fixed = self._resolve_hyperparams(batch_size)
-
-        intercept = (
-            self._sample(hyper["intercept"], batch_size)
-            if "intercept" in hyper
-            else np.full(batch_size, fixed["intercept"], dtype=self.dtype)
-        )
-
-        slope = (
-            self._sample(hyper["slope"], batch_size)
-            if "slope" in hyper
-            else np.full(batch_size, fixed["slope"], dtype=self.dtype)
-        )
-
-        if self.normalize_steps:
-            index = np.linspace(0.0, 1.0, num_steps, dtype=self.dtype)
-        else:
-            index = np.arange(num_steps, dtype=self.dtype)
-        local = intercept[:, None] + slope[:, None] * index[None, :]
-
-        return {
-            "deterministic_params": local.astype(self.dtype),
-            "hyper_params": hyper,
-            "fixed_params": fixed,
-        }
+        return self._sample_curve(batch_size, num_steps, Linear.sample_from_parameters)
 
     def sample_from_parameters(
         self,

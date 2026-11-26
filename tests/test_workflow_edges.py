@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from superstats.utils.plotting import normalize_time_invariant_target
 from superstats.workflow import Workflow
 from superstats.workflow import workflow as workflow_module
 
@@ -324,8 +325,8 @@ def test_verify_time_invariant_validates_mapping_selection(monkeypatch):
 @pytest.mark.parametrize(
     ("values", "batch_size", "components", "expected", "match"),
     [
-        (np.ones(3), 2, 1, None, "batch size"),
-        (np.ones(2), 2, 2, None, "must have 2 components"),
+        (np.ones(3), 2, 1, None, "has 3 datasets"),
+        (np.ones(2), 2, 2, None, "must have shape"),
         (np.ones((2, 3, 2)), 2, 1, None, "must have shape"),
         (np.array([[1.0, 2.0], [1.0, 3.0]]), 2, 1, None, "varies across steps"),
         (np.array([[1.0, 1.0], [2.0, 2.0]]), 2, 1, np.array([[1.0], [2.0]]), None),
@@ -333,12 +334,11 @@ def test_verify_time_invariant_validates_mapping_selection(monkeypatch):
     ],
 )
 def test_normalize_time_invariant_target(values, batch_size, components, expected, match):
-    workflow = bare_workflow()
     if match:
         with pytest.raises(ValueError, match=match):
-            workflow._normalize_time_invariant_target("theta", values, batch_size, components)
+            normalize_time_invariant_target("theta", values, batch_size, components)
     else:
-        result = workflow._normalize_time_invariant_target("theta", values, batch_size, components)
+        result = normalize_time_invariant_target("theta", values, batch_size, components)
         np.testing.assert_array_equal(result, expected)
 
 
