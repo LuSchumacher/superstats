@@ -95,7 +95,7 @@ More examples are always welcome. If you have an application, please consider op
 
 ## Contributing
 
-Contributions are welcome. Install from source and see [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+Contributions are welcome. Install from source and see the [contributing guide](contributing.md) for details.
 
 ## Reporting issues
 
