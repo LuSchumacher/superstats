@@ -6,7 +6,7 @@ import keras
 import numpy as np
 
 from bayesflow.adapters import Adapter
-from bayesflow.approximators import Approximator, AutoregressiveApproximator, ContinuousApproximator
+from bayesflow.estimators import Estimator, AutoregressiveEstimator, BasicEstimator
 from bayesflow.networks import RecurrentNetwork
 from bayesflow.networks.decoders import RecurrentDecoder, TransformerDecoder
 from bayesflow.networks.helpers import Standardization
@@ -20,8 +20,8 @@ from superstats.defaults import (
 )
 
 
-@serializable("superstats.approximators")
-class CompositeApproximator(Approximator):
+@serializable("superstats.estimators")
+class CompositeEstimator(Estimator):
     """Compose invariant and conditional time-varying posterior estimators.
 
     Parameters
@@ -50,7 +50,7 @@ class CompositeApproximator(Approximator):
         Canonical variables to standardize: "inference_variables",
         "invariant_variables", "summary_variables", and "inference_conditions".
         "all" selects all four; None disables standardization. Each child
-        approximator standardizes its own targets.
+        estimator standardizes its own targets.
     decoder_network : keras.layers.Layer or None, optional, default: None
         Decoder used when `joint` is True. Defaults to a TransformerDecoder
         for smoothing or RecurrentDecoder for filtering. A custom filtering
@@ -66,7 +66,7 @@ class CompositeApproximator(Approximator):
         Enable the invariant target head. At least one head must be enabled.
         Disabled heads require their network argument to retain its default.
     **kwargs
-        Additional arguments passed to the BayesFlow Approximator base class.
+        Additional arguments passed to the BayesFlow Estimator base class.
 
     Raises
     ------
@@ -87,7 +87,7 @@ class CompositeApproximator(Approximator):
 
     Filtering is conditional on the invariant parameters. Since the invariant
     head sees the complete sequence, integrating its draws does not give strict
-    online filtering. That requires applying the complete approximator
+    online filtering. That requires applying the complete estimator
     separately to each observation prefix.
     """
 
@@ -167,8 +167,8 @@ class CompositeApproximator(Approximator):
             raise ValueError(f"Unknown standardization variables: {sorted(selected - keys)}.")
         self.standardizer = Standardization(sorted(selected & {"summary_variables", "inference_conditions"}))
 
-        self.invariant_approximator = (
-            ContinuousApproximator(
+        self.invariant_estimator = (
+            BasicEstimator(
                 inference_network=invariant_inference_network,
                 standardize="inference_variables" if "invariant_variables" in selected else None,
             )
@@ -177,21 +177,21 @@ class CompositeApproximator(Approximator):
         )
         sequence_standardize = "inference_variables" if "inference_variables" in selected else None
         if not has_varying:
-            self.sequence_approximator = None
+            self.sequence_estimator = None
         elif joint:
             if decoder_network is None:
                 if mode == "filtering":
                     decoder_network = RecurrentDecoder(**DEFAULT_FILTERING_DECODER_NETWORK)
                 else:
                     decoder_network = TransformerDecoder(**DEFAULT_AUTOREGRESSIVE_DECODER_NETWORK)
-            self.sequence_approximator = AutoregressiveApproximator(
+            self.sequence_estimator = AutoregressiveEstimator(
                 inference_network=varying_inference_network,
                 encoder_network=keras.layers.Identity(),
                 decoder_network=decoder_network,
                 standardize=sequence_standardize,
             )
         else:
-            self.sequence_approximator = ContinuousApproximator(
+            self.sequence_estimator = BasicEstimator(
                 inference_network=varying_inference_network, standardize=sequence_standardize
             )
         self.has_distribution = True
@@ -206,12 +206,12 @@ class CompositeApproximator(Approximator):
     @property
     def varying_inference_network(self):
         """bayesflow.networks.InferenceNetwork or None: Density network for enabled varying targets."""
-        return self.sequence_approximator.inference_network if self.has_varying else None
+        return self.sequence_estimator.inference_network if self.has_varying else None
 
     @property
     def invariant_inference_network(self):
         """bayesflow.networks.InferenceNetwork or None: Density network for enabled invariant targets."""
-        return self.invariant_approximator.inference_network if self.has_invariant else None
+        return self.invariant_estimator.inference_network if self.has_invariant else None
 
     @classmethod
     def build_adapter(
@@ -389,7 +389,7 @@ class CompositeApproximator(Approximator):
 
         invariant_shape = tuple(data_shapes["invariant_variables"]) if self.has_invariant else None
         if self.has_invariant:
-            self.invariant_approximator.build(
+            self.invariant_estimator.build(
                 {"inference_variables": invariant_shape, "inference_conditions": pooled_shape}
             )
         if self.has_varying:
@@ -403,7 +403,7 @@ class CompositeApproximator(Approximator):
                     *feature_shape[:-1],
                     feature_shape[-1] + (invariant_shape[-1] if self.has_invariant else 0),
                 )
-            self.sequence_approximator.build(sequence_shapes)
+            self.sequence_estimator.build(sequence_shapes)
         self.built = True
 
     @staticmethod
@@ -623,9 +623,9 @@ class CompositeApproximator(Approximator):
             Target padding mask shaped (B, T), with True indicating steps
             included in the varying objective.
         inference_attention_mask : array-like or None, optional, default: None
-            Attention mask forwarded to the varying approximator.
+            Attention mask forwarded to the varying estimator.
         stage : str, optional, default: "training"
-            Stage passed to standardization and both child approximators,
+            Stage passed to standardization and both child estimators,
             typically "training", "validation", or "inference".
 
         Returns
@@ -639,7 +639,7 @@ class CompositeApproximator(Approximator):
         Notes
         -----
         Inputs are already adapted; this method does not apply `adapter`.
-        An unbuilt approximator is built from the supplied tensor shapes.
+        An unbuilt estimator is built from the supplied tensor shapes.
         Child objectives retain their native BayesFlow reductions. The varying
         training objective is generally averaged over time, whereas `log_prob`
         sums the sequence log densities.
@@ -669,7 +669,7 @@ class CompositeApproximator(Approximator):
             sample_weight = keras.ops.convert_to_tensor(sample_weight)
 
         invariant_metrics = (
-            self.invariant_approximator.compute_metrics(
+            self.invariant_estimator.compute_metrics(
                 inference_variables=data["invariant_variables"],
                 inference_conditions=pooled,
                 sample_weight=sample_weight,
@@ -686,7 +686,7 @@ class CompositeApproximator(Approximator):
             sequence_weight = mask if sequence_weight is None else sequence_weight * mask
 
         sequence_metrics = (
-            self.sequence_approximator.compute_metrics(
+            self.sequence_estimator.compute_metrics(
                 **self._sequence_data(data, features, data.get("invariant_variables")),
                 sample_weight=sequence_weight,
                 stage=stage,
@@ -720,17 +720,17 @@ class CompositeApproximator(Approximator):
         return keras.ops.shape(data["summary_variables"])[0]
 
     def fit(self, *args, **kwargs):
-        """Train the approximator using its configured adapter.
+        """Train the estimator using its configured adapter.
 
         Parameters
         ----------
         *args
-            Positional arguments forwarded to BayesFlow's `Approximator.fit`,
+            Positional arguments forwarded to BayesFlow's `Estimator.fit`,
             subject to that method's signature.
         **kwargs
             Dataset or simulator configuration and training options forwarded
-            to `Approximator.fit`. Any supplied adapter is replaced by this
-            approximator's configured adapter.
+            to `Estimator.fit`. Any supplied adapter is replaced by this
+            estimator's configured adapter.
 
         Returns
         -------
@@ -802,13 +802,13 @@ class CompositeApproximator(Approximator):
             "_invariant_summaries" with shape (B, G).
         seed : int, keras.random.SeedGenerator, or None, optional, default: None
             Random seed passed to the child samplers. If None, use this
-            approximator's seed generator.
+            estimator's seed generator.
         sequence_kwargs : mapping or None, optional, default: None
-            Additional arguments for the varying approximator's `sample`.
+            Additional arguments for the varying estimator's `sample`.
             Must not duplicate arguments supplied directly by this method,
             such as `num_samples`, `conditions`, `sample_shape`, or `seed`.
         invariant_kwargs : mapping or None, optional, default: None
-            Additional arguments for the invariant approximator's `sample`,
+            Additional arguments for the invariant estimator's `sample`,
             subject to the same restriction on duplicate arguments.
 
         Returns
@@ -842,7 +842,7 @@ class CompositeApproximator(Approximator):
             features, pooled = self._encode(batch)
             count, steps = keras.ops.shape(features)[:2]
             invariant = (
-                self.invariant_approximator.sample(
+                self.invariant_estimator.sample(
                     num_samples=num_samples,
                     conditions={"inference_conditions": pooled},
                     sample_shape=(),
@@ -863,7 +863,7 @@ class CompositeApproximator(Approximator):
             expanded_features = keras.ops.repeat(features, num_samples, axis=0)
             flat_invariant = invariant.reshape(count * num_samples, -1) if invariant is not None else None
             sequence = (
-                self.sequence_approximator.sample(
+                self.sequence_estimator.sample(
                     num_samples=1,
                     conditions=self._sequence_data(
                         expanded,
@@ -922,7 +922,7 @@ class CompositeApproximator(Approximator):
             Return separate "invariant" and "varying" log-density terms
             instead of their sum.
         **kwargs
-            Additional arguments forwarded to both enabled child approximators'
+            Additional arguments forwarded to both enabled child estimators'
             `log_prob` methods.
 
         Returns
@@ -963,14 +963,14 @@ class CompositeApproximator(Approximator):
                 )
         features, pooled = self._encode(adapted)
         invariant = (
-            self.invariant_approximator.log_prob(
+            self.invariant_estimator.log_prob(
                 {"inference_variables": adapted["invariant_variables"], "inference_conditions": pooled}, **kwargs
             )
             if self.has_invariant
             else np.zeros(features.shape[0])
         )
         sequence = (
-            self.sequence_approximator.log_prob(
+            self.sequence_estimator.log_prob(
                 self._sequence_data(adapted, features, adapted.get("invariant_variables")), **kwargs
             )
             if self.has_varying
@@ -1013,7 +1013,7 @@ class CompositeApproximator(Approximator):
         Parameters
         ----------
         *args
-            Positional arguments forwarded to `Approximator.compile`.
+            Positional arguments forwarded to `Estimator.compile`.
         invariant_inference_metrics : keras.metrics.Metric, sequence, or None, optional, default: None
             Metrics assigned to the invariant density network when that head
             is enabled. If None, retain its existing metrics.
@@ -1067,14 +1067,14 @@ class CompositeApproximator(Approximator):
             "standardize": self._standardize,
         }
         if self.joint and self.has_varying:
-            config["decoder_network"] = self.sequence_approximator.decoder_network
-        if type(self) is CompositeApproximator:
+            config["decoder_network"] = self.sequence_estimator.decoder_network
+        if type(self) is CompositeEstimator:
             config["joint"] = self.joint
         return super().get_config() | serialize(config)
 
     @classmethod
     def from_config(cls, config, custom_objects=None):
-        """Restore an approximator from its serialized constructor configuration.
+        """Restore an estimator from its serialized constructor configuration.
 
         Parameters
         ----------
@@ -1086,7 +1086,7 @@ class CompositeApproximator(Approximator):
 
         Returns
         -------
-        approximator : CompositeApproximator
+        estimator : CompositeEstimator
             Restored instance of the requested class. Network weights are
             restored separately by the checkpoint loading mechanism.
         """

@@ -1,6 +1,6 @@
 # Diagnostics
 
-Diagnostics follow the two stages of a Superstats analysis. Before inference, the question is whether the generative assumptions are sensible. These checks are methods of `Model`, because they require only the prior, transitions, links, and simulator. After inference, the question is whether the learned posterior is accurate, calibrated, informative, and capable of reproducing the data. These checks are methods of `Workflow`, which knows the model, posterior approximator, and division between time-varying and time-invariant parameters.
+Diagnostics follow the two stages of a Superstats analysis. Before inference, the question is whether the generative assumptions are sensible. These checks are methods of `Model`, because they require only the prior, transitions, links, and simulator. After inference, the question is whether the learned posterior is accurate, calibrated, informative, and capable of reproducing the data. These checks are methods of `Workflow`, which knows the model, posterior estimator, and division between time-varying and time-invariant parameters.
 
 This separation prevents a common mistake: a plausible posterior cannot rescue an implausible generative model, and a plausible prior predictive distribution does not establish that the posterior approximation is reliable. Both stages need to be checked.
 
@@ -26,7 +26,7 @@ No single plot validates a model. Prior checks assess the specification, simulat
 
 1. Check raw and implied parameter priors with the prior plotting methods.
 2. Check observable implications with `model.plot_push_forward()`.
-3. Train the approximator and inspect `workflow.plot_history()`.
+3. Train the estimator and inspect `workflow.plot_history()`.
 4. Run recovery and calibration on fresh prior-predictive simulations.
 5. Inspect posteriors for representative and difficult datasets.
 6. Run posterior predictive checks on every important observed variable.
@@ -227,7 +227,7 @@ The workflow owns all post-model diagnostics. This example uses marginal smoothi
 ```python
 workflow = sup.Workflow(
     model=model,
-    approximator="marginal",
+    estimator="marginal",
     mode="smoothing",
 )
 

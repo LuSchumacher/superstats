@@ -1,27 +1,27 @@
-# Posterior approximators
+# Posterior estimators
 
-Superstats provides two BayesFlow approximators sharing the public
-`CompositeApproximator` base for unknown varying and invariant parameters. Both
+Superstats provides two BayesFlow estimators sharing the public
+`CompositeEstimator` base for unknown varying and invariant parameters. Both
 own an observation encoder for the invariant head and construct two posterior
 components internally:
 
 | Class | Sequence component | Invariant component |
 |---|---|---|
-| `MarginalApproximator` | `ContinuousApproximator` | `ContinuousApproximator` |
-| `JointApproximator` | `AutoregressiveApproximator` | `ContinuousApproximator` |
+| `MarginalEstimator` | `BasicEstimator` | `BasicEstimator` |
+| `JointEstimator` | `AutoregressiveEstimator` | `BasicEstimator` |
 
 Use `mode="smoothing"` or `mode="filtering"` with either class. Smoothing state
 factors use all observations. Filtering state factors use observation prefixes.
 The invariant head always uses the complete sequence.
 
-## Construct an approximator
+## Construct an estimator
 
 ```python
 import bayesflow as bf
 import superstats as sup
-from superstats.approximators import JointApproximator, MarginalApproximator
+from superstats.estimators import JointEstimator, MarginalEstimator
 
-approximator = JointApproximator(
+estimator = JointEstimator(
     summary_network=bf.networks.RecurrentNetwork(
         return_sequences=True, bidirectional=True, summary_dim=64
     ),
@@ -54,7 +54,7 @@ Returned samples are transformed back to physical coordinates, and `log_prob`
 includes the invariant transformation Jacobian once per dataset.
 By default, the invariant head receives the masked mean of the full observation
 encoding, with `log(1 + valid sequence length)` appended. This is a simple
-`CompositeApproximator.pool_invariants` call, with no parameterless Keras layer.
+`CompositeEstimator.pool_invariants` call, with no parameterless Keras layer.
 To use learned pooling,
 pass `invariant_pooling`, a Keras layer mapping `(B, T, H) -> (B, G)`. It should
 accept `mask` when using padded sequences. The encoder and pooling layer are
@@ -81,13 +81,13 @@ These shapes apply with the default identity adapter. To work with simulator
 parameter names, use the class's `build_adapter`:
 
 ```python
-adapter = JointApproximator.build_adapter(
+adapter = JointEstimator.build_adapter(
     inference_variables=["v", "a"],
     invariant_variables=["v_sigma", "t0"],
     summary_variables=["time_steps", "rt", "choice"],
 )
 
-approximator = JointApproximator(
+estimator = JointEstimator(
     varying_inference_network=bf.networks.CouplingFlow(),
     invariant_inference_network=bf.networks.CouplingFlow(),
     adapter=adapter,
@@ -118,23 +118,23 @@ workflow = sup.Workflow(
 Select the built-in family and mode directly on the workflow:
 
 ```python
-marginal_smoother = sup.Workflow(model=model, approximator="marginal", mode="smoothing")
-joint_filter = sup.Workflow(model=model, approximator="joint", mode="filtering")
+marginal_smoother = sup.Workflow(model=model, estimator="marginal", mode="smoothing")
+joint_filter = sup.Workflow(model=model, estimator="joint", mode="filtering")
 ```
 
-You can instead pass a constructed `MarginalApproximator` or
-`JointApproximator`; its own `mode`, networks, and adapter are retained.
+If you pass a constructed `MarginalEstimator` or `JointEstimator`, the workflow
+uses its `mode`, networks, and adapter.
 
 The workflow defaults are `embedding_network="recurrent"`,
 `varying_inference_network="coupling"`, `invariant_inference_network="coupling"`,
-and `approximator="marginal"`. Each active density head gets a separate depth-2
+and `estimator="marginal"`. Each active density head gets a separate depth-2
 spline coupling flow.
 
 The model's target groups determine which heads are active. Varying-only models
 use per-time densities for marginal inference and an autoregressive trajectory
 density for joint inference. Invariant-only models use one pooled invariant
 vector density for either family; invariant targets remain untiled. A custom
-network for an absent target group raises an error. For a standalone approximator,
+network for an absent target group raises an error. For a standalone estimator,
 set `has_varying=False` or `has_invariant=False` and omit the corresponding target
 group from its adapter. At least one target group is required.
 
@@ -142,20 +142,20 @@ group from its adapter. At least one target group is required.
 
 ```python
 training_batch = adapter(model.sample(batch_size=32, num_steps=100, tile_to_steps=False))
-metrics = approximator.compute_metrics(**training_batch)
+metrics = estimator.compute_metrics(**training_batch)
 
 # Train both child heads and the shared encoder together.
-approximator.compile(optimizer="adam")
+estimator.compile(optimizer="adam")
 dataset = bf.datasets.OfflineDataset(
     data=simulations, adapter=adapter, batch_size=32
 )
-approximator.fit(dataset=dataset, epochs=10)
+estimator.fit(dataset=dataset, epochs=10)
 
-samples = approximator.sample(
+samples = estimator.sample(
     conditions=observations, num_samples=500, batch_size=4, seed=123
 )
-log_density = approximator.log_prob(simulations)  # shape (B,)
-components = approximator.log_prob(simulations, return_components=True)
+log_density = estimator.log_prob(simulations)  # shape (B,)
+components = estimator.log_prob(simulations, return_components=True)
 # components["invariant"] and components["varying"] each have shape (B,).
 ```
 
@@ -179,7 +179,7 @@ also returns `_summaries` `(B, T, H)` and `_invariant_summaries` `(B, G)`.
 `standardize="all"` is the default. Pass `None` to disable standardization, or
 a subset of `inference_variables`, `invariant_variables`, `summary_variables`,
 and `inference_conditions`. Targets are standardized independently in their
-respective child approximators. Observation standardization happens before
+respective child estimators. Observation standardization happens before
 shared encoding. `log_prob` includes target standardization and adapter
 Jacobians, counting the invariant term once. Evaluate one target vector and
 trajectory per dataset; to evaluate many posterior draws, broadcast observations
@@ -189,11 +189,22 @@ With an `inference_mask` excluding time points, `log_prob` accepts varying-targe
 adapters with zero Jacobians. It rejects nonzero varying-target adapter
 Jacobians in that case: BayesFlow reports one aggregate Jacobian per dataset,
 which cannot be apportioned to the valid time points. Target standardization
-inside the child approximators remains supported with masks.
+inside the child estimators remains supported with masks.
 
-The classes support `approximator.save("model.keras")` and
+The classes support `estimator.save("model.keras")` and
 `keras.saving.load_model("model.keras")`. Custom networks and pooling layers
 must be Keras serializable.
+
+## Upgrading from BayesFlow 2.0
+
+Import `CompositeEstimator`, `MarginalEstimator`, and `JointEstimator` from
+`superstats.estimators` or directly from `superstats`. Use `estimator=` to
+configure a `Workflow`, `workflow.estimator` to access the estimator, and
+`restore_estimator=` to control checkpoint restoration.
+
+Use the previous Superstats and BayesFlow versions to load checkpoints created
+with BayesFlow 2.0.x. Train and save a new estimator to use a checkpoint with
+BayesFlow 2.1. See the [BayesFlow 2.1 release notes](https://github.com/bayesflow-org/bayesflow/releases/tag/v2.1.0).
 
 ## Distribution assumptions
 
@@ -231,6 +242,6 @@ unrestricted cross-attention and is therefore accepted for smoothing only.
 **Filtering here is conditional filtering given invariant parameters.** The
 global head still uses `x_1:T`; integrating its draws does not give strict
 online `p(theta_t | x_1:t)`. For strict online filtering, call the entire
-approximator on each observation prefix so the invariant head also uses only
+estimator on each observation prefix so the invariant head also uses only
 that prefix. Likewise, joint filtering factors define a normalized sequential
 product, rather than a joint smoothing posterior conditioned on all data.

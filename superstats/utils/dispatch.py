@@ -17,11 +17,11 @@ def _merge_defaults(defaults, kwargs):
 
 
 @singledispatch
-def find_approximator(arg, *args, **kwargs):
-    raise TypeError(f"approximator must be 'marginal', 'joint', an approximator instance, not {arg!r}.")
+def find_estimator(arg, *args, **kwargs):
+    raise TypeError(f"estimator must be 'marginal', 'joint', an estimator instance, not {arg!r}.")
 
 
-@find_approximator.register
+@find_estimator.register
 def _(
     name: str,
     *args,
@@ -30,15 +30,15 @@ def _(
     invariant_inference_network="coupling",
     **kwargs,
 ):
-    from superstats.approximators import JointApproximator, MarginalApproximator
+    from superstats.estimators import JointEstimator, MarginalEstimator
 
     match name.lower():
         case "marginal":
-            constructor = MarginalApproximator
+            constructor = MarginalEstimator
         case "joint":
-            constructor = JointApproximator
-        case unknown_approximator:
-            raise ValueError(f"Unknown approximator: {unknown_approximator!r}.")
+            constructor = JointEstimator
+        case unknown_estimator:
+            raise ValueError(f"Unknown estimator: {unknown_estimator!r}.")
 
     return constructor(
         *args,
@@ -49,9 +49,9 @@ def _(
     )
 
 
-@find_approximator.register
-def _(approximator: bf.approximators.Approximator, *args, **kwargs):
-    return approximator
+@find_estimator.register
+def _(estimator: bf.estimators.Estimator, *args, **kwargs):
+    return estimator
 
 
 @singledispatch

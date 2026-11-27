@@ -8,7 +8,7 @@ import bayesflow as bf
 from bayesflow.utils import weighted_mean
 
 import superstats as sup
-from superstats.approximators import CompositeApproximator, JointApproximator, MarginalApproximator
+from superstats.estimators import CompositeEstimator, JointEstimator, MarginalEstimator
 
 
 @keras.saving.register_keras_serializable(package="superstats.tests")
@@ -109,8 +109,8 @@ def batch(batch_size=2, steps=3, varying_dim=1, invariant_dim=1):
     }
 
 
-def analytic_approximator(cls, mode="smoothing", **kwargs):
-    if cls is JointApproximator:
+def analytic_estimator(cls, mode="smoothing", **kwargs):
+    if cls is JointEstimator:
         kwargs.setdefault("decoder_network", ShiftDecoder())
     return cls(
         varying_inference_network=NormalHead(sum_conditions=True),
@@ -122,19 +122,19 @@ def analytic_approximator(cls, mode="smoothing", **kwargs):
     )
 
 
-@pytest.mark.parametrize("cls", [MarginalApproximator, JointApproximator])
+@pytest.mark.parametrize("cls", [MarginalEstimator, JointEstimator])
 @pytest.mark.parametrize("mode", ["smoothing", "filtering"])
 def test_metrics_and_log_prob_match_known_conditional_factorization(cls, mode):
     data = batch()
-    approximator = analytic_approximator(cls, mode)
-    metrics = keras.tree.map_structure(keras.ops.convert_to_numpy, approximator.compute_metrics(**data))
+    estimator = analytic_estimator(cls, mode)
+    metrics = keras.tree.map_structure(keras.ops.convert_to_numpy, estimator.compute_metrics(**data))
     obs = data["summary_variables"]
     global_mean = obs.mean(axis=1)
     features = np.broadcast_to(global_mean[:, None], obs.shape)
     if mode == "filtering":
         features = obs
     sequence_mean = features + data["invariant_variables"][:, None]
-    if cls is JointApproximator:
+    if cls is JointEstimator:
         sequence_mean += np.concatenate(
             [np.zeros_like(data["inference_variables"][:, :1]), data["inference_variables"][:, :-1]], axis=1
         )
@@ -144,22 +144,22 @@ def test_metrics_and_log_prob_match_known_conditional_factorization(cls, mode):
     np.testing.assert_allclose(metrics["invariant/loss"], -invariant_lp.mean(), rtol=1e-6)
     np.testing.assert_allclose(metrics["varying/loss"], -step_lp.mean(), rtol=1e-6)
     np.testing.assert_allclose(metrics["loss"], -invariant_lp.mean() - step_lp.mean(), rtol=1e-6)
-    components = approximator.log_prob(data, return_components=True)
+    components = estimator.log_prob(data, return_components=True)
     np.testing.assert_allclose(components["invariant"], invariant_lp, rtol=1e-6)
     np.testing.assert_allclose(components["varying"], step_lp.sum(axis=-1), rtol=1e-6)
-    np.testing.assert_allclose(approximator.log_prob(data), invariant_lp + step_lp.sum(axis=-1), rtol=1e-6)
+    np.testing.assert_allclose(estimator.log_prob(data), invariant_lp + step_lp.sum(axis=-1), rtol=1e-6)
 
 
-@pytest.mark.parametrize("cls", [MarginalApproximator, JointApproximator])
+@pytest.mark.parametrize("cls", [MarginalEstimator, JointEstimator])
 @pytest.mark.parametrize("mode", ["smoothing", "filtering"])
 def test_sampling_preserves_invariant_pairs_and_autoregressive_history(cls, mode):
     data = batch(batch_size=3)
-    approximator = analytic_approximator(cls, mode)
-    approximator.compute_metrics(**data)
+    estimator = analytic_estimator(cls, mode)
+    estimator.compute_metrics(**data)
     # Essentially deterministic sequence conditionals let us check every pairing.
-    approximator.varying_inference_network.scale = 1e-6
+    estimator.varying_inference_network.scale = 1e-6
     conditions = {"summary_variables": data["summary_variables"]}
-    result = approximator.sample(num_samples=5, conditions=conditions, seed=42, batch_size=2)
+    result = estimator.sample(num_samples=5, conditions=conditions, seed=42, batch_size=2)
     assert result["invariant_variables"].shape == (3, 5, 1)
     assert result["inference_variables"].shape == (3, 5, 3, 1)
     obs = conditions["summary_variables"]
@@ -167,39 +167,39 @@ def test_sampling_preserves_invariant_pairs_and_autoregressive_history(cls, mode
     if mode == "filtering":
         features = obs
     expected = features[:, None] + result["invariant_variables"][:, :, None]
-    if cls is JointApproximator:
+    if cls is JointEstimator:
         expected = expected.cumsum(axis=2)
     np.testing.assert_allclose(result["inference_variables"], expected, atol=1e-5)
-    again = approximator.sample(num_samples=5, conditions=conditions, seed=42, batch_size=2)
+    again = estimator.sample(num_samples=5, conditions=conditions, seed=42, batch_size=2)
     for key in result:
         np.testing.assert_array_equal(result[key], again[key])
 
 
-@pytest.mark.parametrize("cls", [MarginalApproximator, JointApproximator])
+@pytest.mark.parametrize("cls", [MarginalEstimator, JointEstimator])
 def test_filtering_sequence_features_do_not_see_future_but_global_head_does(cls):
     data = batch()
-    approximator = analytic_approximator(cls, "filtering")
-    approximator.compute_metrics(**data)
+    estimator = analytic_estimator(cls, "filtering")
+    estimator.compute_metrics(**data)
     changed = {key: value.copy() for key, value in data.items()}
     changed["summary_variables"][:, -1] += 100
-    original_features = approximator.summarize(data)
-    changed_features = approximator.summarize(changed)
+    original_features = estimator.summarize(data)
+    changed_features = estimator.summarize(changed)
     np.testing.assert_array_equal(original_features[:, :-1], changed_features[:, :-1])
     assert not np.allclose(original_features[:, -1], changed_features[:, -1])
     assert not np.allclose(
-        approximator.log_prob(data, return_components=True)["invariant"],
-        approximator.log_prob(changed, return_components=True)["invariant"],
+        estimator.log_prob(data, return_components=True)["invariant"],
+        estimator.log_prob(changed, return_components=True)["invariant"],
     )
 
 
-@pytest.mark.parametrize("cls", [MarginalApproximator, JointApproximator])
+@pytest.mark.parametrize("cls", [MarginalEstimator, JointEstimator])
 def test_masks_and_batch_weights(cls):
     data = batch()
     data["summary_mask"] = np.array([[True, True, False], [True, True, False]])
     data["inference_mask"] = data["summary_mask"]
-    approximator = analytic_approximator(cls)
+    estimator = analytic_estimator(cls)
     sample_weight = np.array([1.0, 2.0])
-    original = approximator.compute_metrics(**data, sample_weight=sample_weight)
+    original = estimator.compute_metrics(**data, sample_weight=sample_weight)
     invariant_lp = -0.5 * (
         (data["invariant_variables"] - data["summary_variables"].mean(axis=1)) ** 2 + np.log(2 * np.pi)
     ).sum(axis=-1)
@@ -209,12 +209,12 @@ def test_masks_and_batch_weights(cls):
     )
     changed = {key: value.copy() for key, value in data.items()}
     changed["inference_variables"][:, -1] = 1000
-    after = approximator.compute_metrics(**changed, sample_weight=sample_weight)
+    after = estimator.compute_metrics(**changed, sample_weight=sample_weight)
     np.testing.assert_allclose(keras.ops.convert_to_numpy(original["loss"]), keras.ops.convert_to_numpy(after["loss"]))
-    np.testing.assert_allclose(approximator.log_prob(data), approximator.log_prob(changed))
+    np.testing.assert_allclose(estimator.log_prob(data), estimator.log_prob(changed))
 
 
-@pytest.mark.parametrize("cls", [MarginalApproximator, JointApproximator])
+@pytest.mark.parametrize("cls", [MarginalEstimator, JointEstimator])
 @pytest.mark.parametrize("steps", [1, 3])
 def test_named_adapter_samples_restore_keys_and_axes(cls, steps):
     adapter = cls.build_adapter(
@@ -227,16 +227,16 @@ def test_named_adapter_samples_restore_keys_and_axes(cls, steps):
         "sigma": np.ones((2, 2), dtype="float32"),
         "x": np.ones((2, steps), dtype="float32"),
     }
-    approximator = analytic_approximator(cls, adapter=adapter)
-    approximator.compute_metrics(**adapter(raw))
-    result = approximator.sample(num_samples=4, conditions={"x": raw["x"]}, seed=1)
+    estimator = analytic_estimator(cls, adapter=adapter)
+    estimator.compute_metrics(**adapter(raw))
+    result = estimator.sample(num_samples=4, conditions={"x": raw["x"]}, seed=1)
     assert set(result) == {"a", "b", "eta", "sigma"}
     assert result["a"].shape == (2, 4, steps)
     assert result["b"].shape == (2, 4, steps, 2)
     assert result["eta"].shape == (2, 4, 1)
     assert result["sigma"].shape == (2, 4, 2)
-    assert approximator.log_prob(raw).shape == (2,)
-    split = approximator.sample(
+    assert estimator.log_prob(raw).shape == (2,)
+    split = estimator.sample(
         num_samples=4, conditions={"x": raw["x"]}, seed=1, split=True, return_summaries=True, batch_size=1
     )
     assert split["a"].shape == (2, 4, steps)
@@ -248,46 +248,46 @@ def test_named_adapter_samples_restore_keys_and_axes(cls, steps):
     assert split["_invariant_summaries"].shape == (2, 2)
 
 
-@pytest.mark.parametrize("cls", [MarginalApproximator, JointApproximator])
+@pytest.mark.parametrize("cls", [MarginalEstimator, JointEstimator])
 def test_adapter_target_jacobians_count_each_invariant_once(cls):
     data = batch()
     adapter = bf.Adapter().scale("inference_variables", 2.0).scale("invariant_variables", 3.0)
     transformed = adapter(data)
-    approximator = analytic_approximator(cls, adapter=adapter)
-    reference = analytic_approximator(cls)
-    approximator.compute_metrics(**transformed)
+    estimator = analytic_estimator(cls, adapter=adapter)
+    reference = analytic_estimator(cls)
+    estimator.compute_metrics(**transformed)
     reference.compute_metrics(**transformed)
     expected = reference.log_prob(transformed) + 3 * np.log(2.0) + np.log(3.0)
-    np.testing.assert_allclose(approximator.log_prob(data), expected, rtol=1e-6)
+    np.testing.assert_allclose(estimator.log_prob(data), expected, rtol=1e-6)
 
 
-@pytest.mark.parametrize("cls", [MarginalApproximator, JointApproximator])
+@pytest.mark.parametrize("cls", [MarginalEstimator, JointEstimator])
 @pytest.mark.parametrize("known_time_series", [False, True])
 def test_known_conditions_enter_shared_encoder(cls, known_time_series):
     data = batch()
     data["inference_conditions"] = np.ones((2, 3, 2) if known_time_series else (2, 2), dtype="float32")
-    approximator = analytic_approximator(cls)
-    assert np.isfinite(keras.ops.convert_to_numpy(approximator.compute_metrics(**data)["loss"]))
-    result = approximator.sample(
+    estimator = analytic_estimator(cls)
+    assert np.isfinite(keras.ops.convert_to_numpy(estimator.compute_metrics(**data)["loss"]))
+    result = estimator.sample(
         num_samples=2,
         conditions={key: value for key, value in data.items() if key in {"summary_variables", "inference_conditions"}},
         seed=2,
     )
     assert result["inference_variables"].shape == (2, 2, 3, 1)
-    assert np.isfinite(approximator.log_prob(data)).all()
+    assert np.isfinite(estimator.log_prob(data)).all()
 
 
-@pytest.mark.parametrize("cls", [MarginalApproximator, JointApproximator])
+@pytest.mark.parametrize("cls", [MarginalEstimator, JointEstimator])
 @pytest.mark.parametrize("mode", ["smoothing", "filtering"])
 def test_native_component_configuration_round_trip(cls, mode):
     kwargs = {}
-    if cls is JointApproximator:
+    if cls is JointEstimator:
         kwargs["decoder_network"] = (
             bf.networks.decoders.RecurrentDecoder(embed_dim=4)
             if mode == "filtering"
             else bf.networks.decoders.TransformerDecoder(embed_dim=4, num_heads=1, num_layers=1, dropout=0)
         )
-    approximator = cls(
+    estimator = cls(
         varying_inference_network=bf.networks.CouplingFlow(depth=1, subnet_kwargs={"widths": (8,)}),
         invariant_inference_network=bf.networks.CouplingFlow(depth=1, subnet_kwargs={"widths": (8,)}),
         summary_network=bf.networks.RecurrentNetwork(
@@ -297,82 +297,82 @@ def test_native_component_configuration_round_trip(cls, mode):
         **kwargs,
     )
 
-    config = keras.saving.serialize_keras_object(approximator)
+    config = keras.saving.serialize_keras_object(estimator)
     restored = keras.saving.deserialize_keras_object(config)
 
     assert isinstance(restored, cls)
     assert restored.mode == mode
-    if cls is JointApproximator:
-        assert isinstance(restored.sequence_approximator.encoder_network, keras.layers.Identity)
-        assert isinstance(restored.decoder_network, type(approximator.decoder_network))
+    if cls is JointEstimator:
+        assert isinstance(restored.sequence_estimator.encoder_network, keras.layers.Identity)
+        assert isinstance(restored.decoder_network, type(estimator.decoder_network))
 
 
-@pytest.mark.parametrize("cls", [MarginalApproximator, JointApproximator])
+@pytest.mark.parametrize("cls", [MarginalEstimator, JointEstimator])
 def test_training_updates_both_heads_and_shared_encoder(cls, tmp_path):
     data = batch()
     data["invariant_variables"] += 2
-    approximator = cls(
+    estimator = cls(
         varying_inference_network=NormalHead(sum_conditions=True),
         invariant_inference_network=NormalHead(),
         summary_network=keras.layers.Dense(2),
         standardize=None,
-        **({"decoder_network": ShiftDecoder()} if cls is JointApproximator else {}),
+        **({"decoder_network": ShiftDecoder()} if cls is JointEstimator else {}),
     )
-    approximator.compute_metrics(**data)
-    before = [np.array(keras.ops.convert_to_numpy(value)) for value in approximator.trainable_variables]
-    approximator.compile(optimizer=keras.optimizers.SGD(learning_rate=0.01))
-    dataset = bf.datasets.OfflineDataset(data=data, batch_size=2, adapter=approximator.adapter)
-    history = approximator.fit(dataset=dataset, epochs=1, verbose=0)
+    estimator.compute_metrics(**data)
+    before = [np.array(keras.ops.convert_to_numpy(value)) for value in estimator.trainable_variables]
+    estimator.compile(optimizer=keras.optimizers.SGD(learning_rate=0.01))
+    dataset = bf.datasets.OfflineDataset(data=data, batch_size=2, adapter=estimator.adapter)
+    history = estimator.fit(dataset=dataset, epochs=1, verbose=0)
     assert np.isfinite(history.history["loss"]).all()
-    after = [keras.ops.convert_to_numpy(value) for value in approximator.trainable_variables]
+    after = [keras.ops.convert_to_numpy(value) for value in estimator.trainable_variables]
     assert all(not np.array_equal(old, new) for old, new in zip(before, after))
     path = tmp_path / "trained.keras"
-    approximator.save(path)
+    estimator.save(path)
     restored = keras.saving.load_model(path)
-    np.testing.assert_allclose(restored.log_prob(data), approximator.log_prob(data), rtol=1e-6)
+    np.testing.assert_allclose(restored.log_prob(data), estimator.log_prob(data), rtol=1e-6)
     assert int(keras.ops.convert_to_numpy(restored.optimizer.iterations)) == 1
     restored.fit(dataset=dataset, epochs=1, verbose=0)
     assert int(keras.ops.convert_to_numpy(restored.optimizer.iterations)) == 2
 
 
-@pytest.mark.parametrize("cls", [MarginalApproximator, JointApproximator])
+@pytest.mark.parametrize("cls", [MarginalEstimator, JointEstimator])
 def test_shared_and_child_regularizers_are_added_once(cls):
     data = batch()
-    approximator = cls(
+    estimator = cls(
         varying_inference_network=NormalHead(sum_conditions=True, offset_penalty=0.1),
         invariant_inference_network=NormalHead(offset_penalty=0.1),
         summary_network=keras.layers.Dense(2, kernel_regularizer=keras.regularizers.L2(0.1)),
         standardize=None,
-        **({"decoder_network": ShiftDecoder()} if cls is JointApproximator else {}),
+        **({"decoder_network": ShiftDecoder()} if cls is JointEstimator else {}),
     )
-    approximator.compute_metrics(**data)
-    approximator.varying_inference_network.offset.assign(np.ones((1,), dtype="float32"))
-    approximator.invariant_inference_network.offset.assign(np.ones((1,), dtype="float32"))
-    metrics = approximator.compute_metrics(**data)
-    components = approximator.log_prob(data, return_components=True)
-    kernel = keras.ops.convert_to_numpy(approximator.summary_network.kernel)
+    estimator.compute_metrics(**data)
+    estimator.varying_inference_network.offset.assign(np.ones((1,), dtype="float32"))
+    estimator.invariant_inference_network.offset.assign(np.ones((1,), dtype="float32"))
+    metrics = estimator.compute_metrics(**data)
+    components = estimator.log_prob(data, return_components=True)
+    kernel = keras.ops.convert_to_numpy(estimator.summary_network.kernel)
     penalty = 0.1 * (kernel**2).sum() + 0.2
     expected = -components["invariant"].mean() - components["varying"].mean() / 3 + penalty
     np.testing.assert_allclose(keras.ops.convert_to_numpy(metrics["loss"]), expected, rtol=1e-6)
 
 
-@pytest.mark.parametrize("cls", [MarginalApproximator, JointApproximator])
+@pytest.mark.parametrize("cls", [MarginalEstimator, JointEstimator])
 def test_masked_nonzero_adapter_jacobian_is_rejected(cls):
     data = batch()
     data["inference_mask"] = np.array([[True, True, False], [True, True, False]])
-    approximator = analytic_approximator(cls, adapter=bf.Adapter().scale("inference_variables", 2.0))
-    approximator.compute_metrics(**approximator.adapter(data))
+    estimator = analytic_estimator(cls, adapter=bf.Adapter().scale("inference_variables", 2.0))
+    estimator.compute_metrics(**estimator.adapter(data))
     with pytest.raises(ValueError, match="dataset-level Jacobian"):
-        approximator.log_prob(data)
+        estimator.log_prob(data)
 
 
 def test_invalid_shapes_modes_and_decoder_fail_clearly():
     with pytest.raises(ValueError, match="mode"):
-        analytic_approximator(MarginalApproximator, "unknown")
+        analytic_estimator(MarginalEstimator, "unknown")
     with pytest.raises(ValueError, match="unrestricted cross-attention"):
-        analytic_approximator(JointApproximator, "filtering", decoder_network=bf.networks.decoders.TransformerDecoder())
+        analytic_estimator(JointEstimator, "filtering", decoder_network=bf.networks.decoders.TransformerDecoder())
     with pytest.raises(ValueError, match="one feature vector"):
-        MarginalApproximator(
+        MarginalEstimator(
             varying_inference_network=NormalHead(),
             invariant_inference_network=NormalHead(),
             summary_network=keras.layers.GlobalAveragePooling1D(),
@@ -380,44 +380,44 @@ def test_invalid_shapes_modes_and_decoder_fail_clearly():
 
 
 def test_public_imports_and_internal_component_types():
-    assert sup.CompositeApproximator is CompositeApproximator
-    assert sup.MarginalApproximator is MarginalApproximator
-    assert sup.JointApproximator is JointApproximator
-    marginal = analytic_approximator(MarginalApproximator)
-    joint = analytic_approximator(JointApproximator)
-    assert isinstance(marginal, CompositeApproximator)
-    assert isinstance(joint, CompositeApproximator)
+    assert sup.CompositeEstimator is CompositeEstimator
+    assert sup.MarginalEstimator is MarginalEstimator
+    assert sup.JointEstimator is JointEstimator
+    marginal = analytic_estimator(MarginalEstimator)
+    joint = analytic_estimator(JointEstimator)
+    assert isinstance(marginal, CompositeEstimator)
+    assert isinstance(joint, CompositeEstimator)
     assert marginal.invariant_pooling is None
-    assert type(marginal.sequence_approximator) is bf.approximators.ContinuousApproximator
-    assert type(joint.sequence_approximator) is bf.approximators.AutoregressiveApproximator
-    assert type(joint.invariant_approximator) is bf.approximators.ContinuousApproximator
+    assert type(marginal.sequence_estimator) is bf.estimators.BasicEstimator
+    assert type(joint.sequence_estimator) is bf.estimators.AutoregressiveEstimator
+    assert type(joint.invariant_estimator) is bf.estimators.BasicEstimator
 
 
 def test_default_pooling_excludes_padding_without_a_layer():
-    approximator = analytic_approximator(MarginalApproximator)
+    estimator = analytic_estimator(MarginalEstimator)
     features = np.array([[[2.0, 4.0], [4.0, 8.0], [np.nan, np.nan]]], dtype="float32")
     mask = np.array([[True, True, False]])
-    pooled = keras.ops.convert_to_numpy(approximator.pool_invariants(keras.ops.convert_to_tensor(features), mask))
+    pooled = keras.ops.convert_to_numpy(estimator.pool_invariants(keras.ops.convert_to_tensor(features), mask))
     np.testing.assert_allclose(pooled, [[3.0, 6.0, np.log(3.0)]], rtol=1e-6)
-    assert approximator.invariant_pooling is None
+    assert estimator.invariant_pooling is None
 
 
-@pytest.mark.parametrize("cls", [MarginalApproximator, JointApproximator])
+@pytest.mark.parametrize("cls", [MarginalEstimator, JointEstimator])
 def test_positive_invariants_use_adapted_conditions_and_one_log_jacobian(cls):
     latent = batch()
     physical = latent | {"invariant_variables": np.exp(latent["invariant_variables"])}
-    reference = analytic_approximator(cls)
-    approximator = analytic_approximator(cls, adapter=bf.Adapter().log("invariant_variables"))
+    reference = analytic_estimator(cls)
+    estimator = analytic_estimator(cls, adapter=bf.Adapter().log("invariant_variables"))
     reference.compute_metrics(**latent)
-    approximator.compute_metrics(**approximator.adapter(physical))
+    estimator.compute_metrics(**estimator.adapter(physical))
     np.testing.assert_allclose(
-        approximator.log_prob(physical),
+        estimator.log_prob(physical),
         reference.log_prob(latent) - latent["invariant_variables"].sum(axis=-1),
         rtol=1e-6,
     )
     conditions = {"summary_variables": latent["summary_variables"]}
     expected = reference.sample(num_samples=4, conditions=conditions, seed=17)
-    actual = approximator.sample(num_samples=4, conditions=conditions, seed=17)
+    actual = estimator.sample(num_samples=4, conditions=conditions, seed=17)
     assert (actual["invariant_variables"] > 0).all()
     np.testing.assert_allclose(actual["invariant_variables"], np.exp(expected["invariant_variables"]), rtol=1e-6)
     np.testing.assert_allclose(actual["inference_variables"], expected["inference_variables"], rtol=1e-6)
@@ -425,7 +425,7 @@ def test_positive_invariants_use_adapted_conditions_and_one_log_jacobian(cls):
 
 @pytest.mark.parametrize("joint", [False, True])
 def test_public_base_can_be_saved_and_restored(tmp_path, joint):
-    approximator = CompositeApproximator(
+    estimator = CompositeEstimator(
         varying_inference_network=NormalHead(),
         invariant_inference_network=NormalHead(),
         summary_network=FullMeanEncoder(),
@@ -433,25 +433,25 @@ def test_public_base_can_be_saved_and_restored(tmp_path, joint):
         joint=joint,
         standardize=None,
     )
-    approximator.compute_metrics(**batch())
+    estimator.compute_metrics(**batch())
     path = tmp_path / "base.keras"
-    approximator.save(path)
+    estimator.save(path)
     restored = keras.saving.load_model(path)
-    assert type(restored) is CompositeApproximator
+    assert type(restored) is CompositeEstimator
     assert restored.joint is joint
     assert restored.invariant_pooling is None
-    np.testing.assert_allclose(restored.log_prob(batch()), approximator.log_prob(batch()), rtol=1e-6)
+    np.testing.assert_allclose(restored.log_prob(batch()), estimator.log_prob(batch()), rtol=1e-6)
 
 
-@pytest.mark.parametrize("cls", [MarginalApproximator, JointApproximator])
+@pytest.mark.parametrize("cls", [MarginalEstimator, JointEstimator])
 @pytest.mark.parametrize("mode", ["smoothing", "filtering"])
 @pytest.mark.parametrize("group", ["varying", "invariant"])
 def test_single_target_group_density_sampling_and_checkpoint(cls, mode, group, tmp_path):
     data = batch()
     varying = group == "varying"
     data.pop("invariant_variables" if varying else "inference_variables")
-    kwargs = {"decoder_network": ShiftDecoder()} if cls is JointApproximator and varying else {}
-    approximator = cls(
+    kwargs = {"decoder_network": ShiftDecoder()} if cls is JointEstimator and varying else {}
+    estimator = cls(
         has_varying=varying,
         has_invariant=not varying,
         varying_inference_network=NormalHead(sum_conditions=True) if varying else "coupling",
@@ -461,7 +461,7 @@ def test_single_target_group_density_sampling_and_checkpoint(cls, mode, group, t
         mode=mode,
         **kwargs,
     )
-    metrics = approximator.compute_metrics(**data)
+    metrics = estimator.compute_metrics(**data)
     assert f"{group}/loss" in metrics
     assert f"{'invariant' if varying else 'varying'}/loss" not in metrics
     obs = data["summary_variables"]
@@ -469,20 +469,20 @@ def test_single_target_group_density_sampling_and_checkpoint(cls, mode, group, t
         mean = np.broadcast_to(obs.mean(axis=1, keepdims=True), obs.shape)
         if mode == "filtering":
             mean = np.cumsum(obs, axis=1) / np.arange(1, obs.shape[1] + 1)[None, :, None]
-        if cls is JointApproximator:
+        if cls is JointEstimator:
             mean = mean + np.concatenate(
                 [np.zeros_like(data["inference_variables"][:, :1]), data["inference_variables"][:, :-1]], axis=1
             )
         expected = -0.5 * ((data["inference_variables"] - mean) ** 2 + np.log(2 * np.pi)).sum(axis=(1, 2))
     else:
         expected = -0.5 * ((data["invariant_variables"] - obs.mean(axis=1)) ** 2 + np.log(2 * np.pi)).sum(axis=1)
-    np.testing.assert_allclose(approximator.log_prob(data), expected, rtol=1e-6)
-    samples = approximator.sample(num_samples=3, conditions=data, seed=7, batch_size=1)
+    np.testing.assert_allclose(estimator.log_prob(data), expected, rtol=1e-6)
+    samples = estimator.sample(num_samples=3, conditions=data, seed=7, batch_size=1)
     key = "inference_variables" if varying else "invariant_variables"
     assert set(samples) == {key}
     assert samples[key].shape == ((2, 3, 3, 1) if varying else (2, 3, 1))
     path = tmp_path / "single.keras"
-    approximator.save(path)
+    estimator.save(path)
     restored = keras.saving.load_model(path)
     assert restored.has_varying is varying
     assert restored.has_invariant is not varying
@@ -492,26 +492,26 @@ def test_single_target_group_density_sampling_and_checkpoint(cls, mode, group, t
     )
 
 
-@pytest.mark.parametrize("cls", [MarginalApproximator, JointApproximator])
+@pytest.mark.parametrize("cls", [MarginalEstimator, JointEstimator])
 def test_filtering_noncausal_encoder_uses_prefixes(cls):
-    kwargs = {"decoder_network": ShiftDecoder()} if cls is JointApproximator else {}
-    approximator = cls(summary_network=FullMeanEncoder(), mode="filtering", standardize=None, **kwargs)
+    kwargs = {"decoder_network": ShiftDecoder()} if cls is JointEstimator else {}
+    estimator = cls(summary_network=FullMeanEncoder(), mode="filtering", standardize=None, **kwargs)
     observations = batch()["summary_variables"]
-    original = approximator.summarize({"summary_variables": observations})
+    original = estimator.summarize({"summary_variables": observations})
     changed = observations.copy()
     changed[:, -1] += 100
-    updated = approximator.summarize({"summary_variables": changed})
+    updated = estimator.summarize({"summary_variables": changed})
     np.testing.assert_array_equal(original[:, :-1], updated[:, :-1])
     expected = np.cumsum(observations, axis=1) / np.arange(1, 4)[None, :, None]
     np.testing.assert_allclose(original, expected, rtol=1e-6)
 
 
 def test_legacy_composite_checkpoint_network_name_is_migrated():
-    approximator = analytic_approximator(MarginalApproximator)
+    estimator = analytic_estimator(MarginalEstimator)
     data = batch()
-    approximator.compute_metrics(**data)
-    config = keras.saving.serialize_keras_object(approximator)
+    estimator.compute_metrics(**data)
+    config = keras.saving.serialize_keras_object(estimator)
     config["config"]["inference_network"] = config["config"].pop("varying_inference_network")
     restored = keras.saving.deserialize_keras_object(config)
     assert isinstance(restored.varying_inference_network, NormalHead)
-    np.testing.assert_allclose(restored.log_prob(data), approximator.log_prob(data))
+    np.testing.assert_allclose(restored.log_prob(data), estimator.log_prob(data))

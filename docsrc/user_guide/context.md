@@ -459,7 +459,7 @@ invariant posterior head.
 ```python
 workflow = sup.Workflow(
     model=ddm_model,
-    approximator="marginal",
+    estimator="marginal",
     mode="smoothing",
 )
 

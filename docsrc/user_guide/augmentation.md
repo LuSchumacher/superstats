@@ -1,6 +1,6 @@
 # Data Augmentation
 
-Real data often contain missing observations, lapses, guesses, or unusually fast and slow responses. If these features are expected in the empirical data, they should also occur in the simulations used to train the neural approximator. Otherwise, the approximator is asked to fit data that differ systematically from its training distribution.
+Real data often contain missing observations, lapses, guesses, or unusually fast and slow responses. If these features are expected in the empirical data, they should also occur in the simulations used to train the neural estimator. Otherwise, the estimator is asked to fit data that differ systematically from its training distribution.
 
 Superstats supports two data augmentation processes in the `Model` class:
 
@@ -113,7 +113,7 @@ contaminated_data = model_contaminated.sample(batch_size=4, num_steps=100)
 print("Contamination probabilities:", contaminated_data["p_contaminated"])
 ```
 
-With `infer=False`, `p_contaminated` is a nuisance variable: it varies across training simulations and is returned as augmentation metadata, but the neural approximator is not trained to estimate it. This is appropriate when contamination should make inference robust without being scientifically interpreted.
+With `infer=False`, `p_contaminated` is a nuisance variable: it varies across training simulations and is returned as augmentation metadata, but the neural estimator is not trained to estimate it. This is appropriate when contamination should make inference robust without being scientifically interpreted.
 
 ### Inferring the Contamination Probability
 

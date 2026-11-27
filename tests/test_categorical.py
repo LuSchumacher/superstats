@@ -393,4 +393,4 @@ def test_real_workflow_trains_and_samples_with_categorical_context():
     samples = workflow.sample(data, num_samples=2, batch_size=4, seed=7)
     assert set(samples) == {"v_0", "b_low", "b_high"}
     assert all(value.shape == (8, 2, 1) for value in samples.values())
-    assert np.isfinite(workflow.approximator.log_prob(data)).all()
+    assert np.isfinite(workflow.estimator.log_prob(data)).all()

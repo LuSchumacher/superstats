@@ -2,11 +2,11 @@
 
 from bayesflow.utils.serialization import serializable
 
-from .composite_approximator import CompositeApproximator
+from .composite_estimator import CompositeEstimator
 
 
-@serializable("superstats.approximators")
-class MarginalApproximator(CompositeApproximator):
+@serializable("superstats.estimators")
+class MarginalEstimator(CompositeEstimator):
     """Estimate per-time posteriors conditional on inferred invariant parameters.
 
     Parameters
@@ -35,7 +35,7 @@ class MarginalApproximator(CompositeApproximator):
         Enable each target group (both default to True). At least one is required.
         A custom network requires its corresponding target group.
     **kwargs
-        Passed to the BayesFlow Approximator/Keras model base.
+        Passed to the BayesFlow Estimator/Keras model base.
 
     Notes
     -----

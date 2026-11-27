@@ -2,7 +2,7 @@ name: superstats
 dependencies:
   - python >= 3.12
   - pip:
-      - bayesflow >= 2.0.12
+      - bayesflow >= 2.1.1
       - numba >= 0.63.1
       - 'jax >= 0.11.0; sys_platform != "win32"'
       - 'torch; sys_platform == "win32"'

@@ -37,7 +37,7 @@ from superstats.simulation.conditional import (
 )
 from superstats.diagnostics.plots.conditional_parameters import plot_conditional_parameters
 from .categorical import EncodeCategorical
-from superstats.utils.dispatch import find_approximator
+from superstats.utils.dispatch import find_estimator
 from superstats.utils.indexing import normalize_data_indices
 from superstats.utils.logging import warning as log_warning
 from superstats.utils.plotting import normalize_time_invariant_target
@@ -82,19 +82,19 @@ class Workflow:
     invariant_inference_network : {"coupling", "coupling_flow"} or keras.Layer, default: "coupling"
         Density network for time-invariant targets. The default builds a separate
         spline coupling flow when invariant targets exist. A custom network requires them.
-    approximator                : {"marginal", "joint"} or Approximator, default: "marginal"
+    estimator                   : {"marginal", "joint"} or Estimator, default: "marginal"
         Select a built-in composite by name or pass an already constructed
-        approximator. An external approximator's own mode takes precedence.
+        estimator. An external estimator's own mode takes precedence.
         Only available target groups are modeled. With invariant targets only,
         both choices estimate the same invariant vector density.
     mode                        : {"filtering", "smoothing"}, optional, default: "smoothing"
         Observation availability for a string-selected composite. Ignored when
-        an externally constructed approximator is passed.
+        an externally constructed estimator is passed.
     checkpoint_filepath         : str or None, optional, default: None
-        Directory for saving/restoring the approximator and training history.
-    restore_approximator        : bool, optional, default: True
+        Directory for saving/restoring the estimator and training history.
+    restore_estimator           : bool, optional, default: True
         If True and a checkpoint directory exists at
-        `checkpoint_filepath`, restore the approximator from it.
+        `checkpoint_filepath`, restore the estimator from it.
         Otherwise, a warning is issued and training starts from scratch.
     restore_history             : bool, optional, default: True
         If True and a `history.pkl` file exists at
@@ -110,30 +110,34 @@ class Workflow:
         embedding_network: Literal["recurrent", "transformer"] | keras.Layer = "recurrent",
         varying_inference_network: Literal["coupling", "coupling_flow"] | keras.Layer = "coupling",
         invariant_inference_network: Literal["coupling", "coupling_flow"] | keras.Layer = "coupling",
-        approximator: Literal["marginal", "joint"] | bf.approximators.Approximator = "marginal",
+        estimator: Literal["marginal", "joint"] | bf.estimators.Estimator = "marginal",
         mode: Literal["filtering", "smoothing"] = "smoothing",
         checkpoint_filepath: str | None = None,
-        restore_approximator: bool = True,
+        restore_estimator: bool = True,
         restore_history: bool = True,
         **kwargs,
     ):
         if "inference_network" in kwargs:
             raise TypeError("Use varying_inference_network instead of inference_network.")
-        self.model = getattr(approximator, "model", None) or model
-        self.adapter = getattr(approximator, "adapter", None) or adapter
+        if "approximator" in kwargs:
+            raise TypeError("Use estimator to select or pass an estimator.")
+        if "restore_approximator" in kwargs:
+            raise TypeError("Use restore_estimator to control checkpoint restoration.")
+        self.model = getattr(estimator, "model", None) or model
+        self.adapter = getattr(estimator, "adapter", None) or adapter
         if self.adapter is None:
             if self.model is None:
                 raise ValueError("Provide a model or an adapter.")
             self.adapter = self.default_adapter(self.model)
         standardize = kwargs.pop("standardize", "all")
         target_kwargs = {}
-        if isinstance(approximator, str) and hasattr(self.model, "local_keys"):
+        if isinstance(estimator, str) and hasattr(self.model, "local_keys"):
             target_kwargs = {
                 "has_varying": bool(self.model.local_keys),
                 "has_invariant": bool(self.model.hyper_keys or self.model.shared_keys),
             }
-        approximator = find_approximator(
-            approximator,
+        estimator = find_estimator(
+            estimator,
             summary_network=embedding_network,
             varying_inference_network=varying_inference_network,
             invariant_inference_network=invariant_inference_network,
@@ -150,19 +154,19 @@ class Workflow:
         self.workflow = bf.BasicWorkflow(
             simulator=self.model,
             adapter=self.adapter,
-            summary_network=getattr(approximator, "summary_network", None),
-            inference_network=getattr(approximator, "varying_inference_network", None)
-            or getattr(approximator, "invariant_inference_network", None)
-            or getattr(approximator, "inference_network", None),
+            summary_network=getattr(estimator, "summary_network", None),
+            inference_network=getattr(estimator, "varying_inference_network", None)
+            or getattr(estimator, "invariant_inference_network", None)
+            or getattr(estimator, "inference_network", None),
             standardize=standardize,
             checkpoint_filepath=self.checkpoint_filepath,
             **kwargs,
         )
-        self.approximator = approximator
+        self.estimator = estimator
 
-        if restore_approximator and self.checkpoint_filepath is not None and os.path.isdir(self.checkpoint_filepath):
+        if restore_estimator and self.checkpoint_filepath is not None and os.path.isdir(self.checkpoint_filepath):
             path = os.path.join(self.checkpoint_filepath, "model.keras")
-            self.approximator = keras.saving.load_model(path)
+            self.estimator = keras.saving.load_model(path)
 
         if restore_history and self.checkpoint_filepath is not None and os.path.isdir(self.checkpoint_filepath):
             self._load_history()
@@ -201,19 +205,19 @@ class Workflow:
         return self.workflow.history
 
     @property
-    def approximator(self):
-        """The underlying trained BayesFlow approximator object.
+    def estimator(self):
+        """The underlying trained BayesFlow estimator object.
 
-        Reads through to `self.workflow.approximator` by default (kept in
+        Reads through to `self.workflow.estimator` by default (kept in
         sync automatically by `bf.BasicWorkflow` during training), but can
         be explicitly assigned - e.g. when restoring a checkpoint from
         disk in `__init__`.
         """
-        return self.workflow.approximator
+        return self.workflow.estimator
 
-    @approximator.setter
-    def approximator(self, value):
-        self.workflow.approximator = value
+    @estimator.setter
+    def estimator(self, value):
+        self.workflow.estimator = value
         self.adapter = getattr(value, "adapter", self.adapter)
         self.embedding_network = getattr(value, "summary_network", None)
         self.varying_inference_network = getattr(value, "varying_inference_network", None)
@@ -223,7 +227,7 @@ class Workflow:
     def fit_offline(
         self, data, validation_data, epochs: int = 100, batch_size: int = 32, save_history: bool = True, **kwargs
     ) -> keras.callbacks.History:
-        """Train the approximator on a fixed, pre-simulated dataset.
+        """Train the estimator on a fixed, pre-simulated dataset.
 
         Parameters
         ----------
@@ -265,7 +269,7 @@ class Workflow:
         save_history: bool = True,
         **kwargs,
     ) -> keras.callbacks.History:
-        """Train the approximator by simulating data on the fly.
+        """Train the estimator by simulating data on the fly.
 
         Temporarily binds `self.model.sample` to always draw
         trajectories of length `num_steps` with untiled invariant targets,
@@ -331,7 +335,7 @@ class Workflow:
         batch_size : int, optional, default: 4
             Datasets per GPU batch, to avoid out-of-memory errors.
         **kwargs
-            Forwarded to `self.approximator.sample`.
+            Forwarded to `self.estimator.sample`.
 
         Returns
         -------
@@ -339,7 +343,7 @@ class Workflow:
             per parameter
         """
         conditions = self._prepare_conditions(data)
-        samples = self.approximator.sample(
+        samples = self.estimator.sample(
             conditions=conditions,
             num_samples=num_samples,
             batch_size=batch_size,
