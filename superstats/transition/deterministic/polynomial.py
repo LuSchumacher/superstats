@@ -13,9 +13,6 @@ class Polynomial(DeterministicTransition):
 
     Parameters
     ----------
-    bounds          : sequence of two floats or None, optional, default: None
-        Lower and upper bounds for the deterministic trajectory. Tuples and
-        lists are accepted.
     intercept       : float, Prior, or None, optional, default: None
         Constant term of the polynomial. A `Prior` samples one intercept per
         trajectory; `None` uses the deterministic default prior.
@@ -35,19 +32,17 @@ class Polynomial(DeterministicTransition):
     Notes
     -----
     The `sample` method returns a dict with keys `deterministic_params`,
-    `hyper_params`, and `fixed_params`. Trajectory values are clipped to
-    `bounds`.
+    `hyper_params`, and `fixed_params`. Trajectories are returned on the raw coefficient scale.
     """
 
     def __init__(
         self,
-        bounds: Sequence[float, float] | None = None,
         intercept: float | Prior | None = None,
         betas: float | Prior | Sequence[float | Prior | None] | None = None,
         degree: int = 2,
         normalize_steps: bool = True,
     ):
-        super().__init__(bounds=bounds)
+        super().__init__()
 
         if degree < 1:
             raise ValueError("degree must be at least 1")
@@ -63,78 +58,8 @@ class Polynomial(DeterministicTransition):
 
         self.transition_name = "polynomial"
 
-    def _expand_beta_specs(
-        self,
-        betas: float | Prior | Sequence[float | Prior | None] | None,
-    ) -> Sequence[float | Prior | None]:
-        """Normalize beta input into one spec per polynomial term."""
-        if isinstance(betas, (Prior, float, int)) or betas is None:
-            return [betas] * self.degree
-
-        if isinstance(betas, Sequence) and not isinstance(betas, (str, bytes)):
-            if len(betas) != self.degree:
-                raise ValueError(f"betas must have length equal to degree ({self.degree}), got {len(betas)}")
-            return betas
-
-        raise TypeError("betas must be a scalar, Prior, None, or a sequence of scalars/Priors")
-
-    def _resolve_beta(self, spec: float | Prior | None) -> tuple[Prior | float, bool]:
-        """Resolve a beta spec, defaulting to a fixed zero if unspecified."""
-        if spec is None:
-            return 0.0, False
-        if isinstance(spec, Prior):
-            return spec, True
-        if isinstance(spec, (float, int)):
-            return spec, False
-        raise TypeError(f"Invalid beta specification: {type(spec)}")
-
-    def _resolve_hyperparams(self, batch_size: int) -> tuple[Dict[str, np.ndarray], Dict[str, float]]:
-        """Resolve intercept and beta specs into sampled and fixed groups."""
-        hyper_params = {}
-        fixed_params = {}
-
-        for name, spec in self.hyper_specs.items():
-            if name == "intercept":
-                value, infer = self._resolve(name, spec)
-            else:
-                value, infer = self._resolve_beta(spec)
-
-            if infer:
-                hyper_params[name] = self._sample(value, batch_size)
-            else:
-                fixed_params[name] = value
-
-        return hyper_params, fixed_params
-
     def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
-        """Draw `batch_size` polynomial trajectories of length `num_steps`."""
-        hyper, fixed = self._resolve_hyperparams(batch_size)
-
-        intercept = (
-            self._sample(hyper["intercept"], batch_size)
-            if "intercept" in hyper
-            else np.full(batch_size, fixed["intercept"], dtype=self.dtype)
-        )
-
-        if self.normalize_steps:
-            index = np.linspace(0.0, 1.0, num_steps, dtype=self.dtype)
-        else:
-            index = np.arange(num_steps, dtype=self.dtype)
-
-        local = np.repeat(intercept[:, None], num_steps, axis=1)
-
-        for power in range(1, self.degree + 1):
-            name = f"beta_{power}"
-            spec = self.hyper_specs[name]
-            value, infer = self._resolve_beta(spec)
-            beta = self._sample(value, batch_size) if infer else np.full(batch_size, value, dtype=self.dtype)
-            local += beta[:, None] * np.power(index[None, :], power)
-
-        return {
-            "deterministic_params": self._bound(local),
-            "hyper_params": hyper,
-            "fixed_params": fixed,
-        }
+        return self._sample_curve(batch_size, num_steps, Polynomial.sample_from_parameters)
 
     def sample_from_parameters(
         self,
@@ -154,4 +79,41 @@ class Polynomial(DeterministicTransition):
             beta = np.broadcast_to(np.asarray(params[f"beta_{power}"], dtype=self.dtype), (batch_size,))
             trajectory += beta[:, None] * np.power(index[None, :], power)
 
-        return self._bound(trajectory)
+        return trajectory.astype(self.dtype)
+
+    def _expand_beta_specs(
+        self,
+        betas: float | Prior | Sequence[float | Prior | None] | None,
+    ) -> Sequence[float | Prior | None]:
+        """Normalize beta input into one spec per polynomial term."""
+        if isinstance(betas, (Prior, float, int)) or betas is None:
+            return [betas] * self.degree
+
+        if isinstance(betas, Sequence) and not isinstance(betas, (str, bytes)):
+            if len(betas) != self.degree:
+                raise ValueError(f"betas must have length equal to degree ({self.degree}), got {len(betas)}")
+            return betas
+
+        raise TypeError("betas must be a scalar, Prior, None, or a sequence of scalars/Priors")
+
+    def _resolve_beta(self, spec: float | Prior | None) -> tuple[Prior | float, bool]:
+        """Resolve a beta spec using the shared default hyperprior."""
+        return self._resolve("beta", spec)
+
+    def _resolve_hyperparams(self, batch_size: int) -> tuple[Dict[str, np.ndarray], Dict[str, float]]:
+        """Resolve intercept and beta specs into sampled and fixed groups."""
+        hyper_params = {}
+        fixed_params = {}
+
+        for name, spec in self.hyper_specs.items():
+            if name == "intercept":
+                value, infer = self._resolve(name, spec)
+            else:
+                value, infer = self._resolve_beta(spec)
+
+            if infer:
+                hyper_params[name] = self._sample(value, batch_size)
+            else:
+                fixed_params[name] = value
+
+        return hyper_params, fixed_params

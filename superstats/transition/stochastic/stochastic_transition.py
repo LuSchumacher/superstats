@@ -1,14 +1,12 @@
 """Base stochastic transition interface."""
 
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
 from typing import Dict, Any, Union
 import numpy as np
 
 from superstats.prior.prior import Prior
 from superstats.defaults import (
     DEFAULT_STOCHASTIC_HYPER_PRIORS,
-    DEFAULT_BOUNDS,
     DEFAULT_INITIAL_PRIOR,
 )
 
@@ -24,17 +22,12 @@ class StochasticTransition(ABC):
 
     Parameters
     ----------
-    bounds        : tuple or np.ndarray or None, optional, default: None
-        Lower and upper bounds for the latent state, applied via
-        `scaled_sigmoid`. Falls back to `DEFAULT_BOUNDS` if not provided.
     initial_prior : Prior or None, optional, default: None
         Prior used to draw initial latent states. Falls back to
         `DEFAULT_INITIAL_PRIOR` if not provided.
 
     Attributes
     ----------
-    bounds        : np.ndarray
-        Resolved lower and upper bounds for the latent state.
     initial_prior : Prior
         Resolved prior used to draw initial latent states.
     hyper_specs   : dict
@@ -49,19 +42,33 @@ class StochasticTransition(ABC):
 
     def __init__(
         self,
-        bounds: Sequence[float, float] | None = None,
         initial_prior: Prior | None = None,
     ):
-        self._user_defined_bounds = bounds is not None
         self._user_defined_initial_prior = initial_prior is not None
-
-        self.bounds = (
-            np.asarray(bounds, dtype=self.dtype) if bounds is not None else np.asarray(DEFAULT_BOUNDS, dtype=self.dtype)
-        )
 
         self.initial_prior = initial_prior if initial_prior is not None else DEFAULT_INITIAL_PRIOR
         self.hyper_specs = {}
         self.transition_name = self.__class__.__name__
+
+    @abstractmethod
+    def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
+        """Generate `batch_size` latent trajectories of length `num_steps`.
+
+        Parameters
+        ----------
+        batch_size : int
+            Number of independent trajectories to draw.
+        num_steps  : int
+            Number of time steps per trajectory (including initial state).
+
+        Returns
+        -------
+        result : dict - dictionary with at least keys `local_params`
+            (ndarray of shape (batch_size, steps)), `hyper_params`,
+            and `fixed_params` describing sampled and fixed
+            hyperparameters
+        """
+        raise NotImplementedError
 
     def _resolve(self, name: str, spec: ParamSpec) -> tuple[Prior | float, bool]:
         """Resolve a single hyperparameter spec to a value and sample flag.
@@ -173,23 +180,3 @@ class StochasticTransition(ABC):
                 fixed_params[name] = value
 
         return hyper_params, fixed_params
-
-    @abstractmethod
-    def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
-        """Generate `batch_size` latent trajectories of length `num_steps`.
-
-        Parameters
-        ----------
-        batch_size : int
-            Number of independent trajectories to draw.
-        num_steps  : int
-            Number of time steps per trajectory (including initial state).
-
-        Returns
-        -------
-        result : dict - dictionary with at least keys `local_params`
-            (ndarray of shape (batch_size, steps)), `hyper_params`,
-            and `fixed_params` describing sampled and fixed
-            hyperparameters
-        """
-        raise NotImplementedError

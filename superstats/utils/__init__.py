@@ -1,22 +1,42 @@
 """General utility functions used across superstats."""
 
 from .transformations import scaled_sigmoid
-from .plotting import prepare_plot_data
+from .plotting import (
+    compute_uncertainty_band,
+    compute_uncertainty_bands,
+    get_layout,
+    plot_dist,
+    plot_uncertainty_band,
+    plot_uncertainty_bands,
+    prepare_plot_data,
+    resolve_dist_alpha,
+    smooth_trajectories,
+)
 from .dispatch import (
+    find_estimator,
     find_contamination,
     find_inference_network,
     find_missing,
-    find_summary_network,
+    find_embedding_network,
 )
 from .logging import error, info, logger, warn_once, warning
 
 __all__ = [
     "scaled_sigmoid",
+    "compute_uncertainty_band",
+    "compute_uncertainty_bands",
     "prepare_plot_data",
+    "get_layout",
+    "plot_dist",
+    "plot_uncertainty_band",
+    "plot_uncertainty_bands",
+    "resolve_dist_alpha",
+    "smooth_trajectories",
+    "find_estimator",
     "find_inference_network",
     "find_missing",
     "find_contamination",
-    "find_summary_network",
+    "find_embedding_network",
     "logger",
     "info",
     "warning",

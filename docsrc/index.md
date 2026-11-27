@@ -1,11 +1,11 @@
 # Superstats
 
-Superstats is a Python library for simulation and Bayesian estimation of dynamic models with time-varying parameters.
+Superstats is a Python library for simulation and Bayesian estimation of dynamic models with time-varying and time-invariant parameters.
 
 The library aims to be domain-agnostic, but for now focuses on cognitive modeling. It provides users with:
 
 - A lean API for non-stationary models: specify which parameters change across time, and how.
-- A library of transition models: random walks, ARs, levy flights, jump processes, mixtures, and Gaussian processes.
+- A library of transition models: random walks, ARs, levy flights, jump processes, mixtures, and Gaussian processes, as well as deterministic trends such as linear, polynomial, exponential, and logarithmic.
 - Built-in cognitive models, plus a plug-in interface for any simulator of your own.
 - Amortized Bayesian inference built on top of [BayesFlow](https://github.com/bayesflow-org/bayesflow): train once, then quickly fit every data set.
 - Diagnostics and visualization tools for every critical step in a principled Bayesian workflow.
@@ -19,17 +19,26 @@ The library aims to be domain-agnostic, but for now focuses on cognitive modelin
 :::
 
 
-A superstatistical model has two levels. A **low-level observation model** $\mathcal{G}$ generates the data at each time step.
+A superstatistical model has two levels. A **low-level observation model** $\mathcal{G}$ generates the data $x_t$ at each time step.
 A **high-level transition model** $\mathcal{T}$ describes how the parameters of that model evolve:
 
 $$\theta_t = \mathcal{T}(\theta_{0:t-1}; \eta) \qquad x_t = \mathcal{G}(x_{1:t-1}; \theta_t, \lambda)$$
 
-Superstats trains a neural estimator on simulations from any generative model of this form and returns the joint posterior $p(\theta_{1:T}, \eta, \lambda \mid x_{1:T})$ over all time-varying parameters $\theta_{1:T}$ and time-invariant parameters $(\eta, \lambda)$.
+Superstats trains neural estimators on simulations from generative models of this form. Let $\phi = (\eta, \lambda)$ collect the time-invariant transition hyperparameters and shared observation parameters, and let $x_{1:T}$ denote the observation sequence. Generally, we can ask for four types of posteriors covering both the time-varying trajectory $\theta_{1:T}$ and the invariant parameters $\phi$:
 
+- **Marginal filtering (MF):** $q_{\mathrm{MF}}(\theta_{1:T}, \phi \mid x_{1:T}) = q(\phi \mid x_{1:T}) \prod_{t=1}^T q(\theta_t \mid \phi, x_{1:t})$.
+- **Marginal smoothing (MS):** $q_{\mathrm{MS}}(\theta_{1:T}, \phi \mid x_{1:T}) = q(\phi \mid x_{1:T}) \prod_{t=1}^T q(\theta_t \mid \phi, x_{1:T})$.
+- **Full joint filtering (JF):** $q_{\mathrm{JF}}(\theta_{1:T}, \phi \mid x_{1:T}) = q(\phi \mid x_{1:T}) \prod_{t=1}^T q(\theta_t \mid \theta_{1:t-1}, \phi, x_{1:t})$.
+- **Full joint smoothing (JS):** $q_{\mathrm{JS}}(\theta_{1:T}, \phi \mid x_{1:T}) = q(\phi \mid x_{1:T}) \prod_{t=1}^T q(\theta_t \mid \theta_{1:t-1}, \phi, x_{1:T})$.
+
+Choose `estimator="marginal"` or `estimator="joint"` and set `mode` to `"filtering"` or `"smoothing"` when constructing a `Workflow`. An estimator passed directly to `Workflow` keeps its own mode. Marginal factors are independent across time conditional on the observations and invariants. Joint factors also condition on the preceding parameter trajectory. Sharing an invariant draw can induce temporal dependence even in the marginal approximations.
+See the [estimator guide](user_guide/estimators.md) for configuration and tensor shapes.
 
 ## Install
 
-We support Python 3.12 to 3.13. Install the latest version from source:
+Superstats supports Python 3.12 and 3.13 and requires BayesFlow 2.1.1 or later.
+
+Install Superstats with pip.
 
 ```bash
 pip install superstats
@@ -49,7 +58,6 @@ Per default, `superstats` installs [JAX](https://docs.jax.dev/en/latest/installa
 - [Install PyTorch](https://pytorch.org/get-started/locally/)
 - [Install TensorFlow](https://www.tensorflow.org/install)
 
-
 ## Getting started
 
 A complete workflow using a diffusion decision model whose drift rate and thresold are free to vary across time:
@@ -63,32 +71,39 @@ joint_prior = sup.JointPrior(
 )
 
 # 2. Plug in an observation model (any simulator will do)
-generative_model = sup.GenerativeModel(
-    prior=joint_prior, model=sup.simulation.sample_ddm, missing="random", contamination="random_choice"
+model = sup.Model(
+    prior=joint_prior, simulator=sup.simulation.sample_ddm, missing="random", contamination="random_choice"
 )
 
-# 3. Train a neural approximator
-workflow = sup.Workflow(simulator=generative_model)
+# 3. Train a neural estimator
+workflow = sup.Workflow(model=model)
 history = workflow.fit_online(num_steps=100, epochs=20, batch_size=16)
 
-# 4. Fit any number of data sets, instantly
+# 4. Fit any number of data sets
 samples = workflow.sample(data=rt_data, num_samples=250)
 ```
 
 It is highly recommended to use a GPU for fast training and inference. For an in-depth exposition, check out the examples below.
 
+## Examples
+
+| Notebook | What it covers |
+|---|---|
+| [Workflow demo](https://github.com/LuSchumacher/superstats/blob/main/examples/workflow_demo.ipynb) | Complete path from prior to posterior |
+| [Marginal versus joint smoothing](https://github.com/LuSchumacher/superstats/blob/main/examples/joint_vs_marginal.ipynb) | Compact comparison of the two trajectory approximations |
+
+More examples are always welcome. If you have an application, please consider opening a pull request.
+
 
 ## Contributing
 
-Contributions are welcome. Install from source and see [CONTRIBUTING.md](contributing.md) for details.
-
+Contributions are welcome. Install from source and see the [contributing guide](contributing.md) for details.
 
 ## Reporting issues
 
 Please open an issue on [GitHub](https://github.com/LuSchumacher/superstats/issues) for bug reports and
 feature requests. For questions about the underlying inference machinery, the
 [BayesFlow Forums](https://discuss.bayesflow.org/) are a good place to ask.
-
 
 ## Citation
 

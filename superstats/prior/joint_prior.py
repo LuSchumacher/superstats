@@ -3,12 +3,6 @@
 from typing import Any, Dict
 
 import numpy as np
-
-from superstats.diagnostics.plots.prior_samples import (
-    plot_joint_prior,
-    plot_time_invariant_prior,
-    plot_time_varying_prior,
-)
 from .prior import Prior
 from superstats.transition import DeterministicTransition, StochasticTransition
 
@@ -40,8 +34,13 @@ class JointPrior:
     def __init__(self, **kwargs: StochasticTransition | DeterministicTransition | Prior | float | int):
         self.params = kwargs
         self._last_hyper_param_groups = {}
+        self._last_fixed_param_groups = {}
 
-    def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
+    def sample(
+        self,
+        batch_size: int,
+        num_steps: int,
+    ) -> Dict[str, Any]:
         """Draw a joint parameter sample.
 
         Parameters
@@ -50,7 +49,6 @@ class JointPrior:
             Number of independent samples to draw.
         num_steps  : int
             Number of time steps per trajectory.
-
         Returns
         -------
         result : dict - sampled parameter groups `local_params`,
@@ -73,6 +71,7 @@ class JointPrior:
         shared_params = {}
         fixed_params = {}
         hyper_param_groups = {}
+        fixed_param_groups = {}
 
         for name, param in self.params.items():
             if isinstance(param, StochasticTransition):
@@ -90,7 +89,8 @@ class JointPrior:
             else:
                 raise TypeError(f"Unknown parameter type for '{name}': {type(param).__name__}")
 
-            samples = param.sample(batch_size=batch_size, num_steps=num_steps)
+            sample_kwargs = {"batch_size": batch_size, "num_steps": num_steps}
+            samples = param.sample(**sample_kwargs)
             target[name] = samples[sample_key]
 
             hyper_param_groups[name] = []
@@ -99,10 +99,14 @@ class JointPrior:
                 hyper_params[full_key] = value
                 hyper_param_groups[name].append(full_key)
 
+            fixed_param_groups[name] = []
             for key, value in samples["fixed_params"].items():
-                fixed_params[f"{name}_{key}"] = value
+                full_key = f"{name}_{key}"
+                fixed_params[full_key] = value
+                fixed_param_groups[name].append(full_key)
 
         self._last_hyper_param_groups = hyper_param_groups
+        self._last_fixed_param_groups = fixed_param_groups
         return {
             "local_params": local_params,
             "deterministic_params": deterministic_params,
@@ -110,105 +114,3 @@ class JointPrior:
             "shared_params": shared_params,
             "fixed_params": fixed_params,
         }
-
-    def _param_bounds(self) -> dict:
-        """Collect y-axis bounds declared on the underlying parameter objects.
-
-        Returns
-        -------
-        bounds : dict - mapping from parameter name to its `bounds`
-            attribute, for parameters that define one
-        """
-        return {
-            name: obj.bounds for name, obj in self.params.items() if hasattr(obj, "bounds") and obj.bounds is not None
-        }
-
-    def _mixture_names(self) -> dict:
-        """Collect mixture component names declared on the underlying parameter objects.
-
-        Returns
-        -------
-        names : dict - mapping from parameter name to its `names`
-            attribute, for parameters that define one
-        """
-        return {name: obj.names for name, obj in self.params.items() if hasattr(obj, "names")}
-
-    def plot_time_varying_prior(self, num_steps: int = 200, num_trajectories: int = 20, **kwargs):
-        """Plot sampled time-varying prior trajectories.
-
-        Parameters
-        ----------
-        num_steps        : int, optional, default: 200
-            Number of time steps to sample per trajectory.
-        num_trajectories : int, optional, default: 20
-            Number of trajectories to draw.
-        **kwargs         : dict, optional, default: {}
-            Further optional keyword arguments propagated to the
-            underlying `plot_time_varying_prior` plotting function.
-
-        Returns
-        -------
-        fig : plt.Figure - the generated figure
-        """
-        samples = self.sample(batch_size=num_trajectories, num_steps=num_steps)
-        local_params = {**samples["local_params"], **samples["deterministic_params"]}
-        return plot_time_varying_prior(
-            local_params=local_params,
-            param_bounds=self._param_bounds(),
-            **kwargs,
-        )
-
-    def plot_time_invariant_prior(self, num_draws: int = 1000, **kwargs):
-        """Plot marginal distributions for time-invariant prior parameters.
-
-        Parameters
-        ----------
-        num_draws : int, optional, default: 1000
-            Number of draws used to sample `hyper_params` and `shared_params`.
-        **kwargs  : dict, optional, default: {}
-            Further optional keyword arguments propagated to the
-            underlying `plot_time_invariant_prior` plotting function.
-
-        Returns
-        -------
-        fig : plt.Figure - the generated figure
-        """
-        samples = self.sample(batch_size=num_draws, num_steps=1)
-        return plot_time_invariant_prior(
-            hyper_params=samples["hyper_params"],
-            shared_params=samples["shared_params"],
-            mixture_names=self._mixture_names(),
-            **kwargs,
-        )
-
-    def plot_joint_prior(self, num_steps: int = 200, num_trajectories: int = 20, num_draws: int = 1000, **kwargs):
-        """Plot joint prior diagnostics across local and shared parameters.
-
-        Parameters
-        ----------
-        num_steps        : int, optional, default: 200
-            Number of time steps for local trajectory sampling.
-        num_trajectories : int, optional, default: 20
-            Number of local trajectories to plot.
-        num_draws        : int, optional, default: 1000
-            Number of draws used for time-invariant parameter sampling.
-        **kwargs         : dict, optional, default: {}
-            Further optional keyword arguments propagated to the
-            underlying `plot_joint_prior` plotting function.
-
-        Returns
-        -------
-        fig : plt.Figure - the generated figure
-        """
-        samples = self.sample(batch_size=num_draws, num_steps=num_steps)
-        all_local_params = {**samples["local_params"], **samples["deterministic_params"]}
-        local_params = {k: v[:num_trajectories] for k, v in all_local_params.items()}
-        return plot_joint_prior(
-            local_params=local_params,
-            hyper_params=samples["hyper_params"],
-            shared_params=samples["shared_params"],
-            param_bounds=self._param_bounds(),
-            mixture_names=self._mixture_names(),
-            hyper_param_groups=self._last_hyper_param_groups,
-            **kwargs,
-        )

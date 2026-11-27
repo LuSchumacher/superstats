@@ -1,4 +1,4 @@
-"""Default priors and bounds for transition models."""
+"""Default priors for transition models."""
 
 from superstats.prior.prior import Prior
 
@@ -17,11 +17,10 @@ DEFAULT_STOCHASTIC_HYPER_PRIORS = {
     "period": Prior("halfnormal", scale=0.5),
 }
 
-DEFAULT_BOUNDS = (0.0, 1.0)
-
 DEFAULT_INITIAL_PRIOR = Prior("normal", loc=0.0, scale=1.0)
 
 DEFAULT_DETERMINISTIC_HYPER_PRIORS = {
     "intercept": Prior("normal", loc=0.0, scale=1.0),
-    "beta": Prior("halfnormal", scale=1),
+    "slope": Prior("normal", scale=1),
+    "beta": Prior("normal", scale=1),
 }

@@ -1,16 +1,35 @@
-# User Guide
+# User guide
 
-Welcome to the user guide!
+This guide takes you from a simulator to posterior estimates for models with time-varying parameters.
 
-The following pages are intended to make you familiar with the core functionalities of Superstats and provides an entry point into the basic principles. End-to-end application examples can be found under [Examples](../examples/index.md).
+## Choose a route
 
+| If you want to... | Start here |
+|---|---|
+| Understand the modeling assumptions | [Core concepts](introduction.md) |
+| Connect your own data-generating process | [Simulator](simulator.md) |
+| Decide which parameters vary over time | [Joint prior](joint_prior.md) |
+| Check what the complete model generates | [Model](model.md) |
+| Add experimental designs and simulator inputs | [Context](context.md) |
+| Represent missing or contaminated observations | [Data augmentation](augmentation.md) |
+| Estimate varying and invariant parameters together | [Posterior estimators](estimators.md) |
+| Check the model and posterior approximation | [Diagnostics](diagnostics.md) |
+
+For a compact end-to-end demo notebook, see the [examples folder](https://github.com/LuSchumacher/superstats/tree/main/examples).
+For individual classes and function signatures, use the [API reference](../api/index.rst).
 
 ```{toctree}
 :maxdepth: 1
 :titlesonly:
 :numbered:
+:hidden:
 
 introduction
-simulator.ipynb
-joint_prior.ipynb
+simulator.md
+joint_prior.md
+model.md
+context.md
+augmentation.md
+estimators
+diagnostics.md
 ```

@@ -10,7 +10,6 @@ from superstats.defaults import (
     DEFAULT_RECURRENT_NETWORK,
     DEFAULT_TRANSFORMER_NETWORK,
 )
-from superstats.networks import RecurrentNet
 
 
 def _merge_defaults(defaults, kwargs):
@@ -18,27 +17,65 @@ def _merge_defaults(defaults, kwargs):
 
 
 @singledispatch
-def find_summary_network(arg, *args, **kwargs):
-    raise TypeError(
-        f"summary_network must be one of 'recurrent', 'transformer', or a keras.Layer instance, not {arg!r}."
+def find_estimator(arg, *args, **kwargs):
+    raise TypeError(f"estimator must be 'marginal', 'joint', an estimator instance, not {arg!r}.")
+
+
+@find_estimator.register
+def _(
+    name: str,
+    *args,
+    summary_network="recurrent",
+    varying_inference_network="coupling",
+    invariant_inference_network="coupling",
+    **kwargs,
+):
+    from superstats.estimators import JointEstimator, MarginalEstimator
+
+    match name.lower():
+        case "marginal":
+            constructor = MarginalEstimator
+        case "joint":
+            constructor = JointEstimator
+        case unknown_estimator:
+            raise ValueError(f"Unknown estimator: {unknown_estimator!r}.")
+
+    return constructor(
+        *args,
+        summary_network=summary_network,
+        varying_inference_network=varying_inference_network,
+        invariant_inference_network=invariant_inference_network,
+        **kwargs,
     )
 
 
-@find_summary_network.register
+@find_estimator.register
+def _(estimator: bf.estimators.Estimator, *args, **kwargs):
+    return estimator
+
+
+@singledispatch
+def find_embedding_network(arg, *args, **kwargs):
+    raise TypeError(
+        f"embedding network must be one of 'recurrent', 'transformer', or a keras.Layer instance, not {arg!r}."
+    )
+
+
+@find_embedding_network.register
 def _(name: str, *args, **kwargs):
     match name.lower():
         case "recurrent":
-            return RecurrentNet(*args, **_merge_defaults(DEFAULT_RECURRENT_NETWORK, kwargs))
+            return bf.networks.RecurrentNetwork(*args, **_merge_defaults(DEFAULT_RECURRENT_NETWORK, kwargs))
         case "transformer":
             return bf.networks.TimeSeriesTransformer(
                 *args,
                 **_merge_defaults(DEFAULT_TRANSFORMER_NETWORK, kwargs),
             )
         case unknown_network:
-            raise ValueError(f"Unknown summary network: {unknown_network!r}.")
+            raise ValueError(f"Unknown embedding network: {unknown_network!r}.")
 
 
-@find_summary_network.register
+@find_embedding_network.register
 def _(network: keras.Layer, *args, **kwargs):
     return network
 
@@ -46,7 +83,7 @@ def _(network: keras.Layer, *args, **kwargs):
 @singledispatch
 def find_inference_network(arg, *args, **kwargs):
     raise TypeError(
-        f"inference_network must be one of 'coupling', 'coupling_flow' or a keras.Layer instance, not {arg!r}."
+        f"inference network must be one of 'coupling', 'coupling_flow' or a keras.Layer instance, not {arg!r}."
     )
 
 
@@ -72,7 +109,7 @@ def find_missing(arg, *args, **kwargs):
 
 
 @find_missing.register
-def _(arg: type(None), *args, **kwargs):
+def _(arg: None, *args, **kwargs):
     return None
 
 
@@ -95,7 +132,7 @@ def find_contamination(arg, *args, **kwargs):
 
 
 @find_contamination.register
-def _(arg: type(None), *args, **kwargs):
+def _(arg: None, *args, **kwargs):
     return None
 
 

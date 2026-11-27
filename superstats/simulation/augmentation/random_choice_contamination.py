@@ -1,11 +1,8 @@
 """Wrapper for a contaminated random choice data augmentation process."""
 
-from .contamination import ContaminationProcess
-from superstats.prior.prior import Prior
-
 import numpy as np
 
-DEFAULT_P_CONTAMINATED_PRIOR = Prior("beta", a=1.5, b=15)
+from .contamination import ContaminationProcess
 
 
 class RandomChoiceContamination(ContaminationProcess):
@@ -35,14 +32,12 @@ class RandomChoiceContamination(ContaminationProcess):
 
     Parameters
     ----------
-    p_contaminated : float, Prior, or None, default: None
-        Probability that a time step is contaminated.
-        - None (default): drawn from `DEFAULT_P_CONTAMINATED_PRIOR`.
-        - float: fixed probability, shared across the whole batch.
-        - Prior: sampled once per dataset to obtain a per-dataset
-          probability (i.e. `_draw_p` returns one value per batch
-          element, not one shared value for the whole batch).
-    student_t_df : float, default: 5
+    infer : bool, default: False
+        Include the probability and its sampled transition hyperparameters in
+        inference targets. Specify ``p_contaminated`` in ``JointPrior``;
+        otherwise Model supplies the default beta prior. With False, it is
+        a nuisance parameter drawn afresh during posterior resimulation.
+    student_t_df      : float, default: 5
         Degrees of freedom for the Student's t distribution used to
         generate contaminant response times. Must be greater than 2.
     response_time_key : str, default: "response_time"
@@ -53,7 +48,7 @@ class RandomChoiceContamination(ContaminationProcess):
 
     def __init__(
         self,
-        p_contaminated: float | Prior | None = None,
+        infer: bool = False,
         student_t_df: float = 5,
         response_time_key: str = "response_time",
         choice_key: str = "choice",
@@ -62,8 +57,10 @@ class RandomChoiceContamination(ContaminationProcess):
             raise ValueError("student_t_df must be greater than 2.")
         if response_time_key == choice_key:
             raise ValueError("response_time_key and choice_key must be different.")
+        if not isinstance(infer, bool):
+            raise TypeError("infer must be a bool.")
 
-        self.p_contaminated = p_contaminated if p_contaminated is not None else DEFAULT_P_CONTAMINATED_PRIOR
+        self.infer = infer
         self.student_t_df = student_t_df
         self.key_map = {
             "response_time": response_time_key,
@@ -71,71 +68,41 @@ class RandomChoiceContamination(ContaminationProcess):
         }
         self.required_keys = set(self.key_map.values())
 
-    def _draw_p(self, n: int) -> np.ndarray:
-        """Return `n` contamination probabilities, one per dataset.
-
-        Note: `Prior.sample` draws from the global `np.random` state, not
-        from the `rng` passed into `apply`, so draws from a `Prior` are not
-        controlled by the seed threaded through `GenerativeModel.sample`.
-        """
-        p = self.p_contaminated
-        if isinstance(p, Prior):
-            vals = p.sample(n)
-        else:
-            vals = np.full(n, p)
-        return vals
-
-    @staticmethod
-    def _choice_is_discrete(choice: np.ndarray) -> bool:
-        """Return whether numeric choices are integer-valued."""
-        if np.issubdtype(choice.dtype, np.integer) or np.issubdtype(choice.dtype, np.bool_):
-            return True
-        return bool(np.all(choice == np.floor(choice)))
-
-    @staticmethod
-    def _log_rt_stats(response_time: np.ndarray, mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """Compute per-dataset log-RT mean/std over valid, positive RTs."""
-        stats_mask = mask & (response_time > 0)
-        counts = stats_mask.sum(axis=1, keepdims=True)
-
-        log_rt = np.zeros(response_time.shape)
-        np.log(response_time, out=log_rt, where=stats_mask)
-
-        sums = np.sum(log_rt, axis=1, keepdims=True)
-        mean_rt = np.divide(sums, counts, out=np.zeros_like(sums), where=counts > 0)
-
-        centered = np.where(stats_mask, log_rt - mean_rt, 0.0)
-        squared_sums = np.sum(centered**2, axis=1, keepdims=True)
-        var_rt = np.divide(squared_sums, counts, out=np.zeros_like(squared_sums), where=counts > 0)
-        std_rt = np.sqrt(var_rt)
-
-        return mean_rt, std_rt
+    def __call__(self, data, rng=None, *, probability):
+        return self.apply(data, rng=rng, probability=probability)
 
     def apply(
         self,
         data: dict[str, np.ndarray],
         rng: np.random.Generator | None = None,
+        *,
+        probability: np.ndarray | float,
     ) -> dict:
         """Apply random-choice contamination to response times and choices.
 
         Parameters
         ----------
-        data          : dict with at least the configured response-time and
+        data : dict with at least the configured response-time and
             choice keys, each an np.ndarray of shape (batch_size, num_steps).
             Any additional keys are passed through unchanged.
-        rng           : np.random.Generator or None, optional, default: None
+        rng  : np.random.Generator or None, optional, default: None
             Random generator to use. If None, a fresh, unseeded generator
             is created via `_default_rng`, so calling `apply` directly is
             safe but not reproducible unless a seeded `rng` is supplied.
+
+        probability : float or np.ndarray
+            Final linked probability supplied by Model, in [0, 1].
 
         Returns
         -------
         result : dict
             A shallow copy of `data` with the configured response-time and
             choice keys replaced by their contaminated versions, plus
-            "p_contaminated" (the per-dataset contamination probability
-            used, shape (batch_size,)). All other keys in `data` are
-            carried over unchanged.
+            "p_contaminated" (the contamination probability used, shape
+            (batch_size,) for a shared value, and
+            (batch_size, num_steps) for a trajectory). The
+            raw inference targets are returned by Model separately. All other
+            keys in `data` are carried over unchanged.
 
         Raises
         ------
@@ -154,13 +121,45 @@ class RandomChoiceContamination(ContaminationProcess):
         choice = data[choice_key]
 
         batch_size, num_steps = response_time.shape
-        p = self._draw_p(batch_size)
+        p = np.asarray(probability)
+        if p.ndim == 3 and p.shape[-1] == 1:
+            p = p[..., 0]
+        if p.shape == (batch_size, 1):
+            p = p[:, 0]
+        if not np.all(np.isfinite(p)) or np.any((p < 0.0) | (p > 1.0)):
+            raise ValueError(
+                "Sampled p_contaminated values must be between 0 and 1; configure Model.latent_link_function."
+            )
+        if p.ndim == 0:
+            p = np.full(batch_size, p.item())
+
+        if p.shape not in ((batch_size,), (batch_size, num_steps)):
+            raise ValueError("probability must be scalar, per-dataset, or per-trial.")
+
         valid_rt = response_time > 0
-        mask = (rng.random((batch_size, num_steps)) < p[:, None]) & valid_rt
+        probabilities = p[:, None] if p.ndim == 1 else p
+        mask = (rng.random((batch_size, num_steps)) < probabilities) & valid_rt
         n_contaminated = mask.sum()
 
         # contaminant response times
-        mean_rt, std_rt = self._log_rt_stats(response_time, valid_rt)
+        counts = valid_rt.sum(axis=1, keepdims=True)
+        log_rt = np.zeros(response_time.shape)
+        np.log(response_time, out=log_rt, where=valid_rt)
+        mean_rt = np.divide(
+            log_rt.sum(axis=1, keepdims=True),
+            counts,
+            out=np.zeros_like(counts, dtype=float),
+            where=counts > 0,
+        )
+        centered = np.where(valid_rt, log_rt - mean_rt, 0.0)
+        std_rt = np.sqrt(
+            np.divide(
+                (centered**2).sum(axis=1, keepdims=True),
+                counts,
+                out=np.zeros_like(counts, dtype=float),
+                where=counts > 0,
+            )
+        )
 
         student_samples = rng.standard_t(df=self.student_t_df, size=(batch_size, num_steps))
         contaminant_log_rt = mean_rt + student_samples * std_rt * np.sqrt((self.student_t_df - 2) / self.student_t_df)
@@ -170,9 +169,11 @@ class RandomChoiceContamination(ContaminationProcess):
         contaminated_choices = choice.copy()
         if n_contaminated > 0:
             valid_choices = choice[valid_rt]
-            is_discrete = self._choice_is_discrete(valid_choices)
-
-            if is_discrete:
+            if (
+                np.issubdtype(choice.dtype, np.integer)
+                or np.issubdtype(choice.dtype, np.bool_)
+                or np.all(valid_choices == np.floor(valid_choices))
+            ):
                 unique_choices = np.unique(valid_choices)
                 contaminant_choices = rng.choice(unique_choices, size=n_contaminated)
             else:

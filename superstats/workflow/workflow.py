@@ -2,6 +2,7 @@
 
 from typing import Literal, Callable
 from collections.abc import Mapping, Sequence
+from numbers import Integral
 
 import functools
 import os
@@ -14,16 +15,41 @@ import keras
 import logging
 
 from bayesflow.adapters import Adapter
+from bayesflow.utils.numpy_utils import credible_interval
 
-from superstats.simulation import GenerativeModel
-from superstats.utils.dispatch import find_inference_network, find_summary_network
+from superstats.defaults import (
+    BASE_COLOR,
+    LABEL_FONTSIZE,
+    TICK_FONTSIZE,
+    TITLE_FONTSIZE,
+)
+from superstats.simulation import Model
+from superstats.simulation.conditional import (
+    parameter_views,
+    parameter_view_groups,
+    parameter_display_names,
+    invariant_parameter_names,
+    raw_parameter_names,
+    posterior_parameters,
+    posterior_invariant_samples,
+    target_parameters,
+    varying_parameter_names,
+)
+from superstats.diagnostics.plots.conditional_parameters import plot_conditional_parameters
+from .categorical import EncodeCategorical
+from superstats.utils.dispatch import find_estimator
+from superstats.utils.indexing import normalize_data_indices
 from superstats.utils.logging import warning as log_warning
+from superstats.utils.plotting import normalize_time_invariant_target
 from superstats.diagnostics.plots import (
     plot_time_varying_verification,
     plot_recovery,
     plot_calibration,
+    plot_z_score_contraction,
     plot_time_varying_posterior,
-    plot_time_invariant_posterior,
+    plot_marginals,
+    plot_pairs,
+    plot_forest,
 )
 
 
@@ -35,103 +61,1578 @@ class _SuppressCheckpointExistsWarning(logging.Filter):
 class Workflow:
     """Lightweight amortized Bayesian inference workflow wrapper.
 
-    Wraps `bf.BasicWorkflow` with sensible defaults for the summary and
+    Wraps `bf.BasicWorkflow` with sensible defaults for the embedding and
     inference networks, an auto-built adapter when one isn't supplied,
     and optional checkpoint/history restoration.
 
     Parameters
     ----------
-    simulator            : GenerativeModel or None, optional, default: None
-        The simulator used for training and, when `adapter` is not
+    model                       : Model or None, optional, default: None
+        The model used for online training and, when `adapter` is not
         provided, for building a default adapter. Required in that case.
-    adapter              : Adapter or None, optional, default: None
+    adapter                     : Adapter or None, optional, default: None
         Data adapter for the workflow. If None, a default adapter is
-        built from the stochastic `simulator.local_keys`, `simulator.hyper_keys`,
-        and `simulator.shared_keys` (which requires `simulator` to be set).
-    summary_network      : {"recurrent", "transformer"} or keras.Layer, optional, default: "recurrent".
-        String names build a default summary network; otherwise, an already-created Keras layer is used directly.
-    inference_network    : {"coupling", "coupling_flow"} or keras.Layer, optional, default: "coupling".
-        String names build a default inference network; otherwise, an already-created Keras
-        layer is used directly.
-    checkpoint_filepath  : str or None, optional, default: None
-        Directory for saving/restoring the approximator and training
-        history.
-    restore_approximator : bool, optional, default: True
+        built from the `model.local_keys`, `model.hyper_keys`,
+        and `model.shared_keys` (which requires `model` to be set).
+    embedding_network           : {"recurrent", "transformer"} or keras.Layer, default: "recurrent"
+        Observation encoder. String-selected recurrent encoders are configured for mode.
+    varying_inference_network   : {"coupling", "coupling_flow"} or keras.Layer, default: "coupling"
+        Density network for time-varying targets. The default builds a spline
+        coupling flow when varying targets exist. A custom network requires them.
+    invariant_inference_network : {"coupling", "coupling_flow"} or keras.Layer, default: "coupling"
+        Density network for time-invariant targets. The default builds a separate
+        spline coupling flow when invariant targets exist. A custom network requires them.
+    estimator                   : {"marginal", "joint"} or Estimator, default: "marginal"
+        Select a built-in composite by name or pass an already constructed
+        estimator. An external estimator's own mode takes precedence.
+        Only available target groups are modeled. With invariant targets only,
+        both choices estimate the same invariant vector density.
+    mode                        : {"filtering", "smoothing"}, optional, default: "smoothing"
+        Observation availability for a string-selected composite. Ignored when
+        an externally constructed estimator is passed.
+    checkpoint_filepath         : str or None, optional, default: None
+        Directory for saving/restoring the estimator and training history.
+    restore_estimator           : bool, optional, default: True
         If True and a checkpoint directory exists at
-        `checkpoint_filepath`, restore the approximator from it.
+        `checkpoint_filepath`, restore the estimator from it.
         Otherwise, a warning is issued and training starts from scratch.
-    restore_history      : bool, optional, default: True
+    restore_history             : bool, optional, default: True
         If True and a `history.pkl` file exists at
-        `checkpoint_filepath`, restore `self.history` from it.
-        Otherwise, a warning is issued.
+        `checkpoint_filepath`, restore `self.history` from it. Otherwise, a warning is issued.
     **kwargs
         Forwarded to `bf.BasicWorkflow`.
     """
 
     def __init__(
         self,
-        simulator: GenerativeModel | None = None,
+        model: Model | None = None,
         adapter: Adapter | None = None,
-        summary_network: Literal["recurrent", "transformer"] | keras.Layer = "recurrent",
-        inference_network: Literal["coupling", "coupling_flow"] | keras.Layer = "coupling",
+        embedding_network: Literal["recurrent", "transformer"] | keras.Layer = "recurrent",
+        varying_inference_network: Literal["coupling", "coupling_flow"] | keras.Layer = "coupling",
+        invariant_inference_network: Literal["coupling", "coupling_flow"] | keras.Layer = "coupling",
+        estimator: Literal["marginal", "joint"] | bf.estimators.Estimator = "marginal",
+        mode: Literal["filtering", "smoothing"] = "smoothing",
         checkpoint_filepath: str | None = None,
-        restore_approximator: bool = True,
+        restore_estimator: bool = True,
         restore_history: bool = True,
         **kwargs,
     ):
-        self.simulator = simulator
-
-        self.summary_network = find_summary_network(summary_network)
-        self.inference_network = find_inference_network(inference_network)
-
-        if adapter is not None:
-            self.adapter = adapter
-        else:
-            self.adapter = self.default_adapter(simulator)
+        if "inference_network" in kwargs:
+            raise TypeError("Use varying_inference_network instead of inference_network.")
+        if "approximator" in kwargs:
+            raise TypeError("Use estimator to select or pass an estimator.")
+        if "restore_approximator" in kwargs:
+            raise TypeError("Use restore_estimator to control checkpoint restoration.")
+        self.model = getattr(estimator, "model", None) or model
+        self.adapter = getattr(estimator, "adapter", None) or adapter
+        if self.adapter is None:
+            if self.model is None:
+                raise ValueError("Provide a model or an adapter.")
+            self.adapter = self.default_adapter(self.model)
+        standardize = kwargs.pop("standardize", "all")
+        target_kwargs = {}
+        if isinstance(estimator, str) and hasattr(self.model, "local_keys"):
+            target_kwargs = {
+                "has_varying": bool(self.model.local_keys),
+                "has_invariant": bool(self.model.hyper_keys or self.model.shared_keys),
+            }
+        estimator = find_estimator(
+            estimator,
+            summary_network=embedding_network,
+            varying_inference_network=varying_inference_network,
+            invariant_inference_network=invariant_inference_network,
+            adapter=self.adapter,
+            mode=mode,
+            standardize=standardize,
+            **target_kwargs,
+        )
 
         self.checkpoint_filepath = checkpoint_filepath
 
         logging.getLogger("bayesflow").addFilter(_SuppressCheckpointExistsWarning())
 
         self.workflow = bf.BasicWorkflow(
-            simulator=self.simulator,
+            simulator=self.model,
             adapter=self.adapter,
-            summary_network=self.summary_network,
-            inference_network=self.inference_network,
-            standardize="all",
+            summary_network=getattr(estimator, "summary_network", None),
+            inference_network=getattr(estimator, "varying_inference_network", None)
+            or getattr(estimator, "invariant_inference_network", None)
+            or getattr(estimator, "inference_network", None),
+            standardize=standardize,
             checkpoint_filepath=self.checkpoint_filepath,
             **kwargs,
         )
+        self.estimator = estimator
 
-        if restore_approximator and self.checkpoint_filepath is not None and os.path.isdir(self.checkpoint_filepath):
+        if restore_estimator and self.checkpoint_filepath is not None and os.path.isdir(self.checkpoint_filepath):
             path = os.path.join(self.checkpoint_filepath, "model.keras")
-            self.approximator = keras.saving.load_model(path)
+            self.estimator = keras.saving.load_model(path)
 
         if restore_history and self.checkpoint_filepath is not None and os.path.isdir(self.checkpoint_filepath):
             self._load_history()
 
     @staticmethod
-    def default_adapter(simulator):
-        local_keys = simulator.local_keys
-        hyper_keys = simulator.hyper_keys
-        shared_keys = simulator.shared_keys
-        data_keys = simulator.data_keys
+    def default_adapter(model):
+        local_keys = model.local_keys
+        hyper_keys = model.hyper_keys
+        shared_keys = model.shared_keys
+        data_keys = model.data_keys
+        summary_data_keys = getattr(model, "summary_keys", data_keys)
 
-        adapter = (
-            bf.Adapter()
-            .convert_dtype("float64", "float32")
-            .as_time_series(["time_steps", *data_keys])
-            .concatenate(local_keys + hyper_keys + shared_keys, into="inference_variables")
-        )
+        adapter = bf.Adapter()
+        categorical = getattr(model, "categorical", {})
+        if categorical:
+            adapter.append(EncodeCategorical(categorical))
+        adapter.as_time_series(["time_steps", *summary_data_keys])
+        invariant_keys = hyper_keys + shared_keys
+        if local_keys:
+            adapter = adapter.concatenate(local_keys, into="inference_variables")
+        if invariant_keys:
+            adapter = adapter.concatenate(invariant_keys, into="invariant_variables")
 
-        summary_keys = ["time_steps", *data_keys]
-        if hasattr(simulator, "has_mask") and simulator.has_mask:
+        summary_keys = ["time_steps", *summary_data_keys]
+        if hasattr(model, "has_mask") and model.has_mask:
             adapter = adapter.as_time_series("missing_mask")
             adapter = adapter.concatenate([*summary_keys, "missing_mask"], into="summary_variables")
         else:
             adapter = adapter.concatenate(summary_keys, into="summary_variables")
 
         return adapter
+
+    @property
+    def history(self):
+        """keras.callbacks.History or None - the workflow's training history."""
+        return self.workflow.history
+
+    @property
+    def estimator(self):
+        """The underlying trained BayesFlow estimator object.
+
+        Reads through to `self.workflow.estimator` by default (kept in
+        sync automatically by `bf.BasicWorkflow` during training), but can
+        be explicitly assigned - e.g. when restoring a checkpoint from
+        disk in `__init__`.
+        """
+        return self.workflow.estimator
+
+    @estimator.setter
+    def estimator(self, value):
+        self.workflow.estimator = value
+        self.adapter = getattr(value, "adapter", self.adapter)
+        self.embedding_network = getattr(value, "summary_network", None)
+        self.varying_inference_network = getattr(value, "varying_inference_network", None)
+        self.invariant_inference_network = getattr(value, "invariant_inference_network", None)
+        self.mode = getattr(value, "mode", None)
+
+    def fit_offline(
+        self, data, validation_data, epochs: int = 100, batch_size: int = 32, save_history: bool = True, **kwargs
+    ) -> keras.callbacks.History:
+        """Train the estimator on a fixed, pre-simulated dataset.
+
+        Parameters
+        ----------
+        data            : Any
+            Training data, in the format expected by
+            `bf.BasicWorkflow.fit_offline`.
+        validation_data : Any
+            Validation data, in the same format as `data`.
+        epochs          : int, optional, default: 100
+            Number of training epochs.
+        batch_size      : int, optional, default: 32
+            Training batch size.
+        save_history    : bool, optional, default: True
+            If True, merge this run's history into `self.history` and
+            persist it to `checkpoint_filepath` (if set).
+        **kwargs
+            Forwarded to `bf.BasicWorkflow.fit_offline`.
+
+        Returns
+        -------
+        history : keras.callbacks.History - the training history for
+            this run
+        """
+        history = self.workflow.fit_offline(
+            data=data, epochs=epochs, batch_size=batch_size, validation_data=validation_data, **kwargs
+        )
+
+        if save_history:
+            self._save_history(history)
+
+        return history
+
+    def fit_online(
+        self,
+        num_steps: int,
+        epochs: int = 100,
+        num_batches_per_epoch: int = 100,
+        batch_size: int = 32,
+        save_history: bool = True,
+        **kwargs,
+    ) -> keras.callbacks.History:
+        """Train the estimator by simulating data on the fly.
+
+        Temporarily binds `self.model.sample` to always draw
+        trajectories of length `num_steps` with untiled invariant targets,
+        then restores the original method afterward (even if training
+        raises).
+
+        Parameters
+        ----------
+        num_steps             : int
+            Number of time steps per simulated trajectory during
+            training.
+        epochs                : int, optional, default: 100
+            Number of training epochs.
+        num_batches_per_epoch : int, optional, default: 100
+            Number of simulated batches per epoch.
+        batch_size            : int, optional, default: 32
+            Training batch size.
+        save_history          : bool, optional, default: True
+            If True, merge this run's history into `self.history` and
+            persist it to `checkpoint_filepath` (if set).
+        **kwargs
+            Forwarded to `bf.BasicWorkflow.fit_online`.
+
+        Returns
+        -------
+        history : keras.callbacks.History - the training history for
+            this run
+        """
+        original_sample = self.model.sample
+        self.model.sample = functools.partial(original_sample, num_steps=num_steps, tile_to_steps=False)
+        try:
+            history = self.workflow.fit_online(
+                epochs=epochs, num_batches_per_epoch=num_batches_per_epoch, batch_size=batch_size, **kwargs
+            )
+        finally:
+            self.model.sample = original_sample
+
+        if save_history:
+            self._save_history(history)
+
+        return history
+
+    def sample(
+        self,
+        data: dict[str, np.ndarray],
+        num_samples: int = 500,
+        batch_size: int = 4,
+        **kwargs,
+    ) -> dict[str, np.ndarray]:
+        """Run inference on observed data.
+
+        Parameters
+        ----------
+        data                 : dict of np.ndarray
+            Observed data to condition on, keyed by the model's
+            named observation variables. Each value should have shape
+            (num_datasets, num_steps). If `time_steps` is omitted, it is
+            generated automatically. If the model was configured with
+            missingness and `missing_mask` is omitted, an all-observed
+            mask is generated automatically.
+        num_samples          : int, optional, default: 500
+            Number of posterior samples per dataset.
+        batch_size : int, optional, default: 4
+            Datasets per GPU batch, to avoid out-of-memory errors.
+        **kwargs
+            Forwarded to `self.estimator.sample`.
+
+        Returns
+        -------
+        samples : dict of {param_name: np.ndarray} - posterior samples
+            per parameter
+        """
+        conditions = self._prepare_conditions(data)
+        samples = self.estimator.sample(
+            conditions=conditions,
+            num_samples=num_samples,
+            batch_size=batch_size,
+            **kwargs,
+        )
+        return samples
+
+    def resimulate(
+        self,
+        estimates: Mapping[str, np.ndarray],
+        num_sims: int = 10,
+        rng=None,
+        data_idx: int | Sequence[int] | None = None,
+        context: Mapping[str, np.ndarray] | None = None,
+        missing_mask: np.ndarray | None = None,
+        num_steps: int | None = None,
+        apply_missing: bool = False,
+    ) -> dict[str, np.ndarray]:
+        """Generate posterior predictive simulations from posterior parameter draws.
+
+        Parameters
+        ----------
+        estimates : dict of np.ndarray
+            Posterior estimates returned by `self.sample`. Each array
+            should have shape (batch_size, num_samples, num_steps, dim)
+            or (batch_size, num_samples, num_steps).
+        num_sims          : int, optional, default: 10
+            Number of posterior predictive trajectories to simulate
+            per dataset.
+        rng               : int or np.random.Generator or None, optional, default: None
+            Random seed or generator for sampling posterior indices.
+        data_idx          : int, sequence of int, or None, optional, default: None
+            Dataset indices to resimulate. None selects all datasets.
+            A single integer still preserves the dataset axis, and a
+            sequence preserves the requested order.
+
+        context : mapping or None, optional
+            Original dataset context for posterior prediction. Batched arrays
+            have shape (datasets, steps, ...); they are selected with data_idx
+            and repeated across posterior simulations. One shared trial sequence
+            is also accepted. If omitted, Model generates its configured context.
+        missing_mask : np.ndarray or None, optional
+            Empirical Boolean mask with shape ``(datasets, steps)``. It is
+            selected with `data_idx`, repeated across posterior simulations,
+            and applied to the returned observation keys after simulation.
+            Formula resolution therefore still uses the original, unmasked
+            context. Mutually exclusive with `apply_missing=True`.
+        num_steps : int or None, optional
+            Trial count, needed when shared-only posterior draws do not retain
+            a trial axis. Can also be inferred from explicit context.
+
+        apply_missing : bool, optional, default: False
+            Apply configured missingness, drawing fresh probabilities from
+            JointPrior. By default, return complete observations.
+
+        Returns
+        -------
+        sim_data : dict of np.ndarray
+            Named simulated variables. Each value has shape
+            (num_selected_datasets, num_sims, num_steps).
+
+        Raises
+        ------
+        ValueError
+            If `estimates` is empty, if a posterior array has
+            fewer than 3 dimensions, if a parameter's batch size
+            doesn't match the others, if a parameter has an unsupported
+            number of dimensions, or if a parameter's shape can't be
+            reshaped to collapse the sample axis into the batch axis.
+        """
+        if missing_mask is not None and apply_missing:
+            raise ValueError("missing_mask and apply_missing=True are mutually exclusive.")
+
+        rng = np.random.default_rng(rng)
+
+        if not estimates:
+            raise ValueError("estimates must be a non-empty dict.")
+
+        # Infer shape from one posterior parameter
+        example = np.asarray(next(iter(estimates.values())))
+        if example.ndim < 3:
+            raise ValueError(
+                "Posterior sample arrays must have at least 3 dimensions: (batch_size, num_samples, num_steps, ...)."
+            )
+
+        original_batch_size, num_draws = example.shape[:2]
+        selected_indices = normalize_data_indices(data_idx, original_batch_size)
+        selected_estimates = {}
+        for name, value in estimates.items():
+            arr = np.asarray(value)
+            if arr.shape[0] != original_batch_size:
+                raise ValueError(
+                    f"Posterior parameter '{name}' has batch size {arr.shape[0]} but expected {original_batch_size}."
+                )
+            selected_estimates[name] = arr[selected_indices]
+
+        estimates = selected_estimates
+        example = next(iter(estimates.values()))
+        batch_size = len(selected_indices)
+        time_varying_keys = set(self.model.local_keys) | set(self.model.deterministic_keys)
+        time_varying_arrays = [np.asarray(value) for name, value in estimates.items() if name in time_varying_keys]
+        if num_steps is None:
+            if time_varying_arrays:
+                num_steps = time_varying_arrays[0].shape[2]
+            elif context:
+                context_array = np.asarray(next(iter(context.values())))
+                if context_array.ndim > 0:
+                    num_steps = context_array.shape[1] if context_array.ndim >= 2 else context_array.shape[0]
+                else:
+                    num_steps = example.shape[2]
+            elif missing_mask is not None:
+                mask_array = np.asarray(missing_mask)
+                num_steps = mask_array.shape[1] if mask_array.ndim >= 2 else mask_array.shape[0]
+            elif isinstance(getattr(self.model, "context_simulator", None), pd.DataFrame):
+                num_steps = len(self.model.context_simulator)
+            elif isinstance(getattr(self.model, "context_simulator", None), Mapping):
+                arrays = [np.asarray(v) for v in self.model.context_simulator.values() if np.asarray(v).ndim > 0]
+                num_steps = arrays[0].shape[0] if arrays else example.shape[2]
+            else:
+                num_steps = example.shape[2]
+        if not isinstance(num_steps, (int, np.integer)) or num_steps <= 0:
+            raise ValueError("num_steps must be a positive integer.")
+
+        empirical_missing_mask = None
+        if missing_mask is not None:
+            mask_array = np.asarray(missing_mask)
+            expected_shape = (original_batch_size, num_steps)
+            if mask_array.shape != expected_shape:
+                raise ValueError(f"missing_mask must have shape {expected_shape}, got {mask_array.shape}.")
+            if mask_array.dtype != bool and not np.all(np.isin(mask_array, (0, 1))):
+                raise ValueError("missing_mask must contain only boolean or 0/1 values.")
+            selected_mask = mask_array.astype(bool, copy=False)[selected_indices]
+            empirical_missing_mask = np.repeat(selected_mask, num_sims, axis=0)
+
+        simulation_context = None
+        if context is not None:
+            simulation_context = {}
+            for name, value in context.items():
+                categorical = getattr(self.model, "categorical", {})
+                array = np.asarray(value, dtype=object if name in categorical else None)
+                if array.ndim >= 2 and array.shape[:2] == (original_batch_size, num_steps):
+                    simulation_context[name] = np.repeat(array[selected_indices], num_sims, axis=0)
+                else:
+                    simulation_context[name] = array
+
+        sample_idx = rng.integers(num_draws, size=(batch_size, num_sims))
+
+        simulation_params = {}
+        fixed_params = self.model.get_fixed_params()
+
+        for name, arr in estimates.items():
+            arr = np.asarray(arr)
+            if arr.shape[0] != batch_size:
+                raise ValueError(
+                    f"Posterior parameter '{name}' has batch size {arr.shape[0]} but expected {batch_size}."
+                )
+
+            if arr.ndim == 3:
+                selected = arr[np.arange(batch_size)[:, None], sample_idx, :]
+                simulation_params[name] = selected[..., 0] if name not in time_varying_keys else selected
+            elif arr.ndim == 4:
+                selected = arr[
+                    np.arange(batch_size)[:, None, None],
+                    sample_idx[:, :, None],
+                    np.arange(num_steps)[None, None, :],
+                    :,
+                ]
+                if name not in time_varying_keys:
+                    while selected.ndim > 2:
+                        selected = selected[..., 0]
+                simulation_params[name] = selected
+            else:
+                raise ValueError(
+                    f"Unexpected posterior shape for '{name}': {arr.shape}. "
+                    "Expected (batch, samples, steps, dim) or (batch, samples, steps)."
+                )
+
+        # Collapse sample axis into batch axis for simulation
+        expanded_params = {}
+        for name, arr in simulation_params.items():
+            if name not in time_varying_keys:
+                expanded_params[name] = arr.reshape(batch_size * num_sims)
+            elif arr.ndim == 2:
+                expanded_params[name] = arr.reshape(batch_size * num_sims, num_steps)
+            elif arr.ndim == 3:
+                if arr.shape[2] == num_steps:
+                    expanded_params[name] = arr.reshape(batch_size * num_sims, num_steps)
+                else:
+                    expanded_params[name] = arr.reshape(batch_size * num_sims, num_steps, arr.shape[2])
+            elif arr.ndim == 4:
+                expanded_params[name] = arr.reshape(batch_size * num_sims, num_steps, arr.shape[3])
+            else:
+                raise ValueError(f"Cannot reshape posterior parameter '{name}' with shape {arr.shape}.")
+
+        for name, value in fixed_params.items():
+            expanded_params[name] = np.broadcast_to(
+                np.asarray(value), (batch_size * num_sims, *np.asarray(value).shape)
+            )
+
+        for name in self.model.deterministic_keys:
+            if name in expanded_params:
+                continue
+            transition = self.model.prior.params.get(name)
+            if transition is None:
+                raise ValueError(f"No transition registered for deterministic parameter {name!r}.")
+            prefix = f"{name}_"
+            transition_params = {
+                key[len(prefix) :]: value for key, value in expanded_params.items() if key.startswith(prefix)
+            }
+            transition_fixed = transition.sample(batch_size=1, num_steps=1).get("fixed_params", {})
+            transition_params.update(
+                {key: value for key, value in transition_fixed.items() if key not in transition_params}
+            )
+            expanded_params[name] = transition.sample_from_parameters(
+                transition_params,
+                batch_size=batch_size * num_sims,
+                num_steps=num_steps,
+            )
+
+        context_kwargs = {} if simulation_context is None else {"context": simulation_context}
+        if apply_missing:
+            context_kwargs["apply_missing"] = True
+        if apply_missing or getattr(self.model, "contamination", None) is not None:
+            context_kwargs["rng"] = rng
+        raw_sim = self.model.simulate_from_parameters(
+            expanded_params,
+            batch_size=batch_size * num_sims,
+            num_steps=num_steps,
+            **context_kwargs,
+        )
+
+        if empirical_missing_mask is not None:
+            missing_value = getattr(getattr(self.model, "missing", None), "missing_value", None)
+            if missing_value is None:
+                raise ValueError("missing_mask requires a model missing process with a configured missing_value.")
+
+            data_keys = list(self.model.data_keys)
+            summary_keys = list(getattr(self.model, "summary_keys", data_keys))
+
+            def _missing_fill(key: str):
+                if isinstance(missing_value, Mapping):
+                    if key not in missing_value:
+                        raise ValueError(f"model missing_value mapping has no entry for {key!r}.")
+                    return missing_value[key]
+                value = np.asarray(missing_value)
+                if value.ndim == 0:
+                    return missing_value
+                if value.shape == (len(summary_keys),):
+                    return value[summary_keys.index(key)]
+                if value.shape == (len(data_keys),):
+                    return value[data_keys.index(key)]
+                raise ValueError(
+                    "model missing_value must be scalar, a mapping, or have one entry per data or summary key."
+                )
+
+            for key, value in raw_sim.items():
+                fill = _missing_fill(key)
+                try:
+                    value[empirical_missing_mask] = fill
+                except (TypeError, ValueError, OverflowError):
+                    value = value.astype(np.result_type(value.dtype, fill), copy=True)
+                    value[empirical_missing_mask] = fill
+                    raw_sim[key] = value
+
+        return {name: value.reshape(batch_size, num_sims, num_steps) for name, value in raw_sim.items()}
+
+    def prepare_data(
+        self,
+        df: pd.DataFrame,
+        id_col: str,
+        data_mapping: Mapping[str, str],
+        missing_value: int | float | None = None,
+        time_col: str | None = None,
+    ) -> dict[str, np.ndarray]:
+        """Convert a long-format DataFrame into the model's dict-of-arrays format.
+
+        Groups `df` by `id_col` and reshapes the columns named in
+        `data_mapping` into arrays of shape (batch_size, num_steps). This
+        includes both simulator outputs and model context variables.
+        Categorical context declared by the model's Formula retains its raw
+        labels. Observed labels are validated against the fixed schema; the
+        default adapter converts them to one-hot features for inference.
+
+        If `time_col` is given, it must contain discrete integer-like
+        values. The actual labels may be negative or non-contiguous; they
+        are normalized to positions `1..num_steps` in sorted time order.
+        Otherwise, rows are placed by order of appearance within each
+        `id_col` group. Missing or padded positions are flagged in
+        `"missing_mask"` and filled with the model's missing-value
+        convention when one exists.
+
+        Parameters
+        ----------
+        df           : pd.DataFrame
+            Long-format data with one row per (dataset, step). Must contain
+            `id_col`, `time_col` (if given), and every key in
+            `data_mapping`.
+        id_col       : str
+            Name of the column in `df` identifying which dataset/sequence
+            each row belongs to. Rows are grouped by this column, in order
+            of first appearance, to form the batch dimension.
+        data_mapping : Mapping[str, str]
+            Maps a column name in `df` to the corresponding key expected by
+            the model, e.g. `{"rt": "response_time", "correct":
+            "choice"}`. The set of values (not keys) must match either
+            `self.model.data_keys`, or `self.model.summary_keys` (the
+            observation keys plus every context key).
+        missing_value : int or float
+            Sentinel value marking a missing observation, and used to
+            initialize/pad positions with no corresponding row.
+        time_col     : str or None, optional, default: None
+            Name of the column in `df` giving each row's discrete time
+            label. If None, rows are placed by order of appearance within
+            their `id_col` group instead.
+
+        Returns
+        -------
+        data : dict of np.ndarray
+            One entry per mapped model key, each of shape
+            (batch_size, num_steps), plus `"missing_mask"` (1 where any
+            observation column equals `missing_value` at that step, 0
+            otherwise) and `"time_steps"` (each row equal to
+            `1..num_steps`). Context values are not used to detect
+            missingness, but the resulting mask is applied to them so all
+            summary inputs share one missing representation.
+        """
+        model = getattr(self, "model", None)
+        if model is None:
+            raise AttributeError("prepare_data needs a Workflow with a model.")
+
+        required_cols = [id_col, *data_mapping]
+        if time_col is not None:
+            required_cols.append(time_col)
+        missing_cols = [col for col in required_cols if col not in df.columns]
+
+        if missing_cols:
+            raise KeyError(f"df is missing required column(s): {missing_cols}")
+        if df.empty:
+            raise ValueError("prepare_data requires at least one row.")
+
+        mapped_keys = list(data_mapping.values())
+        data_keys = list(model.data_keys)
+        summary_keys = list(getattr(model, "summary_keys", data_keys))
+        if sorted(mapped_keys) == sorted(summary_keys):
+            expected_keys = summary_keys
+        elif sorted(mapped_keys) == sorted(data_keys):
+            # Preserve the observation-only API for callers which attach
+            # context arrays separately.
+            expected_keys = data_keys
+        else:
+            raise ValueError(
+                f"data_mapping values {sorted(mapped_keys)!r} do not match model.data_keys {sorted(data_keys)!r} "
+                f"or model.summary_keys {sorted(summary_keys)!r}."
+            )
+
+        if missing_value is None:
+            missing_value = -1
+
+        groups = df.groupby(id_col, sort=False)
+        dataset_ids = list(groups.groups.keys())
+
+        if time_col is not None:
+            time_float = pd.to_numeric(df[time_col], errors="coerce").to_numpy(dtype=float)
+            if not np.all(np.isfinite(time_float)) or not np.all(np.isclose(time_float, np.rint(time_float))):
+                raise ValueError(f"time_col '{time_col}' must contain discrete integer-like values.")
+
+            # Map arbitrary discrete labels, including negatives, onto dense columns.
+            time_values = pd.Series(np.rint(time_float).astype(np.int64), index=df.index)
+            time_lookup = {value: idx for idx, value in enumerate(sorted(time_values.unique()))}
+            num_steps = len(time_lookup)
+        else:
+            time_values = None
+            time_lookup = None
+            num_steps = int(groups.size().max())
+
+        batch_size = len(dataset_ids)
+        categorical = getattr(model, "categorical", {})
+        data = {
+            data_key: np.full(
+                (batch_size, num_steps), missing_value, dtype=object if data_key in categorical else float
+            )
+            for data_key in expected_keys
+        }
+
+        def _col_idx(group: pd.DataFrame, dataset_id) -> np.ndarray:
+            if time_col is None:
+                return np.arange(len(group))
+            idx = np.array([time_lookup[value] for value in time_values.loc[group.index]], dtype=int)
+            if len(np.unique(idx)) != len(idx):
+                raise ValueError(f"Duplicate '{time_col}' values found within id '{dataset_id}'.")
+            return idx
+
+        def _as_float_values(group: pd.DataFrame, col: str) -> np.ndarray:
+            try:
+                return group[col].to_numpy(dtype=float)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"Column '{col}' must be numeric.") from exc
+
+        for i, dataset_id in enumerate(dataset_ids):
+            group = groups.get_group(dataset_id)
+            col_idx = _col_idx(group, dataset_id)
+            for col, data_key in data_mapping.items():
+                values = group[col].to_numpy(dtype=object) if data_key in categorical else _as_float_values(group, col)
+                data[data_key][i, col_idx] = values
+
+        missing_mask = np.zeros((batch_size, num_steps), dtype=bool)
+        for data_key in data_keys:
+            missing_mask |= pd.isna(data[data_key])
+            if not pd.isna(missing_value):
+                missing_mask |= data[data_key] == missing_value
+
+        for name, schema in categorical.items():
+            if name in data:
+                schema.indices(data[name], name=name, missing_mask=missing_mask)
+
+        model_missing_value = getattr(getattr(model, "missing", None), "missing_value", missing_value)
+
+        def _missing_fill(data_key: str, index: int):
+            if isinstance(model_missing_value, Mapping):
+                return model_missing_value[data_key]
+            value = np.asarray(model_missing_value)
+            if value.ndim == 0:
+                return model_missing_value
+            if value.shape == (len(expected_keys),):
+                return value[index]
+            raise ValueError(f"model missing_value must be scalar, mapping, or shape ({len(expected_keys)},).")
+
+        # A missing value in any observed variable drops the whole summary
+        # time step, including its context variables.
+        for i, summary_key in enumerate(expected_keys):
+            data[summary_key][missing_mask] = _missing_fill(summary_key, i)
+
+        data["missing_mask"] = missing_mask
+        data["time_steps"] = np.broadcast_to(np.arange(1, num_steps + 1)[None, :], (batch_size, num_steps))
+
+        return data
+
+    def plot_history(
+        self,
+        history,
+        title_fontsize: int = TITLE_FONTSIZE,
+        label_fontsize: int = LABEL_FONTSIZE,
+        tick_fontsize: int = TICK_FONTSIZE,
+        **kwargs,
+    ):
+        """Plot training loss curves.
+
+        Parameters
+        ----------
+        history : keras.callbacks.History
+            Training history, e.g. from `fit_offline`, `fit_online`, or
+            `self.history`.
+        title_fontsize : int, optional, default: 22
+            Font size for panel titles.
+        label_fontsize : int, optional, default: 18
+            Font size for axis labels and the legend.
+        tick_fontsize : int, optional, default: 16
+            Font size for axis tick labels.
+        **kwargs
+            Additional keyword arguments forwarded to
+            `bf.diagnostics.plots.loss`.
+
+        Returns
+        -------
+        fig : plt.Figure - the loss curve figure
+        """
+        kwargs.setdefault("train_color", BASE_COLOR)
+        kwargs.setdefault("title_fontsize", title_fontsize)
+        kwargs.setdefault("label_fontsize", label_fontsize)
+        kwargs.setdefault("legend_fontsize", label_fontsize)
+
+        fig = bf.diagnostics.plots.loss(history, **kwargs)
+        for ax in fig.axes:
+            ax.tick_params(labelsize=tick_fontsize)
+        return fig
+
+    def verify_time_varying(
+        self,
+        targets: dict,
+        estimates: dict,
+        variable_keys: list | None = None,
+        variable_names: list | None = None,
+        aggregation: Callable = np.median,
+        **kwargs,
+    ):
+        """Plot recovery diagnostics over steps for time-varying parameters.
+
+        Parameters
+        ----------
+        targets        : dict
+            Ground-truth local parameter trajectories, keyed by
+            parameter name; each value has shape
+            (batch_size, num_steps, 1).
+        estimates      : dict
+            Posterior estimates for the same parameters, keyed by name;
+            each value has shape
+            (batch_size, num_post_samples, num_steps, 1).
+        variable_keys  : list of str or None, optional, default: None
+            Which parameters to select and plot, and in what order.
+            Defaults to `self.model.local_keys` when not supplied.
+        variable_names : list of str or None, optional, default: None
+            Display names for the plotted columns, in the same order as
+            `variable_keys`. Defaults to `variable_keys` when not
+            supplied.
+        aggregation    : callable, optional, default: np.median
+            Aggregation function forwarded to
+            `plot_time_varying_verification`, used to collapse each
+            metric across simulations. Typically np.mean or np.median.
+        **kwargs
+            Additional keyword arguments forwarded to
+            `plot_time_varying_verification` (e.g. `colors`,
+            `title_fontsize`).
+
+        Returns
+        -------
+        fig : plt.Figure - the figure instance for optional saving
+        """
+        local_keys = self.model.local_keys
+
+        if variable_keys is None:
+            variable_keys = local_keys
+
+        targets_squeezed = {k: targets[k][..., 0] for k in variable_keys}
+        estimates_squeezed = {k: estimates[k][..., 0] for k in variable_keys}
+
+        return plot_time_varying_verification(
+            estimates=estimates_squeezed,
+            targets=targets_squeezed,
+            variable_keys=variable_keys,
+            variable_names=variable_names,
+            aggregation=aggregation,
+            **kwargs,
+        )
+
+    def recovery_at_steps(
+        self,
+        targets: Mapping[str, np.ndarray],
+        estimates: Mapping[str, np.ndarray],
+        time_steps: int | Sequence[int],
+        variable_keys: Sequence[str] | None = None,
+        variable_names: Sequence[str] | None = None,
+        **kwargs,
+    ):
+        """Plot local-parameter recovery at selected time steps.
+
+        `time_steps` contains zero-based indices and may be a single
+        integer or a sequence. Plot arguments are forwarded to
+        `plot_recovery`.
+        """
+        estimates_arr, targets_arr, names = self._prepare_time_varying_at_steps(
+            targets,
+            estimates,
+            time_steps,
+            variable_keys,
+            variable_names,
+        )
+        return plot_recovery(
+            estimates=estimates_arr,
+            targets=targets_arr,
+            variable_names=names,
+            **kwargs,
+        )
+
+    def calibration_at_steps(
+        self,
+        targets: Mapping[str, np.ndarray],
+        estimates: Mapping[str, np.ndarray],
+        time_steps: int | Sequence[int],
+        variable_keys: Sequence[str] | None = None,
+        variable_names: Sequence[str] | None = None,
+        **kwargs,
+    ):
+        """Plot local-parameter calibration at selected time steps.
+
+        `time_steps` contains zero-based indices and may be a single
+        integer or a sequence. Plot arguments are forwarded to
+        `plot_calibration`.
+        """
+        estimates_arr, targets_arr, names = self._prepare_time_varying_at_steps(
+            targets,
+            estimates,
+            time_steps,
+            variable_keys,
+            variable_names,
+        )
+        return plot_calibration(
+            estimates=estimates_arr,
+            targets=targets_arr,
+            variable_names=names,
+            **kwargs,
+        )
+
+    def z_score_contraction_at_steps(
+        self,
+        targets: Mapping[str, np.ndarray],
+        estimates: Mapping[str, np.ndarray],
+        time_steps: int | Sequence[int],
+        variable_keys: Sequence[str] | None = None,
+        variable_names: Sequence[str] | None = None,
+        **kwargs,
+    ):
+        """Plot local-parameter z-scores and contraction at selected steps.
+
+        `time_steps` contains zero-based indices and may be a single
+        integer or a sequence. Plot arguments are forwarded to
+        `plot_z_score_contraction`.
+        """
+        estimates_arr, targets_arr, names = self._prepare_time_varying_at_steps(
+            targets,
+            estimates,
+            time_steps,
+            variable_keys,
+            variable_names,
+        )
+        return plot_z_score_contraction(
+            estimates=estimates_arr,
+            targets=targets_arr,
+            variable_names=names,
+            **kwargs,
+        )
+
+    def verify_time_invariant(
+        self,
+        targets: Mapping[str, np.ndarray] | np.ndarray,
+        estimates: Mapping[str, np.ndarray] | np.ndarray,
+        variable_keys: Sequence[str] | None = None,
+        variable_names: Sequence[str] | None = None,
+        uncertainty_agg: Callable | None = credible_interval,
+        **kwargs,
+    ):
+        """Plot time-invariant recovery, calibration, and contraction.
+
+        Parameters
+        ----------
+        targets        : Mapping[str, np.ndarray] or np.ndarray
+            If a dict, mapping from parameter name to an np.ndarray of
+            shape (num_sims, dim). If an array, the fully-prepared target
+            array of shape (num_sims, num_params) directly (e.g. mixture
+            components already expanded).
+        estimates      : Mapping[str, np.ndarray] or np.ndarray
+            If a dict, mapping from parameter name to an np.ndarray of
+            shape (num_sims, num_samples, dim). Legacy per-step estimates
+            of shape (num_sims, num_samples, steps, dim) are also accepted.
+            If an array, the
+            fully-prepared estimate array of shape
+            (num_sims, num_pooled_samples, num_params) directly. Must use
+            the same input type (dict or array) as `targets`.
+        variable_keys  : sequence of str or None, optional, default: None
+            Which time-invariant parameters to include, and in what
+            order, when `targets`/`estimates` are dicts. Defaults to
+            `self.model.hyper_keys + self.model.shared_keys` when
+            not supplied. Mixture parameters (dim > 1) are expanded into
+            one column per component regardless of this selection.
+            Ignored for array input.
+        variable_names : sequence of str or None, optional, default: None
+            Display names for the final, expanded columns. For dict
+            input, must match the number of expanded columns (not
+            `len(variable_keys)`) and defaults to the auto-derived
+            per-component names. For array input, defaults to `param_0`,
+            `param_1`, ...
+        uncertainty_agg : callable or None, optional, default: credible_interval
+            Uncertainty aggregation passed only to `plot_recovery`. By
+            default, draws 95% credible intervals. Pass `None` to suppress
+            recovery uncertainty intervals.
+        **kwargs
+            Shared options forwarded to `plot_recovery`, `plot_calibration`,
+            and `plot_z_score_contraction` (e.g. `label_fontsize`,
+            `title_fontsize`, `tick_fontsize`, or `color`).
+
+        Returns
+        -------
+        figs : tuple
+            `(fig_recovery, fig_calibration, fig_z_score_contraction)`.
+
+        Raises
+        ------
+        ValueError
+            If no time-invariant parameters are found for dict input.
+        """
+        if isinstance(estimates, Mapping):
+            if variable_keys is None:
+                variable_keys = self.model.hyper_keys + self.model.shared_keys
+            if not variable_keys:
+                raise ValueError("No time-invariant parameters found.")
+            missing = [name for name in variable_keys if name not in estimates or name not in targets]
+            if missing:
+                raise ValueError(f"variable_keys not found in both estimates and targets: {missing}")
+
+            target_columns, estimate_columns, expanded_names = [], [], []
+            for name in variable_keys:
+                values = np.asarray(estimates[name])
+                if values.ndim not in (3, 4):
+                    raise ValueError(
+                        f"Estimate '{name}' must have shape (B, S, D) or (B, S, T, D), got {values.shape}."
+                    )
+                batch_size, num_samples = values.shape[:2]
+                num_components = values.shape[-1]
+                if values.ndim == 4:
+                    values = values.reshape(batch_size, num_samples * values.shape[2], num_components)
+                estimate_columns.append(values)
+                target_columns.append(normalize_time_invariant_target(name, targets[name], batch_size, num_components))
+
+                if num_components > 1:
+                    mixture = self.model.prior.params.get(name.split("_mixture_weights")[0])
+                    component_names = getattr(mixture, "names", ())
+                    if len(component_names) != num_components:
+                        component_names = range(num_components)
+                    expanded_names.extend(f"{name}_{component}" for component in component_names)
+                else:
+                    expanded_names.append(name)
+
+            targets = np.concatenate(target_columns, axis=-1)
+            estimates = np.concatenate(estimate_columns, axis=-1)
+            if variable_names is not None:
+                if len(variable_names) != len(expanded_names):
+                    raise ValueError(
+                        f"variable_names has {len(variable_names)} entries but there are "
+                        f"{len(expanded_names)} expanded columns."
+                    )
+                expanded_names = list(variable_names)
+
+            variable_keys = None
+            variable_names = expanded_names
+
+        plot_options = kwargs | dict(
+            estimates=estimates, targets=targets, variable_keys=variable_keys, variable_names=variable_names
+        )
+        return (
+            plot_recovery(uncertainty_agg=uncertainty_agg, **plot_options),
+            plot_calibration(**plot_options),
+            plot_z_score_contraction(**plot_options),
+        )
+
+    def plot_time_varying_posterior(
+        self,
+        estimates: Mapping[str, np.ndarray] | np.ndarray,
+        targets: Mapping[str, np.ndarray] | np.ndarray | None = None,
+        variable_keys: Sequence[str] | None = None,
+        variable_names: Sequence[str] | None = None,
+        aggregation: Callable | None = None,
+        uncertainty_fun: Literal["std", "ci", "mad", "hdi"] | Callable | None = "hdi",
+        smoothing: Literal["sma", "ema"] | None = None,
+        smoothing_window: int = 5,
+        marginal: bool = True,
+        dist_type: Literal["hist", "kde", "both"] = "hist",
+        num_bins: int | None = None,
+        dist_alpha: float | None = None,
+        num_cols: int | None = None,
+        alpha: float = 0.5,
+        color: str = BASE_COLOR,
+        title_fontsize: int = TITLE_FONTSIZE,
+        label_fontsize: int = LABEL_FONTSIZE,
+        tick_fontsize: int = TICK_FONTSIZE,
+        figsize: tuple[float, float] | None = None,
+        data_idx: int | Sequence[int] | None = None,
+        scale: Literal["both", "model", "raw"] = "both",
+        conditions: Mapping | Sequence[Mapping] | None = None,
+        context: Mapping | pd.DataFrame | None = None,
+        num_steps: int | None = None,
+        **kwargs,
+    ):
+        """Plot time-varying posterior diagnostics.
+
+        Named draws show raw coefficients and implied parameters in separate
+        panels on the same parameter row by default, using the same paired
+        posterior draws. Identical views share one panel. Predictors are held
+        fixed across time.
+        ``conditions`` accepts a grid or selected scalar context
+        mappings; ``context`` provides reference values for automatic conditions.
+        ``num_steps`` must match any existing posterior trajectories. Use
+        ``scale="raw"`` or ``scale="model"`` to select one view. Condition
+        legends are hidden. Array inputs
+        are assumed to already be on their plotted scale.
+
+        Parameters
+        ----------
+        estimates          : Mapping[str, np.ndarray] or np.ndarray
+            Posterior samples. If a dict, values of shape
+            (num_datasets, num_post_samples, num_steps, 1), keyed by
+            variable. If an array, shape
+            (num_datasets, num_post_samples, num_steps, num_params)
+            directly.
+        targets            : Mapping[str, np.ndarray], np.ndarray, or None, optional, default: None
+            Ground-truth trajectories, matching the input type of
+            `estimates`. If a dict, values of shape
+            (num_datasets, num_steps, 1). If an array, shape
+            (num_datasets, num_steps, num_params) directly. If given,
+            drawn as a black dashed line on top of each panel: the raw
+            per-dataset trajectory when `aggregation` is None, or
+            aggregated across datasets (using `aggregation`) when
+            `aggregation` is not None.
+        variable_keys      : sequence of str or None, optional, default: None
+            Which variables to select and plot, and in what order, when
+            `estimates`/`targets` are dicts. Defaults to
+            `self.model.local_keys` when not supplied. Ignored for
+            array input.
+        variable_names     : sequence of str or None, optional, default: None
+            Display names (used for panel labels/titles), in the same
+            order as `variable_keys` (or the array's last axis). Defaults
+            to `variable_keys` for dict input, or `param_0`, `param_1`,
+            ... for array input.
+        aggregation        : callable or None, optional, default: None
+            None: one panel per (param, dataset).
+            callable: one panel per param, aggregated across datasets.
+            Called as `aggregation(trajectories, axis=0)` and must return
+            a (T,) center. The same function aggregates `targets` across
+            datasets when both `targets` and `aggregation` are given.
+        uncertainty_fun    : {"std", "ci", "mad", "hdi"} or callable or None, optional, default: "hdi"
+            Named methods draw nested outer/inner ribbons: ±1/±0.5 SD,
+            95%/65% CI, ±1.48/±0.74 MAD, or 95%/65% HDI. A callable
+            receives (N, T) trajectories and draws the single `(lo, hi)`
+            interval it returns, with each bound shaped (T,).
+        smoothing          : {"sma", "ema"} or None, optional, default: None
+            Applied to each trajectory before computing the center,
+            uncertainty, and marginal.
+        smoothing_window   : int, optional, default: 5
+            Window size for `sma`, or span parameter for `ema`.
+        marginal           : bool, optional, default: True
+            Attach a marginal distribution panel to the right of each
+            time-series axis. It uses the same strategy-specific trajectory
+            pool as the uncertainty band. The target marginal uses the
+            corresponding aggregated or per-dataset target trajectories.
+        dist_type          : {"hist", "kde", "both"}, optional, default: "hist"
+            Distribution type used for marginal panels.
+        num_bins           : int or None, optional, default: None
+            Number of histogram bins. If None, Seaborn selects the bins.
+        dist_alpha         : float or None, optional, default: None
+            Opacity of marginal distributions. If None, uses 1.0 for a
+            single distribution and 0.5 when targets are overlaid.
+        num_cols           : int or None, optional, default: None
+            Exact number of grid columns. If None, combined raw and implied
+            views use one row per parameter and dataset, with adjacent views.
+            Model-only plots use one column per selected dataset.
+        alpha              : float, optional, default: 0.5
+            Opacity of the darker inner uncertainty ribbon. The outer
+            ribbon uses half this opacity.
+        color              : str, optional, default: BASE_COLOR
+            Color used for posterior centers, bands, and marginals.
+        title_fontsize     : int, optional, default: 22
+            Font size for panel titles.
+        label_fontsize     : int, optional, default: 18
+            Font size for axis labels and the figure legend.
+        tick_fontsize      : int, optional, default: 16
+            Font size for axis tick labels.
+        figsize            : tuple of two floats or None, optional, default: None
+            Explicit figure size in inches.
+        data_idx           : int, sequence of int, or None, optional, default: None
+            Dataset indices to plot. None selects all datasets. A single
+            integer preserves the dataset axis, and a sequence preserves
+            the requested order.
+        **kwargs
+            Additional arguments forwarded to
+            `plot_time_varying_posterior`.
+
+        Returns
+        -------
+        fig : plt.Figure - the figure instance for optional saving
+        """
+        if scale not in {"both", "model", "raw"}:
+            raise ValueError("scale must be 'both', 'model', or 'raw'.")
+        if scale != "raw" and isinstance(estimates, Mapping) and isinstance(self.model, Model):
+            names = varying_parameter_names(self.model, variable_keys)
+            draws = posterior_parameters(
+                self.model,
+                estimates,
+                names,
+                conditions=conditions,
+                context=context,
+                num_steps=num_steps,
+                data_idx=data_idx,
+            )
+            truth = target_parameters(self.model, targets, names, draws)
+            parameter_groups = None
+            if scale == "both":
+                raw_names = raw_parameter_names(self.model, names, kind="varying", selected=variable_keys is not None)
+                draws, truth = parameter_views(self.model, draws, raw_names, truth)
+                parameter_groups = parameter_view_groups(self.model, names, draws.parameters)
+                variable_names = parameter_display_names(names, variable_names, draws.parameters)
+            return plot_conditional_parameters(
+                draws,
+                targets=truth,
+                aggregation=aggregation,
+                uncertainty_fun=uncertainty_fun,
+                smoothing=smoothing,
+                smoothing_window=smoothing_window,
+                marginal=marginal,
+                dist_type=dist_type,
+                num_bins=num_bins,
+                dist_alpha=dist_alpha,
+                num_cols=num_cols,
+                alpha=alpha,
+                color=color,
+                title_fontsize=title_fontsize,
+                label_fontsize=label_fontsize,
+                tick_fontsize=tick_fontsize,
+                figsize=figsize,
+                variable_names=variable_names,
+                parameter_groups=parameter_groups,
+                **kwargs,
+            )
+        if variable_keys is None:
+            variable_keys = self.model.local_keys
+
+        return plot_time_varying_posterior(
+            estimates=estimates,
+            targets=targets,
+            variable_keys=variable_keys,
+            variable_names=variable_names,
+            aggregation=aggregation,
+            uncertainty_fun=uncertainty_fun,
+            smoothing=smoothing,
+            smoothing_window=smoothing_window,
+            marginal=marginal,
+            dist_type=dist_type,
+            num_bins=num_bins,
+            dist_alpha=dist_alpha,
+            num_cols=num_cols,
+            alpha=alpha,
+            color=color,
+            title_fontsize=title_fontsize,
+            label_fontsize=label_fontsize,
+            tick_fontsize=tick_fontsize,
+            figsize=figsize,
+            data_idx=data_idx,
+            **kwargs,
+        )
+
+    def plot_marginals(
+        self,
+        estimates: Mapping[str, np.ndarray] | np.ndarray,
+        targets: Mapping[str, np.ndarray] | np.ndarray | None = None,
+        dist_type: Literal["hist", "kde", "both"] = "hist",
+        num_bins: int | None = None,
+        dist_alpha: float | None = None,
+        num_cols: int | None = None,
+        color: str = BASE_COLOR,
+        title_fontsize: int = TITLE_FONTSIZE,
+        label_fontsize: int = LABEL_FONTSIZE,
+        tick_fontsize: int = TICK_FONTSIZE,
+        figsize: tuple[float, float] | None = None,
+        data_idx: int | None = None,
+        scale: Literal["both", "model", "raw"] = "both",
+        conditions: Mapping | Sequence[Mapping] | None = None,
+        context: Mapping | pd.DataFrame | None = None,
+        variable_keys: Sequence[str] | None = None,
+        num_steps: int | None = None,
+        time_step: int | None = None,
+        time_aggregation: Callable | None = None,
+        **kwargs,
+    ):
+        """Plot univariate marginals for one time-invariant posterior.
+
+        Posterior sample and step axes are flattened within the selected
+        dataset and resampled without replacement to the original posterior
+        draw count.
+
+        Named draws use ``scale="both"`` by default, with separate raw and
+        implied panels from the same draws; identical views share one panel.
+        Latent links and formulas are evaluated at fixed ``conditions`` using
+        reference ``context``. Condition legends are hidden. ``variable_keys`` can select resolved targets. Time-varying
+        targets require an explicit zero-based ``time_step`` or a callable
+        ``time_aggregation(values, axis=-1)``; trial and posterior uncertainty
+        are never silently pooled. ``num_steps`` sets a reconstruction horizon
+        when there are no posterior trajectories. Set ``scale="raw"`` or
+        ``scale="model"`` to select one view. Array inputs are already on their plotted scale.
+
+        Parameters
+        ----------
+        estimates      : Mapping[str, np.ndarray] or np.ndarray
+            Posterior samples. If a dict, values of shape
+            (num_datasets, num_post_samples, num_steps, num_components),
+            keyed by variable. If an array, shape
+            (num_datasets, num_post_samples, num_steps, num_params)
+            directly.
+        targets        : Mapping[str, np.ndarray], np.ndarray, or None, optional, default: None
+            Time-invariant ground-truth values matching `estimates`. If
+            given, drawn as black dashed vertical lines.
+        dist_type      : {"hist", "kde", "both"}, optional, default: "hist"
+            Distribution type used for posterior distributions.
+        num_bins       : int or None, optional, default: None
+            Number of histogram bins. If None, Seaborn selects the bins.
+        dist_alpha     : float or None, optional, default: None
+            Opacity of posterior distributions. If None, uses 1.0 for one
+            distribution and 0.5 for overlaid mixture components.
+        num_cols       : int or None, optional, default: None
+            Exact number of grid columns. If None, uses the shared compact
+            dynamic layout.
+        color          : str, optional, default: BASE_COLOR
+            Base color used for non-mixture distributions.
+        title_fontsize : int, optional, default: 22
+            Font size for panel titles.
+        label_fontsize : int, optional, default: 18
+            Font size for axis labels and the figure legend.
+        tick_fontsize  : int, optional, default: 16
+            Font size for axis tick labels.
+        figsize        : tuple of two floats or None, optional, default: None
+            Explicit figure size in inches.
+        data_idx       : int or None, optional, default: None
+            Dataset index to plot. Required when estimates contain more
+            than one dataset.
+        **kwargs
+            Additional arguments forwarded to
+            `plot_marginals`.
+
+        Returns
+        -------
+        fig : plt.Figure - the figure instance for optional saving
+
+        Raises
+        ------
+        ValueError
+            If multiple datasets are supplied without `data_idx`, if input
+            shapes are invalid, or if `num_cols` is less than one.
+        TypeError
+            If `data_idx` is not an integer.
+
+        Notes
+        -----
+        Parameter keys and mixture-component names are obtained from the
+        workflow's model. Use :meth:`plot_forest` to compare the same
+        parameters across datasets.
+        """
+        if scale not in {"both", "model", "raw"}:
+            raise ValueError("scale must be 'both', 'model', or 'raw'.")
+        condition_names = {}
+        if scale != "raw" and isinstance(estimates, Mapping) and isinstance(self.model, Model):
+            selected_names = invariant_parameter_names(self.model, variable_keys)
+            estimates, targets, condition_names, variable_keys = posterior_invariant_samples(
+                self.model,
+                estimates,
+                targets,
+                variable_keys=variable_keys,
+                conditions=conditions,
+                context=context,
+                num_steps=num_steps,
+                time_step=time_step,
+                time_aggregation=time_aggregation,
+                scale=scale,
+            )
+            if scale == "both" and "variable_names" in kwargs:
+                kwargs["variable_names"] = parameter_display_names(
+                    selected_names, kwargs["variable_names"], variable_keys
+                )
+        elif variable_keys is None:
+            variable_keys = self.model.hyper_keys + self.model.shared_keys
+        mixture_names = {
+            name: param.names for name, param in self.model.prior.params.items() if hasattr(param, "names")
+        }
+        mixture_names.update(condition_names)
+
+        return plot_marginals(
+            estimates=estimates,
+            targets=targets,
+            variable_keys=variable_keys,
+            mixture_names=mixture_names,
+            condition_labels=condition_names,
+            dist_type=dist_type,
+            num_bins=num_bins,
+            dist_alpha=dist_alpha,
+            num_cols=num_cols,
+            color=color,
+            title_fontsize=title_fontsize,
+            label_fontsize=label_fontsize,
+            tick_fontsize=tick_fontsize,
+            figsize=figsize,
+            data_idx=data_idx,
+            **kwargs,
+        )
+
+    def plot_pairs(
+        self,
+        estimates: Mapping[str, np.ndarray] | np.ndarray,
+        targets: Mapping[str, np.ndarray] | np.ndarray | None = None,
+        data_idx: int | None = None,
+        dist_type: Literal["hist", "kde", "both"] = "hist",
+        scale: Literal["both", "model", "raw"] = "both",
+        conditions: Mapping | Sequence[Mapping] | None = None,
+        context: Mapping | pd.DataFrame | None = None,
+        variable_keys: Sequence[str] | None = None,
+        num_steps: int | None = None,
+        time_step: int | None = None,
+        time_aggregation: Callable | None = None,
+        **kwargs,
+    ):
+        """Plot a traditional pairs plot for one time-invariant posterior.
+
+        Diagonal panels show univariate marginals, upper panels show draws,
+        and lower panels show bivariate densities. Posterior sample and step
+        axes are flattened within the selected dataset and resampled to the
+        original posterior draw count.
+
+        Named draws use ``scale="both"`` by default, with separate raw and
+        implied panels from the same draws; identical views share one panel.
+        Latent links and formulas are evaluated at fixed ``conditions`` using
+        reference ``context``. Condition legends are hidden. ``variable_keys`` can select resolved targets. Time-varying
+        targets require an explicit zero-based ``time_step`` or a callable
+        ``time_aggregation(values, axis=-1)``; trial and posterior uncertainty
+        are never silently pooled. ``num_steps`` sets a reconstruction horizon
+        when there are no posterior trajectories. Set ``scale="raw"`` or
+        ``scale="model"`` to select one view. Array inputs are already on their plotted scale.
+
+        Parameters
+        ----------
+        estimates : Mapping[str, np.ndarray] or np.ndarray
+            Posterior samples. Mapping values must have shape
+            ``(num_datasets, num_post_samples, num_steps, num_components)``;
+            array input must have shape ``(num_datasets, num_post_samples,
+            num_steps, num_parameters)``.
+        targets : Mapping[str, np.ndarray], np.ndarray, or None, optional, default: None
+            Time-invariant ground-truth values matching ``estimates``. If
+            supplied, targets are shown with cross markers.
+        data_idx : int or None, optional, default: None
+            Dataset to plot. Required when ``estimates`` contains more than
+            one dataset.
+        dist_type : {"hist", "kde", "both"}, optional, default: "hist"
+            Distribution representation in the diagonal marginal panels.
+        **kwargs
+            Additional arguments forwarded to :func:`plot_pairs`, such as
+            ``height``, posterior and target colors, alpha, and font sizes.
+
+        Returns
+        -------
+        fig : plt.Figure
+            Pair-grid figure with a shared bottom legend.
+
+        Raises
+        ------
+        ValueError
+            If multiple datasets are supplied without ``data_idx`` or if the
+            input shapes are invalid.
+        TypeError
+            If ``data_idx`` is not an integer.
+
+        Notes
+        -----
+        Parameter keys and mixture-component names are obtained from the
+        workflow's model. This method displays one posterior at a time; its
+        sample and step axes are never pooled across datasets.
+        """
+        if scale not in {"both", "model", "raw"}:
+            raise ValueError("scale must be 'both', 'model', or 'raw'.")
+        condition_names = {}
+        if scale != "raw" and isinstance(estimates, Mapping) and isinstance(self.model, Model):
+            selected_names = invariant_parameter_names(self.model, variable_keys)
+            estimates, targets, condition_names, variable_keys = posterior_invariant_samples(
+                self.model,
+                estimates,
+                targets,
+                variable_keys=variable_keys,
+                conditions=conditions,
+                context=context,
+                num_steps=num_steps,
+                time_step=time_step,
+                time_aggregation=time_aggregation,
+                scale=scale,
+            )
+            if scale == "both" and "variable_names" in kwargs:
+                kwargs["variable_names"] = parameter_display_names(
+                    selected_names, kwargs["variable_names"], variable_keys
+                )
+        elif variable_keys is None:
+            variable_keys = self.model.hyper_keys + self.model.shared_keys
+        mixture_names = {
+            name: param.names for name, param in self.model.prior.params.items() if hasattr(param, "names")
+        }
+        mixture_names.update(condition_names)
+
+        return plot_pairs(
+            estimates=estimates,
+            targets=targets,
+            variable_keys=variable_keys,
+            mixture_names=mixture_names,
+            data_idx=data_idx,
+            dist_type=dist_type,
+            **kwargs,
+        )
+
+    def plot_forest(
+        self,
+        estimates: Mapping[str, np.ndarray] | np.ndarray,
+        targets: Mapping[str, np.ndarray] | np.ndarray | None = None,
+        aggregation: Callable | None = None,
+        uncertainty_fun: Literal["std", "ci", "mad", "hdi"] | Callable | None = "hdi",
+        data_idx: int | Sequence[int] | None = None,
+        scale: Literal["both", "model", "raw"] = "both",
+        conditions: Mapping | Sequence[Mapping] | None = None,
+        context: Mapping | pd.DataFrame | None = None,
+        variable_keys: Sequence[str] | None = None,
+        num_steps: int | None = None,
+        time_step: int | None = None,
+        time_aggregation: Callable | None = None,
+        **kwargs,
+    ):
+        """Compare time-invariant posteriors across datasets in a forest plot.
+
+        With ``aggregation=None``, each parameter has a panel whose rows are
+        the selected datasets. A callable aggregates those datasets into one
+        panel, with parameters on the y-axis.
+
+        Named draws use ``scale="both"`` by default, with separate raw and
+        implied panels from the same draws; identical views share one panel.
+        Latent links and formulas are evaluated at fixed ``conditions`` using
+        reference ``context``. Condition legends are hidden. ``variable_keys`` can select resolved targets. Time-varying
+        targets require an explicit zero-based ``time_step`` or a callable
+        ``time_aggregation(values, axis=-1)``; trial and posterior uncertainty
+        are never silently pooled. ``num_steps`` sets a reconstruction horizon
+        when there are no posterior trajectories. Set ``scale="raw"`` or
+        ``scale="model"`` to select one view. Array inputs are already on their plotted scale.
+
+        Parameters
+        ----------
+        estimates : Mapping[str, np.ndarray] or np.ndarray
+            Posterior samples. Mapping values must have shape
+            ``(num_datasets, num_post_samples, num_steps, num_components)``;
+            array input must have shape ``(num_datasets, num_post_samples,
+            num_steps, num_parameters)``.
+        targets : Mapping[str, np.ndarray], np.ndarray, or None, optional, default: None
+            Time-invariant ground-truth values matching ``estimates``. If
+            provided, targets are drawn with black cross markers.
+        aggregation : callable or None, optional, default: None
+            Reduction applied across selected datasets, called as
+            ``aggregation(values, axis=0)``. ``None`` retains a row per
+            dataset; a callable produces one aggregate panel.
+        uncertainty_fun : {"std", "ci", "mad", "hdi"}, callable, or None, optional, default: "hdi"
+            Aggregate uncertainty method. Named methods display outer and
+            inner bands, a callable returns one ``(lower, upper)`` interval,
+            and ``None`` omits uncertainty. Ignored without aggregation.
+        data_idx : int, sequence of int, or None, optional, default: None
+            Dataset or datasets to include. ``None`` includes every dataset.
+        **kwargs
+            Additional arguments forwarded to :func:`plot_forest`, including
+            ``interval_probabilities``, layout, color, and font options.
+
+        Returns
+        -------
+        fig : plt.Figure
+            Forest-plot figure.
+
+        Raises
+        ------
+        ValueError
+            If interval probabilities, aggregation output, shapes, or
+            forwarded layout arguments are invalid.
+
+        Notes
+        -----
+        Parameter keys and mixture-component names are obtained from the
+        workflow's model. In non-aggregate mode, samples are flattened and
+        resampled independently within each dataset before interval
+        calculation.
+        """
+        if scale not in {"both", "model", "raw"}:
+            raise ValueError("scale must be 'both', 'model', or 'raw'.")
+        condition_names = {}
+        if scale != "raw" and isinstance(estimates, Mapping) and isinstance(self.model, Model):
+            selected_names = invariant_parameter_names(self.model, variable_keys)
+            estimates, targets, condition_names, variable_keys = posterior_invariant_samples(
+                self.model,
+                estimates,
+                targets,
+                variable_keys=variable_keys,
+                conditions=conditions,
+                context=context,
+                num_steps=num_steps,
+                time_step=time_step,
+                time_aggregation=time_aggregation,
+                scale=scale,
+            )
+            if scale == "both" and "variable_names" in kwargs:
+                kwargs["variable_names"] = parameter_display_names(
+                    selected_names, kwargs["variable_names"], variable_keys
+                )
+        elif variable_keys is None:
+            variable_keys = self.model.hyper_keys + self.model.shared_keys
+        mixture_names = {
+            name: param.names for name, param in self.model.prior.params.items() if hasattr(param, "names")
+        }
+        mixture_names.update(condition_names)
+
+        return plot_forest(
+            estimates=estimates,
+            targets=targets,
+            variable_keys=variable_keys,
+            mixture_names=mixture_names,
+            aggregation=aggregation,
+            uncertainty_fun=uncertainty_fun,
+            data_idx=data_idx,
+            **kwargs,
+        )
 
     def _load_history(self) -> None:
         """Load persisted training history from `checkpoint_filepath`, if present.
@@ -176,13 +1677,14 @@ class Workflow:
             raise TypeError(f"data must be a mapping of named arrays, got {type(data)}.")
 
         conditions = dict(data)
-        if self.simulator is None:
+        if self.model is None:
             return conditions
 
-        data_keys = self.simulator.data_keys
-        missing_keys = [key for key in data_keys if key not in conditions]
+        data_keys = self.model.data_keys
+        summary_data_keys = getattr(self.model, "summary_keys", data_keys)
+        missing_keys = [key for key in summary_data_keys if key not in conditions]
         if missing_keys:
-            raise KeyError(f"Missing observed data keys {missing_keys!r}. Expected keys: {data_keys!r}.")
+            raise KeyError(f"Missing summary keys {missing_keys!r}. Expected keys: {summary_data_keys!r}.")
 
         first = conditions[data_keys[0]]
         num_datasets = first.shape[0]
@@ -197,9 +1699,14 @@ class Workflow:
                 f"'time_steps' must have shape {(num_datasets, num_steps)}, got {conditions['time_steps'].shape}."
             )
 
-        if getattr(self.simulator, "has_mask", False):
+        for key in summary_data_keys:
+            value = np.asarray(conditions[key])
+            if value.ndim < 2 or value.shape[:2] != (num_datasets, num_steps):
+                raise ValueError(f"'{key}' must have leading shape {(num_datasets, num_steps)}, got {value.shape}.")
+
+        if getattr(self.model, "has_mask", False):
             if "missing_mask" not in conditions:
-                log_warning("No missing_mask provided although simulator has missingness; assuming no missings.")
+                log_warning("No missing_mask provided although model has missingness; assuming no missings.")
                 conditions["missing_mask"] = np.zeros((num_datasets, num_steps), dtype=bool)
 
             elif conditions["missing_mask"].shape != (num_datasets, num_steps):
@@ -208,807 +1715,91 @@ class Workflow:
                     f"got {conditions['missing_mask'].shape}."
                 )
 
-        remaining_keys = data_keys + ["missing_mask", "time_steps"]
+        remaining_keys = summary_data_keys + ["missing_mask", "time_steps"]
         conditions = {k: v for k, v in conditions.items() if k in remaining_keys}
 
         return conditions
 
-    def fit_offline(
-        self, data, validation_data, epochs: int = 100, batch_size: int = 32, save_history: bool = True, **kwargs
-    ) -> keras.callbacks.History:
-        """Train the approximator on a fixed, pre-simulated dataset.
-
-        Parameters
-        ----------
-        data            : Any
-            Training data, in the format expected by
-            `bf.BasicWorkflow.fit_offline`.
-        validation_data : Any
-            Validation data, in the same format as `data`.
-        epochs          : int, optional, default: 100
-            Number of training epochs.
-        batch_size      : int, optional, default: 32
-            Training batch size.
-        save_history    : bool, optional, default: True
-            If True, merge this run's history into `self.history` and
-            persist it to `checkpoint_filepath` (if set).
-        **kwargs
-            Forwarded to `bf.BasicWorkflow.fit_offline`.
-
-        Returns
-        -------
-        history : keras.callbacks.History - the training history for
-            this run
-        """
-        history = self.workflow.fit_offline(
-            data=data, epochs=epochs, batch_size=batch_size, validation_data=validation_data, **kwargs
-        )
-
-        if save_history:
-            self._save_history(history)
-
-        return history
-
-    def fit_online(
+    def _prepare_time_varying_at_steps(
         self,
-        num_steps: int,
-        epochs: int = 100,
-        num_batches_per_epoch: int = 100,
-        batch_size: int = 32,
-        save_history: bool = True,
-        **kwargs,
-    ) -> keras.callbacks.History:
-        """Train the approximator by simulating data on the fly.
-
-        Temporarily binds `self.simulator.sample` to always draw
-        trajectories of length `num_steps` with `tile_to_steps=True`,
-        then restores the original method afterward (even if training
-        raises).
-
-        Parameters
-        ----------
-        num_steps             : int
-            Number of time steps per simulated trajectory during
-            training.
-        epochs                : int, optional, default: 100
-            Number of training epochs.
-        num_batches_per_epoch : int, optional, default: 100
-            Number of simulated batches per epoch.
-        batch_size            : int, optional, default: 32
-            Training batch size.
-        save_history          : bool, optional, default: True
-            If True, merge this run's history into `self.history` and
-            persist it to `checkpoint_filepath` (if set).
-        **kwargs
-            Forwarded to `bf.BasicWorkflow.fit_online`.
-
-        Returns
-        -------
-        history : keras.callbacks.History - the training history for
-            this run
-        """
-        original_sample = self.simulator.sample
-        self.simulator.sample = functools.partial(original_sample, num_steps=num_steps, tile_to_steps=True)
-        try:
-            history = self.workflow.fit_online(
-                epochs=epochs, num_batches_per_epoch=num_batches_per_epoch, batch_size=batch_size, **kwargs
-            )
-        finally:
-            self.simulator.sample = original_sample
-
-        if save_history:
-            self._save_history(history)
-
-        return history
-
-    @property
-    def history(self):
-        """keras.callbacks.History or None - the workflow's training history."""
-        return self.workflow.history
-
-    @property
-    def approximator(self):
-        """The underlying trained BayesFlow approximator object.
-
-        Reads through to `self.workflow.approximator` by default (kept in
-        sync automatically by `bf.BasicWorkflow` during training), but can
-        be explicitly assigned - e.g. when restoring a checkpoint from
-        disk in `__init__`.
-        """
-        return self.workflow.approximator
-
-    @approximator.setter
-    def approximator(self, value):
-        self.workflow.approximator = value
-
-    def sample(
-        self,
-        data: dict[str, np.ndarray],
-        num_samples: int = 500,
-        batch_size: int = 4,
-        **kwargs,
-    ) -> dict[str, np.ndarray]:
-        """Run inference on observed data.
-
-        Parameters
-        ----------
-        data                 : dict of np.ndarray
-            Observed data to condition on, keyed by the simulator's
-            named observation variables. Each value should have shape
-            (num_datasets, num_steps). If `time_steps` is omitted, it is
-            generated automatically. If the simulator was configured with
-            missingness and `missing_mask` is omitted, an all-observed
-            mask is generated automatically.
-        num_samples          : int, optional, default: 500
-            Number of posterior samples per dataset.
-        batch_size : int, optional, default: 4
-            Datasets per GPU batch, to avoid out-of-memory errors.
-        **kwargs
-            Forwarded to `self.approximator.sample`.
-
-        Returns
-        -------
-        samples : dict of {param_name: np.ndarray} - posterior samples
-            per parameter
-        """
-        conditions = self._prepare_conditions(data)
-        samples = self.approximator.sample(
-            conditions=conditions,
-            num_samples=num_samples,
-            batch_size=batch_size,
-            **kwargs,
-        )
-        return samples
-
-    def resimulate_posterior(
-        self,
-        posterior_samples: Mapping[str, np.ndarray],
-        num_sims: int = 10,
-        rng=None,
-    ) -> dict[str, np.ndarray]:
-        """Generate posterior predictive simulations from posterior parameter draws.
-
-        Parameters
-        ----------
-        posterior_samples : dict of np.ndarray
-            Posterior samples returned by `self.sample`. Each array
-            should have shape (batch_size, num_samples, num_steps, dim)
-            or (batch_size, num_samples, num_steps).
-        num_sims          : int, optional, default: 10
-            Number of posterior predictive trajectories to simulate
-            per dataset.
-        rng               : int or np.random.Generator or None, optional, default: None
-            Random seed or generator for sampling posterior indices.
-
-        Returns
-        -------
-        sim_data : dict of np.ndarray
-            Named simulated variables. Each value has shape
-            (batch_size, num_sims, num_steps).
-
-        Raises
-        ------
-        ValueError
-            If `posterior_samples` is empty, if a posterior array has
-            fewer than 3 dimensions, if a parameter's batch size
-            doesn't match the others, if a parameter has an unsupported
-            number of dimensions, or if a parameter's shape can't be
-            reshaped to collapse the sample axis into the batch axis.
-        """
-        rng = np.random.default_rng(rng)
-
-        if not posterior_samples:
-            raise ValueError("posterior_samples must be a non-empty dict.")
-
-        # Infer shape from one posterior parameter
-        example = next(iter(posterior_samples.values()))
-        if example.ndim < 3:
-            raise ValueError(
-                "Posterior sample arrays must have at least 3 dimensions: (batch_size, num_samples, num_steps, ...)."
-            )
-
-        batch_size, num_draws = example.shape[:2]
-        time_varying_keys = set(self.simulator.local_keys) | set(self.simulator.deterministic_keys)
-        time_varying_arrays = [
-            np.asarray(value) for name, value in posterior_samples.items() if name in time_varying_keys
-        ]
-        num_steps = time_varying_arrays[0].shape[2] if time_varying_arrays else example.shape[2]
-
-        sample_idx = rng.integers(num_draws, size=(batch_size, num_sims))
-
-        simulation_params = {}
-        fixed_params = self.simulator.get_fixed_params()
-
-        for name, arr in posterior_samples.items():
-            arr = np.asarray(arr)
-            if arr.shape[0] != batch_size:
-                raise ValueError(
-                    f"Posterior parameter '{name}' has batch size {arr.shape[0]} but expected {batch_size}."
-                )
-
-            if arr.ndim == 3:
-                selected = arr[np.arange(batch_size)[:, None], sample_idx, :]
-                # Posterior samples for shared/hyperparameters have a
-                # singleton trailing time axis, whereas local and
-                # deterministic trajectories have one entry per step.
-                simulation_params[name] = selected[..., 0] if name not in time_varying_keys else selected
-            elif arr.ndim == 4:
-                selected = arr[
-                    np.arange(batch_size)[:, None, None],
-                    sample_idx[:, :, None],
-                    np.arange(num_steps)[None, None, :],
-                    :,
-                ]
-                if name not in time_varying_keys:
-                    # Some adapters tile shared parameters over time and/or
-                    # retain a singleton feature axis. Only one value per
-                    # posterior draw is needed for simulation.
-                    while selected.ndim > 2:
-                        selected = selected[..., 0]
-                simulation_params[name] = selected
-            else:
-                raise ValueError(
-                    f"Unexpected posterior shape for '{name}': {arr.shape}. "
-                    "Expected (batch, samples, steps, dim) or (batch, samples, steps)."
-                )
-
-        # Collapse sample axis into batch axis for simulation
-        expanded_params = {}
-        for name, arr in simulation_params.items():
-            if name not in time_varying_keys:
-                expanded_params[name] = arr.reshape(batch_size * num_sims)
-            elif arr.ndim == 2:
-                expanded_params[name] = arr.reshape(batch_size * num_sims, num_steps)
-            elif arr.ndim == 3:
-                if arr.shape[2] == num_steps:
-                    expanded_params[name] = arr.reshape(batch_size * num_sims, num_steps)
-                else:
-                    expanded_params[name] = arr.reshape(batch_size * num_sims, num_steps, arr.shape[2])
-            elif arr.ndim == 4:
-                expanded_params[name] = arr.reshape(batch_size * num_sims, num_steps, arr.shape[3])
-            else:
-                raise ValueError(f"Cannot reshape posterior parameter '{name}' with shape {arr.shape}.")
-
-        for name, value in fixed_params.items():
-            expanded_params[name] = np.broadcast_to(np.asarray(value), (batch_size * num_sims,))
-
-        # Deterministic transitions are simulated but are intentionally not
-        # returned as inferred trajectories. Delegate reconstruction to each
-        # transition, keeping transition-specific hyperparameters out of the
-        # workflow implementation.
-        for name in self.simulator.deterministic_keys:
-            if name in expanded_params:
-                continue
-            transition = self.simulator.prior.params[name]
-            prefix = f"{name}_"
-            transition_params = {
-                key[len(prefix) :]: value for key, value in expanded_params.items() if key.startswith(prefix)
-            }
-            transition_fixed = transition.sample(batch_size=1, num_steps=1).get("fixed_params", {})
-            transition_params.update(
-                {key: value for key, value in transition_fixed.items() if key not in transition_params}
-            )
-            expanded_params[name] = transition.sample_from_parameters(
-                transition_params,
-                batch_size=batch_size * num_sims,
-                num_steps=num_steps,
-            )
-
-        raw_sim = self.simulator.simulate_from_parameters(
-            expanded_params,
-            batch_size=batch_size * num_sims,
-            num_steps=num_steps,
-        )
-
-        return {name: value.reshape(batch_size, num_sims, num_steps) for name, value in raw_sim.items()}
-
-    def plot_history(self, history):
-        """Plot training loss curves.
-
-        Parameters
-        ----------
-        history : keras.callbacks.History
-            Training history, e.g. from `fit_offline`, `fit_online`, or
-            `self.history`.
-
-        Returns
-        -------
-        fig : plt.Figure - the loss curve figure
-        """
-        return bf.diagnostics.plots.loss(history, train_color="#822621")
-
-    def verify_time_varying(
-        self,
-        targets: dict,
-        estimates: dict,
-        variable_keys: list | None = None,
-        variable_names: list | None = None,
-        aggregation: Callable = np.median,
-        **kwargs,
-    ):
-        """Plot recovery diagnostics over steps for time-varying parameters.
-
-        Parameters
-        ----------
-        targets        : dict
-            Ground-truth local parameter trajectories, keyed by
-            parameter name; each value has shape
-            (batch_size, num_steps, 1).
-        estimates      : dict
-            Posterior estimates for the same parameters, keyed by name;
-            each value has shape
-            (batch_size, num_post_samples, num_steps, 1).
-        variable_keys  : list of str or None, optional, default: None
-            Which parameters to select and plot, and in what order.
-            Defaults to `self.simulator.local_keys` when not supplied.
-        variable_names : list of str or None, optional, default: None
-            Display names for the plotted columns, in the same order as
-            `variable_keys`. Defaults to `variable_keys` when not
-            supplied.
-        aggregation    : callable, optional, default: np.median
-            Aggregation function forwarded to
-            `plot_time_varying_verification`, used to collapse each
-            metric across simulations. Typically np.mean or np.median.
-        **kwargs
-            Additional keyword arguments forwarded to
-            `plot_time_varying_verification` (e.g. `colors`,
-            `title_fontsize`).
-
-        Returns
-        -------
-        fig : plt.Figure - the figure instance for optional saving
-        """
-        local_keys = self.simulator.local_keys
-
-        if variable_keys is None:
-            variable_keys = local_keys
-
-        targets_squeezed = {k: targets[k][..., 0] for k in variable_keys}
-        estimates_squeezed = {k: estimates[k][..., 0] for k in variable_keys}
-
-        return plot_time_varying_verification(
-            estimates=estimates_squeezed,
-            targets=targets_squeezed,
-            variable_keys=variable_keys,
-            variable_names=variable_names,
-            aggregation=aggregation,
-            **kwargs,
-        )
-
-    def verify_time_invariant(
-        self,
-        targets: Mapping[str, np.ndarray] | np.ndarray,
-        estimates: Mapping[str, np.ndarray] | np.ndarray,
+        targets: Mapping[str, np.ndarray],
+        estimates: Mapping[str, np.ndarray],
+        time_steps: int | Sequence[int],
         variable_keys: Sequence[str] | None = None,
         variable_names: Sequence[str] | None = None,
-        **kwargs,
-    ):
-        """Plot time-invariant parameter recovery and calibration.
+    ) -> tuple[np.ndarray, np.ndarray, list[str]]:
+        """Select local parameters at specific zero-based time-step indices."""
+        keys = list(variable_keys) if variable_keys is not None else list(self.model.local_keys)
+        if not keys:
+            raise ValueError("No time-varying parameters found.")
 
-        Parameters
-        ----------
-        targets        : Mapping[str, np.ndarray] or np.ndarray
-            If a dict, mapping from parameter name to an np.ndarray of
-            shape (num_sims, dim). If an array, the fully-prepared target
-            array of shape (num_sims, num_params) directly (e.g. mixture
-            components already expanded).
-        estimates      : Mapping[str, np.ndarray] or np.ndarray
-            If a dict, mapping from parameter name to an np.ndarray of
-            shape (num_sims, num_samples, steps, dim). If an array, the
-            fully-prepared estimate array of shape
-            (num_sims, num_pooled_samples, num_params) directly. Must use
-            the same input type (dict or array) as `targets`.
-        variable_keys  : sequence of str or None, optional, default: None
-            Which time-invariant parameters to include, and in what
-            order, when `targets`/`estimates` are dicts. Defaults to
-            `self.simulator.hyper_keys + self.simulator.shared_keys` when
-            not supplied. Mixture parameters (dim > 1) are expanded into
-            one column per component regardless of this selection.
-            Ignored for array input.
-        variable_names : sequence of str or None, optional, default: None
-            Display names for the final, expanded columns. For dict
-            input, must match the number of expanded columns (not
-            `len(variable_keys)`) and defaults to the auto-derived
-            per-component names. For array input, defaults to `param_0`,
-            `param_1`, ...
-        **kwargs
-            Forwarded to both `plot_recovery` and `plot_calibration` (e.g.
-            `label_fontsize`, `title_fontsize`, `tick_fontsize`). Note
-            `plot_recovery` takes `color` while `plot_calibration` takes
-            `rank_ecdf_color` - pass whichever applies, or both, via
-            `**kwargs`.
-
-        Returns
-        -------
-        figs : tuple - `(fig_recovery, fig_calibration)`, the recovery
-            and calibration diagnostic figures
-
-        Raises
-        ------
-        ValueError
-            If no time-invariant parameters are found for dict input.
-        """
-        if not isinstance(estimates, Mapping):
-            fig_recovery = plot_recovery(
-                estimates=estimates,
-                targets=targets,
-                variable_keys=variable_keys,
-                variable_names=variable_names,
-                **kwargs,
-            )
-            fig_calibration = plot_calibration(
-                estimates=estimates,
-                targets=targets,
-                variable_keys=variable_keys,
-                variable_names=variable_names,
-                **kwargs,
-            )
-            return fig_recovery, fig_calibration
-
-        if variable_keys is None:
-            variable_keys = self.simulator.hyper_keys + self.simulator.shared_keys
-        if not variable_keys:
-            raise ValueError("No time-invariant parameters found.")
-        missing = [k for k in variable_keys if k not in estimates or k not in targets]
+        missing = [key for key in keys if key not in estimates or key not in targets]
         if missing:
             raise ValueError(f"variable_keys not found in both estimates and targets: {missing}")
 
-        target_list = []
-        estimate_list = []
-        expanded_names = []
+        names = list(variable_names) if variable_names is not None else keys
+        if len(names) != len(keys):
+            raise ValueError(f"variable_names has {len(names)} entries but there are {len(keys)} variables.")
 
-        for k in variable_keys:
-            t_arr = targets[k]
-            e_arr = estimates[k]
-            B, S, T, dim = e_arr.shape
-
-            e_agg = e_arr.reshape(B, S * T, dim)
-
-            if dim > 1:
-                param_key = k.split("_mixture_weights")[0]
-                mixture_obj = self.simulator.prior.params.get(param_key)
-                if hasattr(mixture_obj, "names") and len(mixture_obj.names) == dim:
-                    comp_names = [f"{k}_{n}" for n in mixture_obj.names]
-                else:
-                    comp_names = [f"{k}_{i}" for i in range(dim)]
-
-                for i, name in enumerate(comp_names):
-                    target_list.append(t_arr[:, i : i + 1])
-                    estimate_list.append(e_agg[:, :, i : i + 1])
-                    expanded_names.append(name)
-            else:
-                target_list.append(t_arr)
-                estimate_list.append(e_agg)
-                expanded_names.append(k)
-
-        target_arr = np.concatenate(target_list, axis=-1)
-        estimate_arr = np.concatenate(estimate_list, axis=-1)
-
-        if variable_names is not None:
-            if len(variable_names) != len(expanded_names):
+        target_arrays = {}
+        estimate_arrays = {}
+        expected_shape = None
+        for key in keys:
+            target = np.asarray(targets[key])
+            estimate = np.asarray(estimates[key])
+            if target.ndim != 3 or target.shape[-1] != 1:
+                raise ValueError(f"Target '{key}' must have shape (num_datasets, num_steps, 1), got {target.shape}.")
+            if estimate.ndim != 4 or estimate.shape[-1] != 1:
                 raise ValueError(
-                    f"variable_names has {len(variable_names)} entries but there are "
-                    f"{len(expanded_names)} expanded columns."
+                    f"Estimate '{key}' must have shape (num_datasets, num_samples, num_steps, 1), got {estimate.shape}."
                 )
-            expanded_names = list(variable_names)
 
-        fig_recovery = plot_recovery(
-            estimates=estimate_arr,
-            targets=target_arr,
-            variable_names=expanded_names,
-            **kwargs,
-        )
-
-        fig_calibration = plot_calibration(
-            estimates=estimate_arr,
-            targets=target_arr,
-            variable_names=expanded_names,
-            **kwargs,
-        )
-
-        return fig_recovery, fig_calibration
-
-    def plot_time_varying_posterior(
-        self,
-        estimates: Mapping[str, np.ndarray] | np.ndarray,
-        targets: Mapping[str, np.ndarray] | np.ndarray | None = None,
-        variable_keys: Sequence[str] | None = None,
-        variable_names: Sequence[str] | None = None,
-        aggregation: Callable | None = None,
-        aggregate_strategy: Literal["full_uncertainty", "no_epistemic"] = "full_uncertainty",
-        uncertainty_fun: Literal["std", "95ci", "mad", "95hdi"] | Callable | None = "95ci",
-        smoothing: Literal["sma", "ema"] | None = None,
-        smoothing_window: int = 5,
-        marginal: bool = True,
-        **kwargs,
-    ):
-        """Plot time-varying posterior diagnostics.
-
-        Parameters
-        ----------
-        estimates          : Mapping[str, np.ndarray] or np.ndarray
-            Posterior samples. If a dict, values of shape
-            (num_datasets, num_post_samples, num_steps, 1), keyed by
-            variable. If an array, shape
-            (num_datasets, num_post_samples, num_steps, num_params)
-            directly.
-        targets            : Mapping[str, np.ndarray], np.ndarray, or None, optional, default: None
-            Ground-truth trajectories, matching the input type of
-            `estimates`. If a dict, values of shape
-            (num_datasets, num_steps, 1). If an array, shape
-            (num_datasets, num_steps, num_params) directly. If given,
-            drawn as a black dashed line on top of each panel: the raw
-            per-dataset trajectory when `aggregation` is None, or
-            aggregated across datasets (using `aggregation`) when
-            `aggregation` is not None.
-        variable_keys      : sequence of str or None, optional, default: None
-            Which variables to select and plot, and in what order, when
-            `estimates`/`targets` are dicts. Defaults to
-            `self.simulator.local_keys` when not supplied. Ignored for
-            array input.
-        variable_names     : sequence of str or None, optional, default: None
-            Display names (used for panel labels/titles), in the same
-            order as `variable_keys` (or the array's last axis). Defaults
-            to `variable_keys` for dict input, or `param_0`, `param_1`,
-            ... for array input.
-        aggregation        : callable or None, optional, default: None
-            None: one panel per (param, dataset).
-            callable: one panel per param, aggregated across datasets.
-            Called as `aggregation(trajectories, axis=0)` and must return
-            a (T,) center. The same function aggregates `targets` across
-            datasets when both `targets` and `aggregation` are given.
-        aggregate_strategy : {"full_uncertainty", "no_epistemic"}, optional, default: "full_uncertainty"
-            Only used when `aggregation` is not None.
-            "full_uncertainty": flatten datasets and posterior samples,
-            then summarize.
-            "no_epistemic": median across posterior samples per dataset
-            first, then aggregate.
-        uncertainty_fun    : {"std", "95ci", "mad", "95hdi"} or callable or None, optional, default: "95ci"
-            Band drawn around the center line. A callable receives (N, T)
-            trajectories and must return `(lo, hi)`, each of shape (T,).
-        smoothing          : {"sma", "ema"} or None, optional, default: None
-            Applied to each trajectory before computing the center,
-            uncertainty, and marginal.
-        smoothing_window   : int, optional, default: 5
-            Window size for `sma`, or span parameter for `ema`.
-        marginal           : bool, optional, default: True
-            Attach a marginal KDE panel to the right of each trajectory
-            axis. The KDE is computed on the same array used for the
-            uncertainty band.
-        **kwargs
-            Forwarded to `plot_time_varying_posterior` (e.g. `num_cols`,
-            `color`, `alpha`, `title_fontsize`, `label_fontsize`,
-            `tick_fontsize`, `figsize`).
-
-        Returns
-        -------
-        fig : plt.Figure - the figure instance for optional saving
-        """
-        if variable_keys is None:
-            variable_keys = self.simulator.local_keys
-
-        return plot_time_varying_posterior(
-            estimates=estimates,
-            targets=targets,
-            variable_keys=variable_keys,
-            variable_names=variable_names,
-            aggregation=aggregation,
-            aggregate_strategy=aggregate_strategy,
-            uncertainty_fun=uncertainty_fun,
-            smoothing=smoothing,
-            smoothing_window=smoothing_window,
-            marginal=marginal,
-            **kwargs,
-        )
-
-    def plot_time_invariant_posterior(
-        self,
-        estimates: Mapping[str, np.ndarray] | np.ndarray,
-        targets: Mapping[str, np.ndarray] | np.ndarray | None = None,
-        variable_keys: Sequence[str] | None = None,
-        variable_names: Sequence[str] | None = None,
-        aggregation: Callable | None = None,
-        mixture_names: dict | None = None,
-        **kwargs,
-    ):
-        """Plot time-invariant posterior diagnostics.
-
-        Parameters
-        ----------
-        estimates      : Mapping[str, np.ndarray] or np.ndarray
-            Posterior samples. If a dict, values of shape
-            (num_datasets, num_post_samples, num_steps, num_components),
-            keyed by variable. If an array, shape
-            (num_datasets, num_post_samples, num_steps, num_params)
-            directly.
-        targets        : Mapping[str, np.ndarray], np.ndarray, or None, optional, default: None
-            Ground-truth values, matching the input type of `estimates`.
-            If given, drawn as black dashed vertical lines - per dataset
-            when `aggregation` is None, or collapsed with `aggregation`
-            into a single line per panel otherwise.
-        variable_keys  : sequence of str or None, optional, default: None
-            Which variables to select and plot, and in what order, when
-            `estimates` is a dict. Defaults to
-            `self.simulator.hyper_keys + self.simulator.shared_keys` when
-            not supplied. Ignored for array input.
-        variable_names : sequence of str or None, optional, default: None
-            Display names for the plotted panels. Defaults to
-            `variable_keys` (dict input) or `param_0`, `param_1`, ...
-            (array input).
-        aggregation    : callable or None, optional, default: None
-            Controls both the posterior layout and the target summary. If
-            None: one panel per (dataset, parameter) pair. If a callable
-            (e.g. np.mean, np.median): posterior samples (and `targets`,
-            if given) are pooled/aggregated across datasets into one
-            panel per parameter.
-        mixture_names  : dict or None, optional, default: None
-            Mapping from parameter name to a list of component names.
-            Defaults to `self.simulator.prior._mixture_names()` when not
-            supplied.
-        **kwargs
-            Forwarded to `plot_time_invariant_posterior` (e.g.
-            `num_cols`, `color`, `title_fontsize`, `label_fontsize`,
-            `tick_fontsize`, `figsize`).
-
-        Returns
-        -------
-        fig : plt.Figure - the figure instance for optional saving
-        """
-        if variable_keys is None:
-            variable_keys = self.simulator.hyper_keys + self.simulator.shared_keys
-        if mixture_names is None:
-            mixture_names = self.simulator.prior._mixture_names()
-
-        return plot_time_invariant_posterior(
-            estimates=estimates,
-            targets=targets,
-            variable_keys=variable_keys,
-            variable_names=variable_names,
-            aggregation=aggregation,
-            mixture_names=mixture_names,
-            **kwargs,
-        )
-
-    def df_to_dict(
-        self,
-        df: pd.DataFrame,
-        id_col: str,
-        data_mapping: Mapping[str, str],
-        missing_value: int | float | None = None,
-        time_col: str | None = None,
-    ) -> dict[str, np.ndarray]:
-        """Convert a long-format DataFrame into the model's dict-of-arrays format.
-
-        Groups `df` by `id_col` and reshapes the columns named in
-        `data_mapping` into arrays of shape (batch_size, num_steps).
-
-        If `time_col` is given, it must contain discrete integer-like
-        values. The actual labels may be negative or non-contiguous; they
-        are normalized to positions `1..num_steps` in sorted time order.
-        Otherwise, rows are placed by order of appearance within each
-        `id_col` group. Missing or padded positions are flagged in
-        `"missing_mask"` and filled with the simulator's missing-value
-        convention when one exists.
-
-        Parameters
-        ----------
-        df           : pd.DataFrame
-            Long-format data with one row per (dataset, step). Must contain
-            `id_col`, `time_col` (if given), and every key in
-            `data_mapping`.
-        id_col       : str
-            Name of the column in `df` identifying which dataset/sequence
-            each row belongs to. Rows are grouped by this column, in order
-            of first appearance, to form the batch dimension.
-        data_mapping : Mapping[str, str]
-            Maps a column name in `df` to the corresponding key expected by
-            the generative model, e.g. `{"rt": "response_time", "correct":
-            "choice"}`. The set of values (not keys) must exactly match
-            `self.simulator.data_keys`.
-        missing_value : int or float
-            Sentinel value marking a missing observation, and used to
-            initialize/pad positions with no corresponding row.
-        time_col     : str or None, optional, default: None
-            Name of the column in `df` giving each row's discrete time
-            label. If None, rows are placed by order of appearance within
-            their `id_col` group instead.
-
-        Returns
-        -------
-        data : dict of np.ndarray
-            One entry per generative-model data key, each of shape
-            (batch_size, num_steps), plus `"missing_mask"` (1 where any
-            mapped column equals `missing_value` at that step, 0 otherwise)
-            and `"time_steps"` (each row equal to `1..num_steps`).
-        """
-        simulator = getattr(self, "simulator", None)
-        if simulator is None:
-            raise AttributeError("df_to_dict needs a Workflow with a simulator.")
-
-        required_cols = [id_col, *data_mapping]
-        if time_col is not None:
-            required_cols.append(time_col)
-        missing_cols = [col for col in required_cols if col not in df.columns]
-
-        if missing_cols:
-            raise KeyError(f"df is missing required column(s): {missing_cols}")
-        if df.empty:
-            raise ValueError("df_to_dict requires at least one row.")
-
-        mapped_keys = list(data_mapping.values())
-        expected_keys = list(simulator.data_keys)
-        if sorted(mapped_keys) != sorted(expected_keys):
-            raise ValueError(
-                f"data_mapping values {sorted(mapped_keys)!r} do not match "
-                f"simulator.data_keys {sorted(expected_keys)!r}."
+            shape = (
+                target.shape[0],
+                estimate.shape[1],
+                target.shape[1],
             )
+            if estimate.shape[0] != shape[0] or estimate.shape[2] != shape[2]:
+                raise ValueError(
+                    f"Estimate and target shapes for '{key}' are inconsistent: {estimate.shape} and {target.shape}."
+                )
+            if expected_shape is not None and shape != expected_shape:
+                raise ValueError("All selected variables must have matching dataset, sample, and time-step dimensions.")
+            expected_shape = shape
+            target_arrays[key] = target
+            estimate_arrays[key] = estimate
 
-        if missing_value is None:
-            missing_value = -1
-
-        groups = df.groupby(id_col, sort=False)
-        dataset_ids = list(groups.groups.keys())
-
-        if time_col is not None:
-            time_float = pd.to_numeric(df[time_col], errors="coerce").to_numpy(dtype=float)
-            if not np.all(np.isfinite(time_float)) or not np.all(np.isclose(time_float, np.rint(time_float))):
-                raise ValueError(f"time_col '{time_col}' must contain discrete integer-like values.")
-
-            # Map arbitrary discrete labels, including negatives, onto dense columns.
-            time_values = pd.Series(np.rint(time_float).astype(np.int64), index=df.index)
-            time_lookup = {value: idx for idx, value in enumerate(sorted(time_values.unique()))}
-            num_steps = len(time_lookup)
+        num_steps = expected_shape[2]
+        if isinstance(time_steps, Integral) and not isinstance(time_steps, bool):
+            selected_steps = [int(time_steps)]
+        elif isinstance(time_steps, Sequence) and not isinstance(
+            time_steps,
+            (str, bytes),
+        ):
+            selected_steps = list(time_steps)
+            if not selected_steps:
+                raise ValueError("time_steps must contain at least one index.")
+            if any(not isinstance(step, Integral) or isinstance(step, bool) for step in selected_steps):
+                raise TypeError("time_steps must be an int or a sequence of ints.")
+            selected_steps = [int(step) for step in selected_steps]
         else:
-            time_values = None
-            time_lookup = None
-            num_steps = int(groups.size().max())
+            raise TypeError("time_steps must be an int or a sequence of ints.")
 
-        batch_size = len(dataset_ids)
-        data = {data_key: np.full((batch_size, num_steps), missing_value, dtype=float) for data_key in expected_keys}
+        normalized_steps = [step + num_steps if step < 0 else step for step in selected_steps]
+        invalid = [step for step in normalized_steps if step < 0 or step >= num_steps]
+        if invalid:
+            raise ValueError(f"time_steps contains out-of-range index {invalid[0]} for {num_steps} steps.")
 
-        def _col_idx(group: pd.DataFrame, dataset_id) -> np.ndarray:
-            if time_col is None:
-                return np.arange(len(group))
-            idx = np.array([time_lookup[value] for value in time_values.loc[group.index]], dtype=int)
-            if len(np.unique(idx)) != len(idx):
-                raise ValueError(f"Duplicate '{time_col}' values found within id '{dataset_id}'.")
-            return idx
+        target_columns = []
+        estimate_columns = []
+        resolved_names = []
+        show_steps = len(normalized_steps) > 1
+        for step in normalized_steps:
+            for key, name in zip(keys, names):
+                target_columns.append(target_arrays[key][:, step, 0])
+                estimate_columns.append(estimate_arrays[key][:, :, step, 0])
+                resolved_names.append(f"{name} (step {step})" if show_steps else name)
 
-        def _as_float_values(group: pd.DataFrame, col: str) -> np.ndarray:
-            try:
-                return group[col].to_numpy(dtype=float)
-            except (TypeError, ValueError) as exc:
-                raise ValueError(f"Column '{col}' must be numeric.") from exc
-
-        for i, dataset_id in enumerate(dataset_ids):
-            group = groups.get_group(dataset_id)
-            col_idx = _col_idx(group, dataset_id)
-            for col, data_key in data_mapping.items():
-                data[data_key][i, col_idx] = _as_float_values(group, col)
-
-        missing_mask = np.zeros((batch_size, num_steps), dtype=bool)
-        for data_key in expected_keys:
-            missing_mask |= pd.isna(data[data_key])
-            if not pd.isna(missing_value):
-                missing_mask |= data[data_key] == missing_value
-
-        model_missing_value = getattr(getattr(simulator, "missing", None), "missing_value", missing_value)
-
-        def _missing_fill(data_key: str, index: int):
-            if isinstance(model_missing_value, Mapping):
-                return model_missing_value[data_key]
-            value = np.asarray(model_missing_value)
-            if value.ndim == 0:
-                return model_missing_value
-            if value.shape == (len(expected_keys),):
-                return value[index]
-            raise ValueError(f"simulator missing_value must be scalar, mapping, or shape ({len(expected_keys)},).")
-
-        # A missing value in any observed variable drops the whole time step.
-        for i, data_key in enumerate(expected_keys):
-            data[data_key][missing_mask] = _missing_fill(data_key, i)
-
-        data["missing_mask"] = missing_mask
-        data["time_steps"] = np.broadcast_to(np.arange(1, num_steps + 1)[None, :], (batch_size, num_steps))
-
-        return data
+        targets_arr = np.stack(target_columns, axis=-1)
+        estimates_arr = np.stack(estimate_columns, axis=-1)
+        return estimates_arr, targets_arr, resolved_names

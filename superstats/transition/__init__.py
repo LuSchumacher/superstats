@@ -10,7 +10,7 @@ from .stochastic import (
     GaussianProcess,
     StochasticTransition,
 )
-from .deterministic import DeterministicTransition, Linear, Polynomial
+from .deterministic import DeterministicTransition, Linear, Polynomial, Exponential, Logarithmic
 
 __all__ = [
     "RandomWalk",
@@ -24,4 +24,6 @@ __all__ = [
     "DeterministicTransition",
     "Linear",
     "Polynomial",
+    "Exponential",
+    "Logarithmic",
 ]

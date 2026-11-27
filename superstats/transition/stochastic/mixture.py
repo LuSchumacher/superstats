@@ -5,7 +5,6 @@ import numpy as np
 import warnings
 
 from .stochastic_transition import StochasticTransition, Prior
-from superstats.utils.transformations import scaled_sigmoid
 
 
 class Mixture(StochasticTransition):
@@ -15,16 +14,14 @@ class Mixture(StochasticTransition):
     ----------
     transitions     : sequence of Transition
         The component transitions to mix between. Must contain at least
-        two. Each transition must not define its own `bounds` or
+        two. Each transition must not define its own
         `initial_prior` (these are shared with the mixture instead); a
         `Jump` component must use `p_jump=1` since mixture weights already
         define the jump probability.
     mixture_weights : Prior or tuple of float or None, optional, default: None
         Fixed simplex weights, a `dirichlet` `Prior` to infer them per
-        batch, or None for uniform weights over the components.
-    bounds          : tuple or None, optional, default: None
-        Lower and upper bounds for the latent state, shared across all
-        component transitions.
+        batch, or None to use a uniform Dirichlet prior with concentration
+        parameters `[1.0] * num_components`.
     initial_prior   : Prior or None, optional, default: None
         Prior for the initial latent state, shared across all component
         transitions. Required at sample time.
@@ -36,7 +33,7 @@ class Mixture(StochasticTransition):
     ------
     ValueError
         If fewer than two transitions are given, if any transition
-        defines its own `bounds` or `initial_prior`, if a `Jump`
+        defines its own `initial_prior`, if a `Jump`
         component defines `p_jump`, if `names` doesn't match the number
         of transitions, or if `mixture_weights` is a list/tuple with the
         wrong length or negative values.
@@ -49,12 +46,10 @@ class Mixture(StochasticTransition):
         self,
         transitions: Sequence[StochasticTransition],
         mixture_weights: Prior | Tuple[float, ...] | None = None,
-        bounds: Sequence[float] | None = None,
         initial_prior: Prior | None = None,
         names: Sequence[str] | None = None,
     ):
         super().__init__(
-            bounds=bounds,
             initial_prior=initial_prior,
         )
 
@@ -67,13 +62,6 @@ class Mixture(StochasticTransition):
 
         # enforce shared latent state-space semantics
         for i, t in enumerate(self.transitions):
-            if t._user_defined_bounds:
-                raise ValueError(
-                    f"Transition at index {i} "
-                    f"({t.transition_name}) defines bounds={t.bounds}. "
-                    "Transitions inside Mixture cannot define bounds. "
-                    "Specify bounds in Mixture(...) instead."
-                )
             if t._user_defined_initial_prior:
                 raise ValueError(
                     f"Transition at index {i} "
@@ -90,7 +78,6 @@ class Mixture(StochasticTransition):
                         "Mixture weights already define jump probability."
                     )
 
-            t.bounds = self.bounds
             t.initial_prior = self.initial_prior
 
         self.names = names or [t.transition_name for t in self.transitions]
@@ -125,67 +112,14 @@ class Mixture(StochasticTransition):
                 raise ValueError("mixture_weights Prior must be 'dirichlet' to define simplex-distributed weights")
             self.mixture_weights = mixture_weights
         elif mixture_weights is None:
-            self.mixture_weights = None
+            self.mixture_weights = Prior(
+                "dirichlet",
+                alpha=[1.0] * self.K,
+            )
         else:
             raise TypeError("Invalid type for mixture_weights")
 
         self.transition_name = "mixture"
-
-    def _sample_mixture_weights(self, batch_size: int) -> np.ndarray:
-        """Sample per-batch mixture weights.
-
-        Parameters
-        ----------
-        batch_size : int
-            Number of independent weight vectors to draw.
-
-        Returns
-        -------
-        weights : np.ndarray of shape (batch_size, K) - simplex weights
-            per batch element, either drawn from a Dirichlet `Prior`,
-            tiled from fixed weights, or uniform over the `K` components
-        """
-        # Dirichlet prior
-        if isinstance(self.mixture_weights, Prior):
-            w = self.mixture_weights.sample(batch_size)
-
-            return w
-
-        # fixed weights
-        if isinstance(self.mixture_weights, tuple):
-            w = np.asarray(self.mixture_weights, dtype=self.dtype)
-
-            return np.tile(w, (batch_size, 1))
-
-        # default uniform weights
-        w = np.ones(self.K, dtype=self.dtype) / self.K
-
-        return np.tile(w, (batch_size, 1))
-
-    def _sample_regimes(self, weights: np.ndarray, num_steps: int) -> np.ndarray:
-        """Sample the active component index at each step, per batch element.
-
-        Parameters
-        ----------
-        weights   : np.ndarray of shape (batch_size, K)
-            Per-batch mixture weights, as returned by
-            `_sample_mixture_weights`.
-        num_steps : int
-            Number of time steps to sample regimes for.
-
-        Returns
-        -------
-        regimes : np.ndarray of shape (batch_size, num_steps) - the
-            sampled component index at each step, in [0, K)
-        """
-        batch_size = weights.shape[0]
-
-        regimes = np.zeros((batch_size, num_steps), dtype=np.int32)
-
-        for b in range(batch_size):
-            regimes[b] = np.random.choice(self.K, size=num_steps, p=weights[b])
-
-        return regimes
 
     def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
         """Draw `batch_size` mixture trajectories of length `num_steps`.
@@ -257,8 +191,6 @@ class Mixture(StochasticTransition):
                     params,
                 )
 
-            local_params[b, :] = scaled_sigmoid(local_params[b, :], self.bounds[0], self.bounds[1])
-
         # collect outputs
         hyper_params = {}
         fixed_params = {}
@@ -275,9 +207,7 @@ class Mixture(StochasticTransition):
         if isinstance(self.mixture_weights, Prior):
             hyper_params["mixture_weights"] = weights
         else:
-            fixed_params["mixture_weights"] = (
-                self.mixture_weights if self.mixture_weights is not None else tuple(np.ones(self.K) / self.K)
-            )
+            fixed_params["mixture_weights"] = self.mixture_weights
 
         return {
             "local_params": local_params,
@@ -285,3 +215,50 @@ class Mixture(StochasticTransition):
             "hyper_params": hyper_params,
             "fixed_params": fixed_params,
         }
+
+    def _sample_mixture_weights(self, batch_size: int) -> np.ndarray:
+        """Sample per-batch mixture weights.
+
+        Parameters
+        ----------
+        batch_size : int
+            Number of independent weight vectors to draw.
+
+        Returns
+        -------
+        weights : np.ndarray of shape (batch_size, K) - simplex weights
+            per batch element, either drawn from a Dirichlet `Prior` or
+            tiled from fixed weights
+        """
+        if isinstance(self.mixture_weights, Prior):
+            return self.mixture_weights.sample(batch_size)
+
+        if isinstance(self.mixture_weights, tuple):
+            weights = np.asarray(self.mixture_weights, dtype=self.dtype)
+            return np.tile(weights, (batch_size, 1))
+
+        raise TypeError("mixture_weights must be a Dirichlet Prior or fixed tuple.")
+
+    def _sample_regimes(self, weights: np.ndarray, num_steps: int) -> np.ndarray:
+        """Sample the active component index at each step, per batch element.
+
+        Parameters
+        ----------
+        weights   : np.ndarray of shape (batch_size, K)
+            Per-batch mixture weights, as returned by
+            `_sample_mixture_weights`.
+        num_steps : int
+            Number of time steps to sample regimes for.
+
+        Returns
+        -------
+        regimes : np.ndarray of shape (batch_size, num_steps) - the
+            sampled component index at each step, in [0, K)
+        """
+        batch_size = weights.shape[0]
+        regimes = np.zeros((batch_size, num_steps), dtype=np.int32)
+
+        for batch_index in range(batch_size):
+            regimes[batch_index] = np.random.choice(self.K, size=num_steps, p=weights[batch_index])
+
+        return regimes

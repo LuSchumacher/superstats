@@ -2,24 +2,34 @@
 
 import logging as _logging
 
-from . import prior, diagnostics, simulation, workflow, networks
+from . import prior, diagnostics, simulation, workflow, estimators
+from .estimators import CompositeEstimator, MarginalEstimator, JointEstimator
 from .prior import JointPrior, Prior
-from .simulation import GenerativeModel
+from .simulation import Model, LinkFunction
 from .workflow import Workflow
+from .simulation import Categorical, ContextSimulator, Formula
 
 _logging.basicConfig(level=_logging.INFO)
 _logging.getLogger(__name__).setLevel(_logging.INFO)
 
+
 __all__ = [
+    "LinkFunction",
     "diagnostics",
     "prior",
     "simulation",
     "workflow",
-    "networks",
+    "estimators",
+    "CompositeEstimator",
+    "MarginalEstimator",
+    "JointEstimator",
     "JointPrior",
     "Prior",
-    "GenerativeModel",
+    "Model",
     "Workflow",
+    "ContextSimulator",
+    "Formula",
+    "Categorical",
 ]
 
 del _logging

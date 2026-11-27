@@ -1,7 +1,6 @@
 """Linear deterministic transition."""
 
 from typing import Dict, Any
-from collections.abc import Sequence
 import numpy as np
 
 from .deterministic_transition import DeterministicTransition, Prior
@@ -12,13 +11,10 @@ class Linear(DeterministicTransition):
 
     Parameters
     ----------
-    bounds          : sequence of two floats or None, optional, default: None
-        Lower and upper bounds for the deterministic trajectory. Tuples and
-        lists are accepted.
     intercept       : float, Prior, or None, optional, default: None
         Starting value of the trajectory. A `Prior` samples one intercept
         per trajectory; `None` uses the deterministic default prior.
-    beta            : float, Prior, or None, optional, default: None
+    slope            : float, Prior, or None, optional, default: None
         Change across the trajectory when `normalize_steps=True`. A `Prior`
         samples one slope per trajectory; `None` uses the deterministic
         default prior.
@@ -29,67 +25,28 @@ class Linear(DeterministicTransition):
     Notes
     -----
     The `sample` method returns a dict with keys `deterministic_params`,
-    `hyper_params`, and `fixed_params`. Trajectory values are clipped to `bounds`.
+    `hyper_params`, and `fixed_params`. Trajectories are returned on the raw coefficient scale.
     """
 
     def __init__(
         self,
-        bounds: Sequence[float, float] | None = None,
         intercept: float | Prior | None = None,
-        beta: float | Prior | None = None,
+        slope: float | Prior | None = None,
         normalize_steps: bool = True,
     ):
-        super().__init__(bounds=bounds)
+        super().__init__()
 
         self.normalize_steps = normalize_steps
 
         self.hyper_specs = {
             "intercept": intercept,
-            "beta": beta,
+            "slope": slope,
         }
 
         self.transition_name = "linear"
 
     def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
-        """Draw `batch_size` linear trajectories of length `num_steps`.
-
-        Parameters
-        ----------
-        batch_size : int
-            Number of independent trajectories to draw.
-        num_steps  : int
-            Number of time steps per trajectory.
-
-        Returns
-        -------
-        result : dict - dictionary with keys `deterministic_params`,
-            `hyper_params`, and `fixed_params`
-        """
-        hyper, fixed = self._resolve_hyperparams(batch_size)
-
-        intercept = (
-            self._sample(hyper["intercept"], batch_size)
-            if "intercept" in hyper
-            else np.full(batch_size, fixed["intercept"], dtype=self.dtype)
-        )
-
-        beta = (
-            self._sample(hyper["beta"], batch_size)
-            if "beta" in hyper
-            else np.full(batch_size, fixed["beta"], dtype=self.dtype)
-        )
-
-        if self.normalize_steps:
-            index = np.linspace(0.0, 1.0, num_steps, dtype=self.dtype)
-        else:
-            index = np.arange(num_steps, dtype=self.dtype)
-        local = intercept[:, None] + beta[:, None] * index[None, :]
-
-        return {
-            "deterministic_params": self._bound(local),
-            "hyper_params": hyper,
-            "fixed_params": fixed,
-        }
+        return self._sample_curve(batch_size, num_steps, Linear.sample_from_parameters)
 
     def sample_from_parameters(
         self,
@@ -98,13 +55,13 @@ class Linear(DeterministicTransition):
         num_steps: int,
     ) -> np.ndarray:
         intercept = np.broadcast_to(np.asarray(params["intercept"], dtype=self.dtype), (batch_size,))
-        beta = np.broadcast_to(np.asarray(params["beta"], dtype=self.dtype), (batch_size,))
+        slope = np.broadcast_to(np.asarray(params["slope"], dtype=self.dtype), (batch_size,))
 
         index = (
             np.linspace(0.0, 1.0, num_steps, dtype=self.dtype)
             if self.normalize_steps
             else np.arange(num_steps, dtype=self.dtype)
         )
-        trajectory = intercept[:, None] + beta[:, None] * index[None, :]
+        trajectory = intercept[:, None] + slope[:, None] * index[None, :]
 
-        return self._bound(trajectory)
+        return trajectory.astype(self.dtype)

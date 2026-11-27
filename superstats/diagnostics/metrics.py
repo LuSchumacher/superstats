@@ -40,8 +40,7 @@ def correlation_per_step(
     if estimates.shape[0] != targets.shape[0] or estimates.shape[2:] != targets.shape[1:]:
         raise ValueError(f"estimates and targets have incompatible shapes: {estimates.shape} vs {targets.shape}.")
 
-    point_est = aggregation(estimates, axis=1)  # (num_sim, num_steps, num_params)
-
+    point_est = aggregation(estimates, axis=1)
     mean_true = targets.mean(axis=0, keepdims=True)
     mean_pred = point_est.mean(axis=0, keepdims=True)
 

@@ -1,15 +1,15 @@
-"""Tests for GenerativeModel's contamination integration."""
+"""Tests for Model's contamination integration."""
 
 import numpy as np
 import pytest
 
-from superstats.simulation.generative_model import GenerativeModel
+from superstats.simulation.model import Model
 from superstats.simulation.augmentation.contamination import ContaminationProcess
 from superstats.simulation.augmentation.random_choice_contamination import RandomChoiceContamination
 
 
 def _make_bare_model(contamination=None, missing=None, data_keys=("response_time", "choice")):
-    """Build a GenerativeModel-like object without running the real __init__.
+    """Build a Model-like object without running the real __init__.
 
     __init__ requires a JointPrior and simulator to do a pilot draw; the
     contamination integration only depends on `self.contamination`,
@@ -17,7 +17,7 @@ def _make_bare_model(contamination=None, missing=None, data_keys=("response_time
     directly to keep these tests fast and independent of prior/simulator
     machinery.
     """
-    model = object.__new__(GenerativeModel)
+    model = object.__new__(Model)
     model.contamination = contamination
     model.missing = missing
     model.data_keys = list(data_keys)
@@ -157,10 +157,10 @@ class TestApplyContaminationProcess:
         guaranteed to be contaminated, making the effect deterministic
         enough to assert on.
         """
-        model = _make_bare_model(contamination=RandomChoiceContamination(p_contaminated=1.0))
+        model = _make_bare_model(contamination=RandomChoiceContamination())
         rng = np.random.default_rng(0)
 
-        out_data, extra = model._apply_contamination(sim_data, rng=rng)
+        out_data, extra = model._apply_contamination(sim_data, rng=rng, probability=1.0)
 
         assert "p_contaminated" in extra
         np.testing.assert_allclose(extra["p_contaminated"], [1.0])
@@ -173,10 +173,10 @@ class TestApplyContaminationProcess:
         assert np.all(out_data["response_time"] > 0)
 
     def test_random_choice_contamination_p_zero_is_noop(self, sim_data):
-        model = _make_bare_model(contamination=RandomChoiceContamination(p_contaminated=0.0))
+        model = _make_bare_model(contamination=RandomChoiceContamination())
         rng = np.random.default_rng(0)
 
-        out_data, extra = model._apply_contamination(sim_data, rng=rng)
+        out_data, extra = model._apply_contamination(sim_data, rng=rng, probability=0.0)
 
         np.testing.assert_allclose(out_data["response_time"], sim_data["response_time"])
         np.testing.assert_allclose(out_data["choice"], sim_data["choice"])
@@ -188,10 +188,10 @@ class TestApplyContaminationProcess:
             "choice": np.array([[0.0, 99.0, -1.0, 1.0]]),
         }
         original_response_time = sim_data["response_time"].copy()
-        model = _make_bare_model(contamination=RandomChoiceContamination(p_contaminated=1.0))
+        model = _make_bare_model(contamination=RandomChoiceContamination())
         rng = np.random.default_rng(0)
 
-        out_data, extra = model._apply_contamination(sim_data, rng=rng)
+        out_data, extra = model._apply_contamination(sim_data, rng=rng, probability=1.0)
 
         np.testing.assert_allclose(sim_data["response_time"], original_response_time)
         np.testing.assert_allclose(extra["p_contaminated"], [1.0])
@@ -208,14 +208,13 @@ class TestApplyContaminationProcess:
             "metadata": np.array([42.0]),
         }
         process = RandomChoiceContamination(
-            p_contaminated=0.0,
             response_time_key="rt",
             choice_key="resp",
         )
         model = _make_bare_model(contamination=process, data_keys=("rt", "resp", "metadata"))
         rng = np.random.default_rng(0)
 
-        out_data, extra = model._apply_contamination(sim_data, rng=rng)
+        out_data, extra = model._apply_contamination(sim_data, rng=rng, probability=0.0)
 
         np.testing.assert_allclose(out_data["rt"], sim_data["rt"])
         np.testing.assert_allclose(out_data["resp"], sim_data["resp"])
@@ -226,6 +225,25 @@ class TestApplyContaminationProcess:
         model = _make_bare_model(contamination=RandomChoiceContamination())
         with pytest.raises(KeyError):
             model._apply_contamination({"response_time": np.array([[1.0]])}, rng=None)
+
+
+class TestContaminationParameterValidation:
+    def test_default_is_not_inferred(self):
+        assert RandomChoiceContamination().infer is False
+
+    def test_rejects_non_boolean_infer(self):
+        with pytest.raises(TypeError, match="infer must be a bool"):
+            RandomChoiceContamination(infer=1)
+
+    @pytest.mark.parametrize("probability", [1.1, -0.1, np.nan, np.inf])
+    def test_rejects_invalid_probability(self, sim_data, probability):
+        with pytest.raises(ValueError, match="between 0 and 1"):
+            RandomChoiceContamination().apply(sim_data, probability=probability)
+
+    def test_per_trial_probability(self, sim_data):
+        probability = np.full(sim_data["response_time"].shape, 0.2)
+        out = RandomChoiceContamination().apply(sim_data, probability=probability)
+        np.testing.assert_array_equal(out["p_contaminated"], probability)
 
 
 class TestSampleIntegrationOrdering:
