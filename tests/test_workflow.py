@@ -21,7 +21,7 @@ def basic_workflow(monkeypatch):
         def __init__(self, **kwargs):
             self.__dict__.update(kwargs)
             self.history = None
-            self.approximator = Mock(name="approximator")
+            self.estimator = Mock(name="estimator")
             self.fit_offline = Mock(return_value=FakeHistory({"loss": [1.0]}))
             self.fit_online = Mock(return_value=FakeHistory({"loss": [2.0]}))
             instances.append(self)
@@ -54,20 +54,20 @@ def test_init_builds_underlying_workflow_with_embedding_network(basic_workflow):
 def test_properties_read_and_write_underlying_workflow(basic_workflow):
     workflow = Workflow(adapter=object())
     history = FakeHistory({"loss": [1.0]})
-    approximator = object()
+    estimator = object()
 
     workflow.workflow.history = history
     assert workflow.history is history
 
-    workflow.approximator = approximator
-    assert workflow.approximator is approximator
+    workflow.estimator = estimator
+    assert workflow.estimator is estimator
 
 
 def test_fit_offline_delegates_and_saves_history(basic_workflow, tmp_path):
     workflow = Workflow(
         adapter=object(),
         checkpoint_filepath=str(tmp_path),
-        restore_approximator=False,
+        restore_estimator=False,
         restore_history=False,
     )
     data = {"x": [1]}

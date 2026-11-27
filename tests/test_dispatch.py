@@ -6,7 +6,7 @@ import keras
 import numpy as np
 import pytest
 
-from superstats.approximators import JointApproximator, MarginalApproximator
+from superstats.estimators import JointEstimator, MarginalEstimator
 from superstats.defaults import (
     DEFAULT_AUTOREGRESSIVE_DECODER_NETWORK,
     DEFAULT_COUPLING_FLOW,
@@ -24,7 +24,7 @@ from superstats.simulation.augmentation import (
 )
 
 from superstats.utils.dispatch import (
-    find_approximator,
+    find_estimator,
     find_contamination,
     find_inference_network,
     find_missing,
@@ -46,28 +46,28 @@ def test_network_defaults_are_frozen():
 
 @pytest.mark.parametrize(
     ("name", "expected"),
-    [("marginal", MarginalApproximator), ("joint", JointApproximator)],
+    [("marginal", MarginalEstimator), ("joint", JointEstimator)],
 )
-def test_approximator_dispatches_names(name, expected):
-    approximator = find_approximator(name, mode="filtering")
+def test_estimator_dispatches_names(name, expected):
+    estimator = find_estimator(name, mode="filtering")
 
-    assert isinstance(approximator, expected)
-    assert approximator.mode == "filtering"
-
-
-def test_approximator_dispatch_passes_instances_through():
-    approximator = MarginalApproximator()
-
-    assert find_approximator(approximator, mode="filtering") is approximator
-    with pytest.raises(TypeError, match="approximator"):
-        find_approximator(None)
+    assert isinstance(estimator, expected)
+    assert estimator.mode == "filtering"
 
 
-def test_approximator_dispatch_rejects_unknown_inputs():
-    with pytest.raises(ValueError, match="Unknown approximator"):
-        find_approximator("mixture")
-    with pytest.raises(TypeError, match="approximator"):
-        find_approximator(object())
+def test_estimator_dispatch_passes_instances_through():
+    estimator = MarginalEstimator()
+
+    assert find_estimator(estimator, mode="filtering") is estimator
+    with pytest.raises(TypeError, match="estimator"):
+        find_estimator(None)
+
+
+def test_estimator_dispatch_rejects_unknown_inputs():
+    with pytest.raises(ValueError, match="Unknown estimator"):
+        find_estimator("mixture")
+    with pytest.raises(TypeError, match="estimator"):
+        find_estimator(object())
 
 
 def test_embedding_network_dispatches_recurrent_defaults():

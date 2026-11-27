@@ -45,7 +45,7 @@ def test_init_restores_checkpoint_and_history(monkeypatch, tmp_path):
     class FakeBasicWorkflow:
         def __init__(self, **kwargs):
             self.__dict__.update(kwargs)
-            self.approximator = None
+            self.estimator = None
             self.history = None
 
     load_model = Mock(return_value=restored_model)
@@ -57,7 +57,7 @@ def test_init_restores_checkpoint_and_history(monkeypatch, tmp_path):
     )
 
     load_model.assert_called_once_with(str(tmp_path / "model.keras"))
-    assert workflow.approximator is restored_model
+    assert workflow.estimator is restored_model
     assert workflow.embedding_network is restored_model.summary_network
     assert workflow.varying_inference_network is restored_model.varying_inference_network
     assert workflow.invariant_inference_network is restored_model.invariant_inference_network
@@ -108,13 +108,13 @@ def test_prepare_conditions_validates_and_filters_named_arrays():
 def test_sample_prepares_conditions_and_forwards_sampling_options():
     workflow = bare_workflow()
     workflow._prepare_conditions = Mock(return_value={"prepared": np.ones(1)})
-    workflow.workflow = SimpleNamespace(approximator=Mock())
-    workflow.approximator.sample.return_value = {"theta": np.ones(1)}
+    workflow.workflow = SimpleNamespace(estimator=Mock())
+    workflow.estimator.sample.return_value = {"theta": np.ones(1)}
 
     result = workflow.sample({"x": np.ones(1)}, num_samples=12, batch_size=3, seed=7)
 
     assert set(result) == {"theta"}
-    workflow.approximator.sample.assert_called_once_with(
+    workflow.estimator.sample.assert_called_once_with(
         conditions={"prepared": np.ones(1)}, num_samples=12, batch_size=3, seed=7
     )
 

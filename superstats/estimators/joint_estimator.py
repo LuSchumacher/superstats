@@ -2,16 +2,16 @@
 
 from bayesflow.utils.serialization import serializable
 
-from .composite_approximator import CompositeApproximator
+from .composite_estimator import CompositeEstimator
 
 
-@serializable("superstats.approximators")
-class JointApproximator(CompositeApproximator):
+@serializable("superstats.estimators")
+class JointEstimator(CompositeEstimator):
     """Estimate an autoregressive sequence posterior and invariant posterior.
 
-    Accepts the same arguments as MarginalApproximator, plus decoder_network.
-    The internal sequence component is BayesFlow's AutoregressiveApproximator;
-    the invariant component is a ContinuousApproximator. The global summary
+    Accepts the same arguments as MarginalEstimator, plus decoder_network.
+    The internal sequence component is BayesFlow's AutoregressiveEstimator;
+    the invariant component is a BasicEstimator. The global summary
     network encodes observations once for both components. Its ready-made
     features are passed directly to the autoregressive decoder.
 
@@ -39,12 +39,12 @@ class JointApproximator(CompositeApproximator):
     mode : {"smoothing", "filtering"}, optional
         Controls observation availability for the conditional sequence factors.
     standardize : str or sequence of str or None, optional
-        "all" (default), or canonical variable keys as in MarginalApproximator.
+        "all" (default), or canonical variable keys as in MarginalEstimator.
     has_varying, has_invariant : bool, optional
         Enable each target group (both default to True). At least one is required.
         A custom network requires its corresponding target group.
     **kwargs
-        Passed to the BayesFlow Approximator/Keras model base.
+        Passed to the BayesFlow Estimator/Keras model base.
 
     Notes
     -----
@@ -87,4 +87,4 @@ class JointApproximator(CompositeApproximator):
     @property
     def decoder_network(self):
         """The internally owned BayesFlow-compatible autoregressive decoder."""
-        return self.sequence_approximator.decoder_network if self.has_varying else None
+        return self.sequence_estimator.decoder_network if self.has_varying else None

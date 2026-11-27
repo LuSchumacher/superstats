@@ -22,8 +22,8 @@ Let $\phi = (\eta, \lambda)$ collect these time-invariant parameters.
 Superstats relies entirely on amortized Bayesian inference through [BayesFlow](https://github.com/bayesflow-org/bayesflow) for parameter estimation, and therefore only requires that $\mathcal{G}$ can be *simulated* — no closed-form likelihood is needed.
 The ability to estimate models with intractable likelihoods is a major advantage of this approach.
 
-Instead of fitting one dataset with a new optimization or sampling run, it trains a neural posterior approximator on many simulated parameter-data pairs.
-Training has an upfront cost, but the trained approximator can then return posterior draws for many datasets quickly.
+Instead of fitting one dataset with a new optimization or sampling run, it trains a neural posterior estimator on many simulated parameter-data pairs.
+Training has an upfront cost, but the trained estimator can then return posterior draws for many datasets quickly.
 
 Superstats supports four posterior approximations for the time-varying trajectory $\theta_{1:T}$ and the invariant parameters $\phi$:
 
@@ -34,7 +34,7 @@ Superstats supports four posterior approximations for the time-varying trajector
 
 Filtering factors use observations up to the current step, while smoothing factors use the full observation sequence.
 Joint factors also condition on the preceding parameter trajectory.
-See the [approximator guide](approximators.md) for configuration and tensor shapes.
+See the [estimator guide](estimators.md) for configuration and tensor shapes.
 
 Because these posterior approximations are learned from simulations, they are only trustworthy in regions represented by the prior-predictive training distribution.
 Empirical data that look unlike the simulations are out of distribution, even if their array shapes are valid.
@@ -44,7 +44,7 @@ Empirical data that look unlike the simulations are out of distribution, even if
 1. **Define the observation model.** Choose a built-in model simulator or implement one on your own.
 2. **Specify the joint prior.** Decide which parameters vary, what dynamics are plausible, and which values are fixed or shared.
 3. **Check prior trajectories and simulated data.** Revise assumptions until trajectories and observations are scientifically reasonable.
-4. **Train the approximator.** Use online training for fresh simulations per batch or offline training for a fixed, reusable simulation set.
+4. **Train the estimator.** Use online training for fresh simulations per batch or offline training for a fixed, reusable simulation set.
 5. **Verify on new simulations.** Inspect parameter recovery, posterior contraction, and simulation-based calibration. If the model cannot recover known simulated values, do not interpret an empirical fit.
 6. **Fit empirical data.** Preserve observation order and use the same coding, sequence length, and missing-data convention used during training.
 7. **Run posterior re-simulations.** Re-simulate from posterior draws and compare distributions and temporal patterns with the observed data.

@@ -31,12 +31,14 @@ Superstats trains neural estimators on simulations from generative models of thi
 - **Full joint filtering (JF):** $q_{\mathrm{JF}}(\theta_{1:T}, \phi \mid x_{1:T}) = q(\phi \mid x_{1:T}) \prod_{t=1}^T q(\theta_t \mid \theta_{1:t-1}, \phi, x_{1:t})$.
 - **Full joint smoothing (JS):** $q_{\mathrm{JS}}(\theta_{1:T}, \phi \mid x_{1:T}) = q(\phi \mid x_{1:T}) \prod_{t=1}^T q(\theta_t \mid \theta_{1:t-1}, \phi, x_{1:T})$.
 
-These distributions are realized through different neural approximators. Select them with `Workflow(model=model, approximator="marginal" | "joint", mode="filtering" | "smoothing")`, or pass a constructed approximator directly. A constructed approximator keeps its own mode. Marginal factors are independent across time conditional on the observations and invariants; joint factors also condition on the preceding parameter trajectory. Sharing an invariant draw can induce temporal dependence even in the marginal approximations.
-See the [approximator guide](user_guide/approximators.md) for configuration and tensor shapes.
+Choose `estimator="marginal"` or `estimator="joint"` and set `mode` to `"filtering"` or `"smoothing"` when constructing a `Workflow`. An estimator passed directly to `Workflow` keeps its own mode. Marginal factors are independent across time conditional on the observations and invariants. Joint factors also condition on the preceding parameter trajectory. Sharing an invariant draw can induce temporal dependence even in the marginal approximations.
+See the [estimator guide](user_guide/estimators.md) for configuration and tensor shapes.
 
 ## Install
 
-We support Python 3.12 to 3.13. Install the latest version from source:
+Superstats supports Python 3.12 and 3.13 and requires BayesFlow 2.1.1 or later.
+
+Install Superstats with pip.
 
 ```bash
 pip install superstats
@@ -73,7 +75,7 @@ model = sup.Model(
     prior=joint_prior, simulator=sup.simulation.sample_ddm, missing="random", contamination="random_choice"
 )
 
-# 3. Train a neural approximator
+# 3. Train a neural estimator
 workflow = sup.Workflow(model=model)
 history = workflow.fit_online(num_steps=100, epochs=20, batch_size=16)
 

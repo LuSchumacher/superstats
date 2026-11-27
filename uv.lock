@@ -147,7 +147,7 @@ wheels = [
 
 [[package]]
 name = "bayesflow"
-version = "2.0.14"
+version = "2.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "keras" },
@@ -160,9 +160,9 @@ dependencies = [
     { name = "sympy" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/77/d6/ac1e79cdf688a49af35073a941bdecb25d28cd80f21e5dee176343c7ef93/bayesflow-2.0.14.tar.gz", hash = "sha256:507823686717909645e48b2b107cbfecc1166dc09b10db427d253e0e77fd7334", size = 393683, upload-time = "2026-09-01T06:46:32.963Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/59/14/152b8009b738633559482d67ae9dd5449139eb95a82b791025c0690cb6a2/bayesflow-2.1.1.tar.gz", hash = "sha256:5eae7e8b8ba8b8bbe846ddbd4090737859b76185fa34247eb5f62f78fba94717", size = 435686, upload-time = "2026-11-24T07:41:07.039Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c6/c7/0fa5b5c5e88ca7e0659fc3351848475d6ce073b9887d6e5e9089db4b76bf/bayesflow-2.0.14-py3-none-any.whl", hash = "sha256:74cd54150621bdbd6e3c40ccdfd2e36ee125cdc1aea67713c3feb3b0a7d03fbb", size = 602369, upload-time = "2026-09-01T06:46:31.757Z" },
+    { url = "https://files.pythonhosted.org/packages/33/5d/3eb21bea0e8a7839282523b45999a6ad1d6b3da5fec941cee80b5ea8a013/bayesflow-2.1.1-py3-none-any.whl", hash = "sha256:2ecffc5cc7e66a8d95acdf5d3a3a1ab3342ae77a78d00188ca508e8673aa30bf", size = 656819, upload-time = "2026-11-24T07:41:05.543Z" },
 ]
 
 [[package]]
@@ -2816,7 +2816,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "bayesflow", specifier = ">=2.0.14" },
+    { name = "bayesflow", specifier = ">=2.1.1" },
     { name = "ipykernel", marker = "extra == 'all'" },
     { name = "ipykernel", marker = "extra == 'test'" },
     { name = "ipython", marker = "extra == 'all'" },
