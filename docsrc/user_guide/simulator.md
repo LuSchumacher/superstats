@@ -4,7 +4,7 @@ The first step in our workflow is to formalize a data-generating process, which 
 
 $$x_t = \mathcal{G}(x_{1:t-1}; \theta_t, \lambda), \qquad t = 1, \dots, T$$
 
-where $x_{1:t-1}$ is the observation history, $\theta_t$ collects the time-varying model parameters at time step $t$, and $\lambda$ collects time-invariant observation-model parameters. Any simulator randomness, such as diffusion noise, is implicit in $\mathcal{G}$. Superstats relies entirely on amortized Bayesian inference for estimating parameters $\theta$, and therefore only requires that $\mathcal{G}$ can be *simulated* — no closed-form likelihood is needed.
+where $x_{1:t-1}$ is the observation time series, $\theta_t$ the time-varying model parameters at time step $t$, and $\lambda$ the time-invariant observation-model parameters. Any simulator randomness, such as diffusion noise, is implicit in $\mathcal{G}$.
 
 **Function signature.**
 Superstats expects a function that:
@@ -91,9 +91,10 @@ def sample_ddm(
 
 ## Other Built-in Simulators
 
-Besides the DDM, Superstats has the following models implemented:
+Besides the DDM, Superstats has the following cognitive models implemented:
 
 - `sup.simulation.cognitive.sample_rdm` $-$ Racing Diffusion Model ([Tillman, et al., 2020](https://doi.org/10.3758/s13423-020-01719-6))
 - `sup.simulation.cognitive.sample_cdm` $-$ Circular Diffusion Model ([Smith, 2016](https://doi.org/10.1037/rev0000023))
+- `sup.simulation.cognitive.sample_cpt` $-$ Cumulative Prospect Theory (CPT) model for binary choices between risky options ([Tversky and Kahneman, 1992](https://doi.org/10.1007/BF00122574))
 
 Please feel free to contribute additional models, either by opening a pull request or an issue with a feature request.

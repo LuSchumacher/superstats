@@ -1,6 +1,7 @@
 """Base interface and shared helpers for deterministic transitions."""
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from typing import Dict, Any, Union
 import numpy as np
 
@@ -68,6 +69,15 @@ class DeterministicTransition(ABC):
             an ndarray of shape (batch_size, steps).
         """
         raise NotImplementedError
+
+    def _sample_curve(self, batch_size: int, num_steps: int, make_curve: Callable) -> Dict[str, Any]:
+        """Resolve coefficient draws and evaluate a built-in curve."""
+        hyper, fixed = self._resolve_hyperparams(batch_size)
+        return {
+            "deterministic_params": make_curve(self, fixed | hyper, batch_size, num_steps),
+            "hyper_params": hyper,
+            "fixed_params": fixed,
+        }
 
     def sample_from_parameters(
         self,

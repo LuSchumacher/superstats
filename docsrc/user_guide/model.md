@@ -8,9 +8,7 @@ We continue with the DDM example. The prior lets drift rate, boundary separation
 
 ```python
 import superstats as sup
-```
 
-```python
 simulator = sup.simulation.sample_ddm
 ```
 
@@ -114,9 +112,7 @@ Disclaimer: we could choose better settings for plotting push forward checks for
 
 ```python
 import numpy as np
-```
 
-```python
 fig = model.plot_push_forward(
     batch_size=5,
     num_steps=200,

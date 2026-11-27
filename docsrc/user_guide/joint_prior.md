@@ -1,10 +1,6 @@
 # Joint Prior
 
-```python
-import superstats as sup
-```
-
-A `JointPrior` specifies how every observation-model parameter behaves and whether it is estimated.
+A `JointPrior` specifies how every model parameter behaves and whether it is estimated.
 Superstats groups the resulting values into five parameter types:
 
 | Parameter type | Changes over steps? | Estimated? | Example |
@@ -18,6 +14,8 @@ Superstats groups the resulting values into five parameter types:
 The `JointPrior` collects these specifications into one coherent prior. Its keyword names must match the simulator's parameter names.
 
 ```python
+import superstats as sup
+
 joint_prior = sup.JointPrior(
     param_1=sup.transition.RandomWalk(...),  # stochastic transition
     param_2=sup.transition.Linear(...),      # deterministic transition
@@ -139,6 +137,8 @@ latent_link_function = {
 ```
 
 Plot deterministic and stochastic trajectories together with `model.plot_time_varying_prior(...)` to check for implausible trends.
+Use `model.plot_time_invariant_prior(...)` to plot the distributions of hyperparameters and shared parameters separately from the trajectories.
+Use `model.plot_joint_prior(...)` to view the trajectories, hyperparameters, and shared parameters in one figure.
 
 ## Priors
 

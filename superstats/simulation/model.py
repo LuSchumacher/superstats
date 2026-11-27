@@ -26,6 +26,7 @@ from superstats.simulation.augmentation.missing import MissingProcess
 from superstats.simulation.augmentation.contamination import ContaminationProcess
 from superstats.simulation.context.context_simulator import ContextSimulator
 from superstats.utils.dispatch import find_contamination, find_missing
+from superstats.utils.plotting import PRIOR_ALPHA
 
 
 class Model:
@@ -424,8 +425,8 @@ class Model:
         marginal: bool = True,
         dist_type: Literal["hist", "kde", "both"] = "hist",
         num_bins: int | None = None,
-        dist_alpha: float = 1.0,
-        alpha: float = 0.5,
+        dist_alpha: float | None = None,
+        alpha: float = PRIOR_ALPHA,
         color: str = BASE_COLOR,
         title_fontsize: int = TITLE_FONTSIZE,
         label_fontsize: int = LABEL_FONTSIZE,
@@ -460,16 +461,17 @@ class Model:
             Distribution type used for marginal panels.
         num_bins         : int or None, optional, default: None
             Number of histogram bins. If None, Seaborn selects the bins.
-        dist_alpha       : float, optional, default: 1.0
-            Opacity of marginal distributions.
-        alpha            : float, optional, default: 0.5
+        dist_alpha       : float or None, optional, default: None
+            Opacity of marginal distributions. If None, uses 1.0 for a single
+            distribution and 0.5 for overlaid conditions.
+        alpha            : float, optional, default: 0.25
             Opacity of individual trajectories.
         color            : str, optional, default: BASE_COLOR
             Color used for trajectories and marginal distributions.
         title_fontsize   : int, optional, default: 22
-            Font size for panel titles.
+            Font size for panel titles and the Trajectories heading.
         label_fontsize   : int, optional, default: 18
-            Font size for axis labels and the figure legend.
+            Font size for axis labels, scale headings, and the figure legend.
         tick_fontsize    : int, optional, default: 16
             Font size for tick labels.
         figsize          : tuple of two floats or None, optional, default: None
@@ -495,8 +497,14 @@ class Model:
         """
         if scale not in {"both", "model", "raw"}:
             raise ValueError("scale must be 'both', 'model', or 'raw'.")
-        if scale != "raw":
-            local, _, _, labels, _ = prior_plot_samples(
+        if scale == "raw":
+            samples = self._sample_inference_prior(batch_size=num_trajectories, num_steps=num_steps)
+            local_params = samples["local_params"]
+            if variable_keys is not None:
+                local_params = {name: local_params[name] for name in variable_keys}
+            bounds, labels = {}, None
+        else:
+            local_params, _, _, labels, _ = prior_plot_samples(
                 self,
                 num_draws=num_trajectories,
                 num_steps=num_steps,
@@ -506,29 +514,11 @@ class Model:
                 kind="varying",
                 scale=scale,
             )
-            return plot_time_varying_prior(
-                local_params=local,
-                param_bounds=parameter_bounds(self, local),
-                condition_labels=labels,
-                num_cols=num_cols,
-                marginal=marginal,
-                dist_type=dist_type,
-                num_bins=num_bins,
-                dist_alpha=dist_alpha,
-                alpha=alpha,
-                color=color,
-                title_fontsize=title_fontsize,
-                label_fontsize=label_fontsize,
-                tick_fontsize=tick_fontsize,
-                figsize=figsize,
-            )
-        samples = self._sample_inference_prior(batch_size=num_trajectories, num_steps=num_steps)
-        local_params = samples["local_params"]
-        if variable_keys is not None:
-            local_params = {name: local_params[name] for name in variable_keys}
+            bounds = parameter_bounds(self, local_params)
         return plot_time_varying_prior(
             local_params=local_params,
-            param_bounds={},
+            param_bounds=bounds,
+            condition_labels=labels,
             num_cols=num_cols,
             marginal=marginal,
             dist_type=dist_type,
@@ -584,7 +574,7 @@ class Model:
         num_cols       : int or None, optional, default: None
             Number of panel columns. If None, uses up to four columns.
         title_fontsize : int, optional, default: 22
-            Font size for panel titles.
+            Font size for panel titles and section headings.
         label_fontsize : int, optional, default: 18
             Font size for axis labels.
         tick_fontsize  : int, optional, default: 16
@@ -612,8 +602,12 @@ class Model:
         """
         if scale not in {"both", "model", "raw"}:
             raise ValueError("scale must be 'both', 'model', or 'raw'.")
-        if scale != "raw":
-            local, hyper, shared, condition_labels, owners = prior_plot_samples(
+        if scale == "raw":
+            samples = self._sample_inference_prior(batch_size=num_draws, num_steps=num_steps)
+            hyper, shared = samples["hyper_params"], samples["shared_params"]
+            condition_labels = None
+        else:
+            _, hyper, shared, condition_labels, _ = prior_plot_samples(
                 self,
                 num_draws=num_draws,
                 num_steps=num_steps,
@@ -623,25 +617,10 @@ class Model:
                 kind="invariant",
                 scale=scale,
             )
-            return plot_time_invariant_prior(
-                hyper_params=hyper,
-                shared_params=shared,
-                condition_labels=condition_labels,
-                mixture_names={name: obj.names for name, obj in self.prior.params.items() if hasattr(obj, "names")},
-                dist_type=dist_type,
-                num_bins=num_bins,
-                dist_alpha=dist_alpha,
-                color=color,
-                num_cols=num_cols,
-                title_fontsize=title_fontsize,
-                label_fontsize=label_fontsize,
-                tick_fontsize=tick_fontsize,
-                figsize=figsize,
-            )
-        samples = self._sample_inference_prior(batch_size=num_draws, num_steps=num_steps)
         return plot_time_invariant_prior(
-            hyper_params=samples["hyper_params"],
-            shared_params=samples["shared_params"],
+            hyper_params=hyper,
+            shared_params=shared,
+            condition_labels=condition_labels,
             mixture_names={name: obj.names for name, obj in self.prior.params.items() if hasattr(obj, "names")},
             dist_type=dist_type,
             num_bins=num_bins,
@@ -667,7 +646,7 @@ class Model:
         title_fontsize: int = TITLE_FONTSIZE,
         label_fontsize: int = LABEL_FONTSIZE,
         tick_fontsize: int = TICK_FONTSIZE,
-        alpha: float = 0.5,
+        alpha: float = PRIOR_ALPHA,
         figsize: tuple[float, float] | None = None,
         scale: Literal["both", "model", "raw"] = "both",
         conditions: Mapping | Sequence[Mapping] | None = None,
@@ -680,11 +659,11 @@ class Model:
         coefficients and displayed alongside stochastic local trajectories.
         Each draw is resolved under fixed predictor conditions, preserving latent
         links, ordered formulas, and formula links. The default ``scale="both"``
-        uses one row per observation-model parameter: its hyperparameters, raw
-        coefficients, and implied values, in that order. Panels are titled
-        "Raw" and "Implied", with the observation parameter as the row label.
-        Stationary coefficients use distributions. All panels reuse the same
-        draws; identical raw and implied views share a panel. Hyperparameters
+        shows hyperparameters and trajectories in rows labeled by observation
+        parameter. Trajectory columns are labeled "Raw" and "Implied" when
+        both are shown. Shared distributions appear in a separate section
+        aligned with the hyperparameter columns. All panels reuse the same
+        draws. Identical raw and implied views share a panel. Hyperparameters
         appear once in their first owning row.
         Use ``scale="raw"`` or ``scale="model"`` to select one view.
         Condition legends are hidden.
@@ -709,12 +688,12 @@ class Model:
         color            : str, optional, default: BASE_COLOR
             Color used for trajectories and distributions.
         title_fontsize   : int, optional, default: 22
-            Font size for panel titles.
+            Font size for panel titles, section headings, and row labels.
         label_fontsize   : int, optional, default: 18
-            Font size for row labels and the figure legend.
+            Font size for axis labels, scale headings, and the figure legend.
         tick_fontsize    : int, optional, default: 16
             Font size for tick labels.
-        alpha            : float, optional, default: 0.5
+        alpha            : float, optional, default: 0.25
             Opacity of individual trajectories.
         figsize          : tuple of two floats or None, optional, default: None
             Explicit figure size in inches.
@@ -739,7 +718,17 @@ class Model:
         """
         if scale not in {"both", "model", "raw"}:
             raise ValueError("scale must be 'both', 'model', or 'raw'.")
-        if scale != "raw":
+        if scale == "raw":
+            samples = self._sample_inference_prior(
+                batch_size=num_draws,
+                num_steps=num_steps,
+                include_deterministic=True,
+            )
+            local = samples["local_params"] | samples["deterministic_params"]
+            hyper, shared = samples["hyper_params"], samples["shared_params"]
+            owners = samples["hyper_param_groups"]
+            bounds, condition_labels = {}, None
+        else:
             local, hyper, shared, condition_labels, owners = prior_plot_samples(
                 self,
                 num_draws=num_draws,
@@ -750,43 +739,16 @@ class Model:
                 kind="joint",
                 scale=scale,
             )
-            return plot_joint_prior(
-                local_params={name: value[:num_trajectories] for name, value in local.items()},
-                param_bounds=parameter_bounds(self, local),
-                hyper_params=hyper,
-                shared_params=shared,
-                condition_labels=condition_labels,
-                hyper_param_groups=owners,
-                parameter_groups=joint_prior_groups(self, local, hyper, shared, scale),
-                mixture_names={name: obj.names for name, obj in self.prior.params.items() if hasattr(obj, "names")},
-                marginal=marginal,
-                dist_type=dist_type,
-                num_bins=num_bins,
-                dist_alpha=dist_alpha,
-                color=color,
-                alpha=alpha,
-                title_fontsize=title_fontsize,
-                label_fontsize=label_fontsize,
-                tick_fontsize=tick_fontsize,
-                figsize=figsize,
-            )
-        samples = self._sample_inference_prior(
-            batch_size=num_draws,
-            num_steps=num_steps,
-            include_deterministic=True,
-        )
-        all_local_params = {**samples["local_params"], **samples["deterministic_params"]}
-        local_params = {k: v[:num_trajectories] for k, v in all_local_params.items()}
+            bounds = parameter_bounds(self, local)
         return plot_joint_prior(
-            local_params=local_params,
-            hyper_params=samples["hyper_params"],
-            shared_params=samples["shared_params"],
-            param_bounds={},
+            local_params={name: values[:num_trajectories] for name, values in local.items()},
+            hyper_params=hyper,
+            shared_params=shared,
+            param_bounds=bounds,
+            condition_labels=condition_labels,
             mixture_names={name: obj.names for name, obj in self.prior.params.items() if hasattr(obj, "names")},
-            hyper_param_groups=samples["hyper_param_groups"],
-            parameter_groups=joint_prior_groups(
-                self, local_params, samples["hyper_params"], samples["shared_params"], scale
-            ),
+            hyper_param_groups=owners,
+            parameter_groups=joint_prior_groups(self, local, hyper, shared, scale),
             marginal=marginal,
             dist_type=dist_type,
             num_bins=num_bins,

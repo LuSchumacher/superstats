@@ -32,7 +32,7 @@ Superstats trains neural estimators on simulations from generative models of thi
 - **Full joint smoothing (JS):** $q_{\mathrm{JS}}(\theta_{1:T}, \phi \mid x_{1:T}) = q(\phi \mid x_{1:T}) \prod_{t=1}^T q(\theta_t \mid \theta_{1:t-1}, \phi, x_{1:T})$.
 
 These distributions are realized through different neural approximators. Select them with `Workflow(model=model, approximator="marginal" | "joint", mode="filtering" | "smoothing")`, or pass a constructed approximator directly. A constructed approximator keeps its own mode. Marginal factors are independent across time conditional on the observations and invariants; joint factors also condition on the preceding parameter trajectory. Sharing an invariant draw can induce temporal dependence even in the marginal approximations.
-See the [approximator guide](docsrc/user_guide/approximators.md) for configuration and tensor shapes.
+See the [approximator guide](user_guide/approximators.md) for configuration and tensor shapes.
 
 ## Install
 
@@ -87,15 +87,15 @@ It is highly recommended to use a GPU for fast training and inference. For an in
 
 | Notebook | What it covers |
 |---|---|
-| [Workflow demo](https://github.com/LuSchumacher/superstats/blob/main/examples/minimal_workflow_demo.ipynb) | Complete path from prior to posterior |
-| [Marginal versus joint smoothing](ehttps://github.com/LuSchumacher/superstats/blob/main/examples/joint_vs_marginal.ipynb) | Compact comparison of the two trajectory approximations |
+| [Workflow demo](https://github.com/LuSchumacher/superstats/blob/main/examples/workflow_demo.ipynb) | Complete path from prior to posterior |
+| [Marginal versus joint smoothing](https://github.com/LuSchumacher/superstats/blob/main/examples/joint_vs_marginal.ipynb) | Compact comparison of the two trajectory approximations |
 
 More examples are always welcome. If you have an application, please consider opening a pull request.
 
 
 ## Contributing
 
-Contributions are welcome. Install from source and see [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+Contributions are welcome. Install from source and see the [contributing guide](contributing.md) for details.
 
 ## Reporting issues
 

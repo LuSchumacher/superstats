@@ -64,7 +64,7 @@ argument and is bound directly. `offset` does not match a simulator argument
 and is therefore passed through the simulator's `context` mapping.
 
 ```python
-def observation_model(theta, condition, *, context):
+def observation_model(theta, condition, context):
     observation = theta + condition + context["offset"].reshape(-1)
     return {"observation": observation}
 ```
@@ -163,7 +163,7 @@ condition independently while keeping a dataset-specific offset constant across
 its trials.
 
 ```python
-def generate_context(*, batch_size, num_steps):
+def generate_context(batch_size, num_steps):
     dataset_offset = rng.normal(0.0, 0.1, size=(batch_size, 1))
     return {
         "difficulty": rng.choice(
@@ -210,7 +210,7 @@ time and accepts only `num_steps`; the wrapper calls it once per batch element
 and stacks the results.
 
 ```python
-def generate_one_context(*, num_steps):
+def generate_one_context(num_steps):
     return {
         "difficulty": rng.normal(size=num_steps),
     }
@@ -447,28 +447,6 @@ their final linked values for inspection and are listed in
 inputs, or raw-prior plots. Posterior resimulation reconstructs them from the
 raw inferred coefficients and the supplied context.
 
-```python
-fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-axes[0].scatter(
-    ddm_sample["x_drift"][0],
-    ddm_sample["v"][0, :, 0],
-    alpha=0.7,
-)
-axes[0].set(
-    xlabel="x_drift",
-    ylabel="linked drift v",
-)
-axes[1].scatter(
-    ddm_sample["x_boundary"][0],
-    ddm_sample["a"][0, :, 0],
-    alpha=0.7,
-)
-axes[1].set(
-    xlabel="x_boundary",
-    ylabel="linked boundary a",
-)
-fig.tight_layout()
-```
 
 ## Context during inference
 

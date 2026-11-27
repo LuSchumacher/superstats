@@ -325,8 +325,16 @@ def test_joint_prior_covers_mixture_shared_and_bounded_trajectory_panels():
         num_bins=6,
     )
 
-    trajectory_ax = next(ax for ax in fig.axes if ax.get_title() == "Trajectory")
+    trajectory_ax = next(ax for ax in fig.axes if ax.lines)
     assert trajectory_ax.get_ylim() == pytest.approx((-2.0, 2.0))
+    individual, average = trajectory_ax.lines[0], trajectory_ax.lines[-1]
+    assert individual.get_alpha() == pytest.approx(0.25)
+    assert average.get_linewidth() > 2 * individual.get_linewidth()
+    assert average.get_zorder() > individual.get_zorder()
+    average_handle, individual_handle = fig.legends[0].legend_handles
+    assert average_handle.get_linewidth() == average.get_linewidth()
+    assert individual_handle.get_alpha() == individual.get_alpha()
+    assert individual_handle.get_linewidth() == individual.get_linewidth()
     component_legend = next(ax.get_legend() for ax in fig.axes if ax.get_legend() is not None)
     assert [text.get_text() for text in component_legend.get_texts()] == ["smooth", "jump"]
     assert any(not ax.axison for ax in fig.axes)

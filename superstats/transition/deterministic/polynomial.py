@@ -59,29 +59,7 @@ class Polynomial(DeterministicTransition):
         self.transition_name = "polynomial"
 
     def sample(self, batch_size: int, num_steps: int) -> Dict[str, Any]:
-        """Draw `batch_size` polynomial trajectories of length `num_steps`."""
-        hyper, fixed = self._resolve_hyperparams(batch_size)
-
-        resolved = {
-            name: hyper[name] if name in hyper else np.full(batch_size, fixed[name], dtype=self.dtype)
-            for name in self.hyper_specs
-        }
-
-        if self.normalize_steps:
-            index = np.linspace(0.0, 1.0, num_steps, dtype=self.dtype)
-        else:
-            index = np.arange(num_steps, dtype=self.dtype)
-
-        local = np.repeat(resolved["intercept"][:, None], num_steps, axis=1)
-
-        for power in range(1, self.degree + 1):
-            local += resolved[f"beta_{power}"][:, None] * np.power(index[None, :], power)
-
-        return {
-            "deterministic_params": local.astype(self.dtype),
-            "hyper_params": hyper,
-            "fixed_params": fixed,
-        }
+        return self._sample_curve(batch_size, num_steps, Polynomial.sample_from_parameters)
 
     def sample_from_parameters(
         self,

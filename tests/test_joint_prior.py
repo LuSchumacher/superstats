@@ -270,7 +270,7 @@ def test_joint_prior_time_invariant_plot_uses_three_columns_for_six_params():
 def test_joint_prior_time_varying_plot_accepts_default_distribution_alpha():
     prior = _build_joint_prior()
 
-    assert inspect.signature(Model.plot_time_varying_prior).parameters["dist_alpha"].default == 1.0
+    assert inspect.signature(Model.plot_time_varying_prior).parameters["dist_alpha"].default is None
 
     fig = Model(
         prior=prior, simulator=lambda v=0, a=1, tau=0.2, bias=0: {"observation": np.atleast_1d(v)}, missing=None

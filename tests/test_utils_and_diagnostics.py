@@ -282,6 +282,8 @@ def test_time_invariant_prior_supports_dist_type(dist_type):
     )
 
     ax = fig.axes[0]
+    assert ax.get_title() == "mu"
+    assert [text.get_text() for text in fig.texts] == ["Hyperparameters"]
     assert ax.get_xlabel() == "Value"
     assert ax.get_ylabel() == "Density"
     if dist_type in {"hist", "both"}:
@@ -314,6 +316,19 @@ def test_time_invariant_prior_selects_compact_default_columns(num_params, expect
     expected_rows = int(np.ceil(num_params / expected_cols))
     assert len(fig.axes) == expected_rows * expected_cols
     assert fig.get_size_inches()[0] == pytest.approx(BASE_COL_WIDTH * expected_cols)
+    plt.close(fig)
+
+
+def test_time_invariant_prior_aligns_hyperparameters_and_shared_distributions():
+    values = np.random.default_rng(0).normal(size=30)
+    fig = plot_time_invariant_prior({"v_sigma": values}, {"tau": values}, num_cols=2)
+    hyper, shared = [ax for ax in fig.axes if ax.axison]
+
+    assert [text.get_text() for text in fig.texts] == ["Hyperparameters", "Shared parameters"]
+    assert [ax.get_title() for ax in (hyper, shared)] == ["v_sigma", "tau"]
+    assert hyper.get_position().x0 == pytest.approx(shared.get_position().x0)
+    assert hyper.get_position().width == pytest.approx(shared.get_position().width)
+    assert shared.get_position().y1 < hyper.get_position().y0
     plt.close(fig)
 
 
@@ -387,37 +402,40 @@ def test_time_varying_verification_uses_two_by_two_grid_for_single_parameter():
     plt.close(fig)
 
 
-def test_joint_prior_positions_legend_and_row_names_without_overlap():
+@pytest.mark.parametrize("grouped", [False, True])
+def test_joint_prior_positions_legend_and_row_names_without_overlap(grouped):
     rng = np.random.default_rng(0)
     names = ["short", "a_much_longer_parameter_name"]
     local_params = {name: rng.normal(size=(5, 10)) for name in names}
     hyper_params = {f"{name}_sigma": rng.normal(size=30) for name in names}
+    owners = {name: [f"{name}_sigma"] for name in names}
 
     fig = plot_joint_prior(
         local_params,
         hyper_params,
         {},
-        hyper_param_groups={name: [f"{name}_sigma"] for name in names},
+        hyper_param_groups=owners,
+        parameter_groups={name: {"hyper": owners[name], "raw": [name]} for name in names} if grouped else None,
         marginal=False,
     )
     fig.canvas.draw()
     renderer = fig.canvas.get_renderer()
 
-    grid_axes = fig.axes[:4]
+    panels = [ax for ax in fig.axes if ax.get_title() == "sigma"]
+    row_labels = [text for ax in fig.axes for text in ax.texts] if grouped else [ax.yaxis.label for ax in panels]
 
-    for row_i, name in enumerate(names):
-        panel = grid_axes[row_i * 2]
-        label = panel.yaxis.label
+    for name, panel, label in zip(names, panels, row_labels, strict=True):
         label_bbox = label.get_window_extent(renderer)
         panel_bbox = panel.get_window_extent(renderer)
 
         assert label.get_text() == name
-        assert label.get_fontsize() == 18
+        assert label.get_fontsize() == panel.title.get_fontsize()
         assert (label_bbox.y0 + label_bbox.y1) / 2 == pytest.approx((panel_bbox.y0 + panel_bbox.y1) / 2)
-        assert label_bbox.x1 < panel_bbox.x0
+        first_tick_left = min(tick.get_window_extent(renderer).x0 for tick in panel.get_yticklabels())
+        assert 0 <= label_bbox.x0 < label_bbox.x1 < first_tick_left
 
     legend_anchor = fig.legends[0].get_bbox_to_anchor().transformed(fig.transFigure.inverted())
-    assert fig.subplotpars.hspace == pytest.approx(0.5)
+    assert fig.subplotpars.hspace == pytest.approx(0.45)
     assert fig.legends[0].get_texts()[0].get_fontsize() == 18
     assert legend_anchor.y0 * fig.get_size_inches()[1] == pytest.approx(0.1)
     plt.close(fig)

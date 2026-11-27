@@ -5,9 +5,26 @@ from typing import Literal
 
 import numpy as np
 import seaborn as sns
+from matplotlib import colormaps
 from matplotlib.axes import Axes
+from matplotlib.lines import Line2D
+from matplotlib.transforms import offset_copy
 
-from superstats.defaults import DIST_ALPHA, OVERLAY_DIST_ALPHA
+from superstats.defaults import (
+    BASE_ROW_HEIGHT,
+    CATEGORICAL_PALETTE,
+    DIST_ALPHA,
+    JOINT_HSPACE,
+    OVERLAY_DIST_ALPHA,
+    WSPACE,
+)
+
+PRIOR_ALPHA = 0.25
+PRIOR_TITLE_PAD = 8
+PRIOR_ROW_HEIGHT = BASE_ROW_HEIGHT - 0.15
+PRIOR_SECTION_ROW_HEIGHT = BASE_ROW_HEIGHT - 0.4
+_AVERAGE_STYLE = {"linewidth": 3.5, "zorder": 3}
+_INDIVIDUAL_WIDTH = 1.25
 
 
 def format_condition_label(condition: Mapping) -> str:
@@ -531,6 +548,123 @@ def plot_dist(
 
     if hide_axis:
         ax.set_axis_off()
+
+
+def _group_color(color, index, count):
+    if count == 1:
+        return color
+    if count <= len(CATEGORICAL_PALETTE):
+        return CATEGORICAL_PALETTE[index]
+    return colormaps["tab20"](index % 20)
+
+
+def plot_prior_trajectories(ax, values, *, bounds, labels, marginal, dist_type, num_bins, dist_alpha, alpha, color):
+    """Plot draws, condition-wise means, and optional marginals in one grid cell."""
+    marginal_ax = None
+    if marginal:
+        sub = ax.get_subplotspec().subgridspec(1, 2, width_ratios=[4.2, 0.8], wspace=0)
+        ax.axis("off")
+        fig = ax.get_figure()
+        ax = fig.add_subplot(sub[0])
+        marginal_ax = fig.add_subplot(sub[1])
+
+    values = np.asarray(values)
+    groups = values[:, None, :] if values.ndim == 2 else values
+    count = groups.shape[1]
+    labels = labels if labels is not None else [None] * count
+    for index in range(count):
+        group = groups[:, index]
+        group_color = _group_color(color, index, count)
+        for trajectory in group:
+            ax.plot(trajectory, color=group_color, linewidth=_INDIVIDUAL_WIDTH, alpha=alpha)
+        ax.plot(group.mean(axis=0), color=group_color, label=labels[index], **_AVERAGE_STYLE)
+        if marginal_ax is not None:
+            plot_dist(
+                group,
+                ax=marginal_ax,
+                dist_type=dist_type,
+                num_bins=num_bins,
+                color=group_color,
+                orientation="vertical",
+                alpha=resolve_dist_alpha(dist_alpha, count),
+                hide_axis=True,
+            )
+    if bounds is not None:
+        ax.set_ylim(bounds)
+    if marginal_ax is not None:
+        marginal_ax.set_ylim(ax.get_ylim())
+    return ax
+
+
+def add_prior_trajectory_legend(fig, color, alpha, fontsize, legend_y):
+    """Use the panel line styles in the trajectory legend."""
+    fig.legend(
+        handles=[
+            Line2D([], [], color=color, label="Average", **_AVERAGE_STYLE),
+            Line2D([], [], color=color, label="Individual", linewidth=_INDIVIDUAL_WIDTH, alpha=alpha),
+        ],
+        loc="lower center",
+        ncol=2,
+        fontsize=fontsize,
+        framealpha=0.0,
+        bbox_to_anchor=(0.5, legend_y),
+    )
+
+
+def plot_prior_distribution(ax, values, *, labels, component_names, dist_type, num_bins, dist_alpha, color, fontsize):
+    """Show grouped distributions with a legend for mixture components."""
+    values = np.asarray(values)
+    groups = values.T if values.ndim == 2 else values.reshape(1, -1)
+    count = len(groups)
+    names = labels or component_names or [f"component {i}" for i in range(count)]
+    for index, group in enumerate(groups):
+        plot_dist(
+            group,
+            ax=ax,
+            dist_type=dist_type,
+            num_bins=num_bins,
+            color=_group_color(color, index, count),
+            alpha=resolve_dist_alpha(dist_alpha, count),
+            label=names[index] if count > 1 else None,
+        )
+    if count > 1 and not labels:
+        ax.legend(fontsize=fontsize, framealpha=0.0)
+
+
+def add_prior_heading(fig, spec, text, offset, fontsize, weight="bold"):
+    """Center a heading above its span of subplot columns."""
+    bbox = spec.get_position(fig)
+    fig.text(
+        (bbox.x0 + bbox.x1) / 2,
+        bbox.y1,
+        text,
+        ha="center",
+        va="bottom",
+        fontsize=fontsize,
+        fontweight=weight,
+        transform=offset_copy(fig.transFigure, fig=fig, y=offset, units="points"),
+    )
+
+
+def adjust_prior_layout(fig, grid, *, heading_height, bottom, min_gap, section_gap_row=None, section_gap_height=0):
+    """Reserve room for headings and ticks before positioning figure text."""
+    fig.tight_layout()
+    top = 1 - heading_height / fig.get_figheight()
+    bottom = max(bottom, fig.subplotpars.bottom)
+    hspace = JOINT_HSPACE - 0.05
+    nrows = grid.nrows
+    if nrows > 1 and top > bottom:
+        height = (top - bottom) * fig.get_figheight() * 72
+        row_gap = hspace * height / (nrows + (nrows - 1) * hspace)
+        row_gap = min(max(row_gap, min_gap), 0.7 * height / (nrows - 1))
+        panel_space = height - (nrows - 1) * row_gap
+        hspace = nrows * row_gap / panel_space
+        if section_gap_row is not None:
+            spacer = np.clip(section_gap_height - 2 * row_gap, 0, panel_space / 2)
+            heights = [(panel_space - spacer) / (nrows - 1)] * nrows
+            heights[section_gap_row] = spacer
+            grid.set_height_ratios(heights)
+    fig.subplots_adjust(top=top, bottom=bottom, hspace=hspace, wspace=max(WSPACE, fig.subplotpars.wspace))
 
 
 def prepare_plot_data(
