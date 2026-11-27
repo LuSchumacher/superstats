@@ -954,10 +954,16 @@ class CompositeEstimator(Estimator):
         """
         adapted, jacobian = self.adapter(data, strict=False, log_det_jac=True, stage="inference")
         adapted = self._tensorize(adapted)
+        target_jacobians = {
+            key: keras.ops.convert_to_numpy(jacobian[key])
+            for key in ("inference_variables", "invariant_variables")
+            if key in jacobian
+        }
+        sequence_jacobian = target_jacobians.get("inference_variables", 0.0)
 
         if adapted.get("inference_mask") is not None:
             valid = keras.ops.convert_to_numpy(adapted["inference_mask"])
-            if not np.all(valid) and np.any(np.asarray(jacobian.get("inference_variables", 0.0)) != 0):
+            if not np.all(valid) and np.any(sequence_jacobian != 0):
                 raise ValueError(
                     "Masked sequence log_prob requires zero varying-target adapter Jacobians. "
                     "BayesFlow's dataset-level Jacobian cannot be split over valid time points."
@@ -977,13 +983,15 @@ class CompositeEstimator(Estimator):
             if self.has_varying
             else np.zeros(features.shape[0])
         )
+        sequence = keras.ops.convert_to_numpy(sequence)
         if self.has_varying and not self.joint:
             if adapted.get("inference_mask") is not None:
                 sequence = np.where(keras.ops.convert_to_numpy(adapted["inference_mask"]), sequence, 0.0)
             sequence = np.sum(sequence, axis=-1)
-        invariant = invariant + jacobian.get("invariant_variables", 0.0)
-        sequence = sequence + jacobian.get("inference_variables", 0.0)
-        components = {"invariant": np.asarray(invariant), "varying": np.asarray(sequence)}
+        components = {
+            "invariant": keras.ops.convert_to_numpy(invariant) + target_jacobians.get("invariant_variables", 0.0),
+            "varying": sequence + sequence_jacobian,
+        }
         return components if return_components else components["invariant"] + components["varying"]
 
     def summarize(self, conditions, **kwargs):
