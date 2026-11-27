@@ -25,24 +25,28 @@ def _sample_alpha_stable(alpha: float, beta: float, scale: float) -> float:
     -------
     x : float - a single alpha-stable increment
     """
+    if scale == 0.0:
+        return 0.0
+
     u = (np.random.rand() - 0.5) * np.pi
     w = -np.log(np.random.rand())
 
     if alpha == 1.0:
-        # Special-case alpha == 1 to avoid division by zero.
+        # Special-case alpha == 1 to avoid division by zero (Nolan S1 scaling).
         x = (2.0 / np.pi) * (
             (np.pi / 2.0 + beta * u) * np.tan(u)
             - beta * np.log((np.pi / 2.0 * w * np.cos(u)) / (np.pi / 2.0 + beta * u))
         )
-    else:
-        zeta = beta * np.tan(np.pi * alpha / 2.0)
-        xi = np.arctan(zeta) / alpha
-        x = (
-            (1.0 + zeta * zeta) ** (1.0 / (2.0 * alpha))
-            * np.sin(alpha * (u + xi))
-            / (np.cos(u) ** (1.0 / alpha))
-            * (np.cos(u - alpha * (u + xi)) / w) ** ((1.0 - alpha) / alpha)
-        )
+        return scale * x + (2.0 / np.pi) * beta * scale * np.log(scale)
+
+    zeta = beta * np.tan(np.pi * alpha / 2.0)
+    xi = np.arctan(zeta) / alpha
+    x = (
+        (1.0 + zeta * zeta) ** (1.0 / (2.0 * alpha))
+        * np.sin(alpha * (u + xi))
+        / (np.cos(u) ** (1.0 / alpha))
+        * (np.cos(u - alpha * (u + xi)) / w) ** ((1.0 - alpha) / alpha)
+    )
 
     return scale * x
 
