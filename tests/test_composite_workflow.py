@@ -24,6 +24,7 @@ def flow():
     return bf.networks.CouplingFlow(depth=1, subnet_kwargs={"widths": (8,)})
 
 
+@pytest.mark.filterwarnings("error:Explicitly requested dtype float64:UserWarning")
 def test_default_workflow_trains_samples_and_scores_separate_targets():
     simulator = model()
     workflow = Workflow(

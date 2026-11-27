@@ -260,8 +260,9 @@ class CompositeEstimator(Estimator):
         Returns
         -------
         adapter : bayesflow.adapters.Adapter
-            Adapter concatenating each group into its canonical key,
-            converting float64 to float32, and preserving only requested keys.
+            Adapter concatenating each group into its canonical key and
+            preserving only requested keys. BayesFlow casts the output to
+            the configured Keras floating-point dtype.
             Inverse adaptation restores named variables and their dimensions.
 
         Raises
@@ -277,7 +278,7 @@ class CompositeEstimator(Estimator):
             raise ValueError("At least one target group and observations must be nonempty.")
         if set(varying) & set(invariant):
             raise ValueError("Varying and invariant target names must not overlap.")
-        adapter = Adapter().to_array().convert_dtype("float64", "float32")
+        adapter = Adapter().to_array()
         adapter.as_time_series(varying + observations)
         if varying:
             adapter.concatenate(varying, into="inference_variables")

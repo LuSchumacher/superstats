@@ -216,19 +216,22 @@ def test_masks_and_batch_weights(cls):
 
 @pytest.mark.parametrize("cls", [MarginalEstimator, JointEstimator])
 @pytest.mark.parametrize("steps", [1, 3])
+@pytest.mark.filterwarnings("error:Explicitly requested dtype float64:UserWarning")
 def test_named_adapter_samples_restore_keys_and_axes(cls, steps):
     adapter = cls.build_adapter(
         inference_variables=["a", "b"], invariant_variables=["eta", "sigma"], summary_variables="x"
     )
     raw = {
-        "a": np.ones((2, steps), dtype="float32"),
+        "a": np.ones((2, steps), dtype="float64"),
         "b": np.ones((2, steps, 2), dtype="float32"),
         "eta": np.ones((2, 1), dtype="float32"),
         "sigma": np.ones((2, 2), dtype="float32"),
         "x": np.ones((2, steps), dtype="float32"),
     }
     estimator = analytic_estimator(cls, adapter=adapter)
-    estimator.compute_metrics(**adapter(raw))
+    adapted = adapter(raw)
+    assert keras.ops.dtype(adapted["inference_variables"]) == keras.config.floatx()
+    estimator.compute_metrics(**adapted)
     result = estimator.sample(num_samples=4, conditions={"x": raw["x"]}, seed=1)
     assert set(result) == {"a", "b", "eta", "sigma"}
     assert result["a"].shape == (2, 4, steps)

@@ -183,7 +183,7 @@ class Workflow:
         categorical = getattr(model, "categorical", {})
         if categorical:
             adapter.append(EncodeCategorical(categorical))
-        adapter = adapter.convert_dtype("float64", "float32").as_time_series(["time_steps", *summary_data_keys])
+        adapter.as_time_series(["time_steps", *summary_data_keys])
         invariant_keys = hyper_keys + shared_keys
         if local_keys:
             adapter = adapter.concatenate(local_keys, into="inference_variables")
